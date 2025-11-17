@@ -1,0 +1,7 @@
+{
+  "name": "AgriRent",
+  "description": "A web application for farmers to rent agricultural machinery from suppliers. It provides a platform for listing machines, booking them, and managing rentals.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}

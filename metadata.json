@@ -1,0 +1,9 @@
+{
+  "name": "Copy of Copy of Copy of AgriRent_ading_(3)",
+  "description": "moree, MAPPP , ai crop, languages\npreapring complete website .\nlastest AgriRent with Myaccount AI voice - A web application for farmers to rent agricultural machinery from suppliers. It provides a platform for listing machines, booking them, and managing rentals. ",
+  "requestFramePermissions": [
+    "microphone",
+    "geolocation",
+    "camera"
+  ]
+}
