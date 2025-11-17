@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { AppView, Item, ItemCategory } from '../types';
-import { MapContainer, TileLayer, Marker, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, useMap, Circle } from 'react-leaflet';
 import L from 'leaflet';
 import ItemCard from '../components/ItemCard';
 
@@ -62,6 +62,18 @@ const getImageIconForItem = (item: Item) => {
 
 const FarmerMapScreen: React.FC<FarmerMapScreenProps> = ({ items, navigate, userLocation }) => {
     const [selectedItem, setSelectedItem] = useState<Item | null>(null);
+    const heatData = useMemo(() => {
+        const bins: Record<string, { lat: number; lng: number; count: number }> = {};
+        items.forEach(i => {
+            if (!i.locationCoords) return;
+            const lat = Math.round(i.locationCoords.lat * 20) / 20;
+            const lng = Math.round(i.locationCoords.lng * 20) / 20;
+            const key = `${lat},${lng}`;
+            bins[key] = bins[key] || { lat, lng, count: 0 };
+            bins[key].count += i.available ? 1 : 0;
+        });
+        return Object.values(bins);
+    }, [items]);
 
     const center: [number, number] = useMemo(() => {
         if (selectedItem?.locationCoords) {
@@ -95,6 +107,10 @@ const FarmerMapScreen: React.FC<FarmerMapScreenProps> = ({ items, navigate, user
                 {userLocation && (
                     <Marker position={[userLocation.lat, userLocation.lng]} icon={userIcon} />
                 )}
+                {heatData.map((h, idx) => (
+                    <Circle key={idx} center={[h.lat, h.lng]} radius={500}
+                        pathOptions={{ color: 'red', fillColor: 'red', fillOpacity: Math.min(0.1 + h.count * 0.05, 0.4) }} />
+                ))}
                 
                 {items.map(item => {
                     if (!item.locationCoords) return null;
@@ -115,7 +131,7 @@ const FarmerMapScreen: React.FC<FarmerMapScreenProps> = ({ items, navigate, user
             </MapContainer>
 
             {selectedItem && (
-                 <div className="absolute bottom-4 left-1/2 -translate-x-1/2 w-[90%] max-w-sm z-[1000]">
+                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 w-[90%] max-w-sm z-[1000]">
                     <div className="relative">
                          <button onClick={() => setSelectedItem(null)} className="absolute -top-2 -right-2 z-10 bg-white dark:bg-neutral-600 rounded-full p-1 shadow-md text-neutral-600 dark:text-neutral-200 hover:text-red-500 dark:hover:text-red-400">
                             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
@@ -124,6 +140,7 @@ const FarmerMapScreen: React.FC<FarmerMapScreenProps> = ({ items, navigate, user
                     </div>
                 </div>
             )}
+            <div className="absolute top-4 left-4 bg-white dark:bg-neutral-700 text-xs px-2 py-1 rounded shadow">Heatmap shows availability density</div>
         </div>
     );
 };

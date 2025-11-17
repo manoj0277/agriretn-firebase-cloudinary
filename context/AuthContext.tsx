@@ -3,11 +3,10 @@
 import React, { createContext, useState, useContext, ReactNode, useMemo, useEffect } from 'react';
 import { User, UserRole } from '../types';
 import { useToast } from './ToastContext';
-import { supabase } from '../lib/supabase';
-const API_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3001/api';
+import { supabase, supabaseConfigured } from '../lib/supabase';
 
 interface AuthContextType {
-    user: User | null;
+    user: User | null | undefined;
     allUsers: User[];
     login: (email: string, password: string, role: UserRole) => Promise<boolean>;
     logout: () => void;
@@ -22,7 +21,7 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-    const [user, setUser] = useState<User | null>(null);
+    const [user, setUser] = useState<User | null | undefined>(undefined);
     const [allUsers, setAllUsers] = useState<User[]>([]);
     const { showToast } = useToast();
 
@@ -52,12 +51,15 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     };
 
     useEffect(() => {
-        const { data: listener } = supabase.auth.onAuthStateChange(async (event, session) => {
-            if (event === 'SIGNED_OUT') {
-                setUser(null);
-                return;
-            }
+        if (!supabaseConfigured) {
+            setUser(null);
+            return;
+        }
+        const load = async () => {
+            const { data } = await supabase.auth.getSession();
+            const session = data.session;
             if (!session || !session.user) {
+                setUser(null);
                 return;
             }
             try {
@@ -74,24 +76,72 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                     };
                     await supabase.from('users').insert([minimal], { ignoreDuplicates: true });
                     setUser(minimal);
-                    return;
+                } else {
+                    const dataRow = rows[0] as Partial<User> & { role?: UserRole; status?: 'approved' | 'pending' | 'suspended' };
+                    const sessionUser: User = {
+                        id: (dataRow as any).id ?? uidToInt(session.user.id),
+                        name: dataRow.name ?? (emailLower || 'User'),
+                        email: emailLower,
+                        phone: (dataRow as any).phone ?? '',
+                        role: dataRow.role ?? UserRole.Farmer,
+                        status: dataRow.status ?? 'approved',
+                    };
+                    setUser(sessionUser);
                 }
-                const data = rows[0] as Partial<User> & { role?: UserRole; status?: 'approved' | 'pending' | 'suspended' };
-                const sessionUser: User = {
-                    id: (data as any).id ?? uidToInt(session.user.id),
-                    name: data.name ?? (emailLower || 'User'),
-                    email: emailLower,
-                    phone: (data as any).phone ?? '',
-                    role: data.role ?? UserRole.Farmer,
-                    status: data.status ?? 'approved',
-                };
-                setUser(sessionUser);
-            } catch {}
+            } catch {
+                setUser(null);
+            }
+        };
+        load();
+
+        const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
+            if (event === 'SIGNED_OUT') {
+                setUser(null);
+                return;
+            }
+            const s = session;
+            if (!s || !s.user) {
+                setUser(null);
+                return;
+            }
+            (async () => {
+                try {
+                    const emailLower = (s.user.email || '').toLowerCase();
+                    const { data: rows } = await supabase.from('users').select('*').eq('email', emailLower).limit(1);
+                    if (!rows || rows.length === 0) {
+                        const minimal: User = {
+                            id: uidToInt(s.user.id),
+                            name: emailLower || 'User',
+                            email: emailLower,
+                            phone: '',
+                            role: UserRole.Farmer,
+                            status: 'approved',
+                        };
+                        await supabase.from('users').insert([minimal], { ignoreDuplicates: true });
+                        setUser(minimal);
+                    } else {
+                        const dataRow = rows[0] as Partial<User> & { role?: UserRole; status?: 'approved' | 'pending' | 'suspended' };
+                        const sessionUser: User = {
+                            id: (dataRow as any).id ?? uidToInt(s.user.id),
+                            name: dataRow.name ?? (emailLower || 'User'),
+                            email: emailLower,
+                            phone: (dataRow as any).phone ?? '',
+                            role: dataRow.role ?? UserRole.Farmer,
+                            status: dataRow.status ?? 'approved',
+                        };
+                        setUser(sessionUser);
+                    }
+                } catch {
+                    setUser(null);
+                }
+            })();
         });
-        return () => { listener.subscription.unsubscribe(); };
+        return () => listener.subscription.unsubscribe();
     }, []);
 
     useEffect(() => {
+        if (!supabaseConfigured) return;
+        if (!user) return;
         const loadUsers = async () => {
             try {
                 const { data: rows } = await supabase.from('users').select('*');
@@ -99,76 +149,46 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             } catch {}
         };
         loadUsers();
-    }, []);
+    }, [user]);
 
-    const login = async (identifier: string, password: string, role: UserRole): Promise<boolean> => {
-        const trimmedId = identifier.trim();
-        const isEmail = trimmedId.includes('@');
-        let emailToUse = trimmedId;
-        try {
-            const SUPABASE_URL = (import.meta as any).env?.VITE_SUPABASE_URL || '';
-            const SUPABASE_KEY = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || '';
-            if (!SUPABASE_URL || !SUPABASE_KEY) {
-                showToast('Supabase is not configured. Please set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.', 'error');
-                return false;
-            }
-            if (!isEmail) {
-                const phoneDigits = trimmedId.replace(/[^0-9]/g, '');
-                const resp = await fetch(`${API_URL}/auth/email-by-phone/${phoneDigits}`);
-                if (!resp.ok) {
-                    showToast('No account found for this phone number.', 'error');
-                    return false;
-                }
-                const json = await resp.json();
-                emailToUse = (json.email || '').toLowerCase();
-                if (!emailToUse) {
-                    showToast('Account missing email. Please contact support.', 'error');
-                    return false;
-                }
-            }
-            const { data, error } = await supabase.auth.signInWithPassword({ email: emailToUse.toLowerCase(), password: password.trim() });
-            if (error) {
-                throw error;
-            }
-            const uid = data.user?.id || '';
-            const { data: rows } = await supabase.from('users').select('*').eq('email', emailToUse.toLowerCase()).limit(1);
-            if (!rows || rows.length === 0) {
-                const created: User = { id: uidToInt(uid), name: emailToUse, email: emailToUse.toLowerCase(), phone: '', role: role, status: 'approved' };
-                await tryInsertUser(created);
-                setUser(created);
-                showToast('Logged in successfully!', 'success');
-                return true;
-            }
-            const rec = rows[0] as Partial<User> & { role?: UserRole; status?: 'approved' | 'pending' | 'suspended' };
-            if (rec.status === 'suspended') {
-                showToast('Your account is suspended.', 'error');
-                await supabase.auth.signOut();
-                return false;
-            }
-            const sessionRole = rec.role === UserRole.Admin ? UserRole.Admin : (rec.role ?? role);
-            const sessionUser: User = { id: rec.id ?? uidToInt(uid), name: rec.name ?? emailToUse, email: emailToUse.toLowerCase(), phone: (rec as any).phone ?? '', role: sessionRole, status: rec.status ?? 'approved' };
-            setUser(sessionUser);
-            showToast('Logged in successfully!', 'success');
+    const login = async (email: string, password: string, role: UserRole): Promise<boolean> => {
+        if (!supabaseConfigured) return false;
+        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) return false;
+        const sessionUser = data.user;
+        if (!sessionUser) return false;
+        const emailLower = (sessionUser.email || '').toLowerCase();
+        const { data: rows } = await supabase.from('users').select('*').eq('email', emailLower).limit(1);
+        if (!rows || rows.length === 0) {
+            const created: User = { id: uidToInt(sessionUser.id), name: emailLower || 'User', email: emailLower, phone: '', role: role, status: 'approved' };
+            await supabase.from('users').insert([created], { ignoreDuplicates: true });
+            setUser(created);
             return true;
-        } catch (err: any) {
-            const code = err?.message as string | undefined;
-            if (code && code.toLowerCase().includes('invalid')) {
-                showToast('Incorrect password.', 'error');
-            } else if (code && code.toLowerCase().includes('not found')) {
-                showToast('No account found for these credentials.', 'error');
-            } else if (code && code.toLowerCase().includes('network')) {
-                showToast('Network issue. Please check connection and retry.', 'error');
-            } else {
-                showToast('Invalid credentials or network issue.', 'error');
-            }
+        }
+        const rec = rows[0] as Partial<User> & { role?: UserRole; status?: 'approved' | 'pending' | 'suspended' };
+        if (rec.status === 'suspended') {
+            try { await supabase.auth.signOut(); } catch (e: any) { const msg = String(e?.message || '').toLowerCase(); if (!msg.includes('abort')) throw e; }
             return false;
         }
+        const resolvedRole = rec.role === UserRole.Admin ? UserRole.Admin : role;
+        try { await supabase.from('users').update({ role: resolvedRole }).eq('email', emailLower); } catch {}
+        const nextUser: User = {
+            id: (rec as any).id ?? uidToInt(sessionUser.id),
+            name: rec.name ?? (emailLower || 'User'),
+            email: emailLower,
+            phone: (rec as any).phone ?? '',
+            role: resolvedRole,
+            status: rec.status ?? 'approved',
+        };
+        setUser(nextUser);
+        return true;
     };
 
     
 
     const logout = () => {
-        supabase.auth.signOut();
+        if (!supabaseConfigured) { setUser(null); return; }
+        supabase.auth.signOut().catch((e: any) => { const msg = String(e?.message || '').toLowerCase(); if (!msg.includes('abort')) {} });
         setUser(null);
     };
 
@@ -284,12 +304,17 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     
     const updateUser = async (updatedUser: User) => {
         try {
+            if (!supabaseConfigured) {
+                showToast('Supabase not configured. Please set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.', 'error');
+                return;
+            }
             const { error } = await supabase.from('users').update({ ...updatedUser }).eq('id', updatedUser.id);
             if (error) throw error;
             try { await supabase.auth.updateUser({ data: { full_name: updatedUser.name, phone: updatedUser.phone } }); } catch {}
             if (user && user.id === updatedUser.id) {
                 setUser(updatedUser);
             }
+            setAllUsers(prev => prev.map(u => u.id === updatedUser.id ? updatedUser : u));
             showToast('Profile updated!', 'success');
         } catch {
             showToast('Failed to update profile.', 'error');

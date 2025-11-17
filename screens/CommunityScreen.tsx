@@ -3,7 +3,6 @@
 import React, { useState } from 'react';
 import { useCommunity } from '../context/CommunityContext';
 import { useAuth } from '../context/AuthContext';
-import { users } from '../data/mockData';
 import Header from '../components/Header';
 import Button from '../components/Button';
 import Input from '../components/Input';
@@ -11,7 +10,8 @@ import { ForumPost, CommunityReply } from '../types';
 import { useLanguage } from '../context/LanguageContext';
 
 const PostCard: React.FC<{post: ForumPost, onClick: () => void}> = ({ post, onClick }) => {
-    const author = users.find(u => u.id === post.authorId);
+    const { allUsers } = useAuth();
+    const author = allUsers.find(u => u.id === post.authorId);
     const { t } = useLanguage();
     return (
         <div className="bg-white dark:bg-neutral-700 p-4 rounded-lg border border-neutral-200 dark:border-neutral-600 hover:border-primary cursor-pointer transition-colors" onClick={onClick}>
@@ -25,7 +25,8 @@ const PostCard: React.FC<{post: ForumPost, onClick: () => void}> = ({ post, onCl
 }
 
 const ReplyCard: React.FC<{reply: CommunityReply}> = ({ reply }) => {
-    const author = users.find(u => u.id === reply.authorId);
+    const { allUsers } = useAuth();
+    const author = allUsers.find(u => u.id === reply.authorId);
     return (
         <div className="bg-neutral-100 dark:bg-neutral-700 p-3 rounded-lg">
             <div className="flex justify-between text-xs mb-1">
@@ -42,7 +43,8 @@ const PostDetailView: React.FC<{ post: ForumPost, onBack: () => void }> = ({ pos
     const { addReply } = useCommunity();
     const { t } = useLanguage();
     const [newReply, setNewReply] = useState('');
-    const author = users.find(u => u.id === post.authorId);
+    const { allUsers } = useAuth();
+    const author = allUsers.find(u => u.id === post.authorId);
 
     const handleReplySubmit = (e: React.FormEvent) => {
         e.preventDefault();

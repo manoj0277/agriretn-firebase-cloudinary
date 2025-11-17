@@ -94,6 +94,7 @@ export interface Item {
     horsepower?: number;
     condition?: 'New' | 'Good' | 'Fair';
     gender?: 'Male' | 'Female';
+    autoPriceOptimization?: boolean;
 }
 
 export interface Booking {
@@ -254,4 +255,5 @@ export type AppView =
     | { view: 'SETTINGS' }
     | { view: 'PAYMENT_HISTORY' }
     | { view: 'POLICY' }
-    | { view: 'COMMUNITY' };
+    | { view: 'COMMUNITY' }
+    | { view: 'CROP_CALENDAR' };

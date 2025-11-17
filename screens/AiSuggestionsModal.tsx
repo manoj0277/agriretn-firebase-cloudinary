@@ -1,6 +1,8 @@
 
 import React, { useState, useMemo } from 'react';
 import { useItem } from '../context/ItemContext';
+import { useBooking } from '../context/BookingContext';
+import { useWeather } from '../context/WeatherContext';
 import { AppView, Item, ItemCategory } from '../types';
 import ItemCard from '../components/ItemCard';
 import Button from '../components/Button';
@@ -12,6 +14,8 @@ interface AiSuggestionsModalProps {
 
 const AiSuggestionsModal: React.FC<AiSuggestionsModalProps> = ({ onClose, navigate }) => {
     const { items } = useItem();
+    const { bookings } = useBooking();
+    const { summary } = useWeather();
     const [cropType, setCropType] = useState('');
     const [fieldSize, setFieldSize] = useState('');
     const [activity, setActivity] = useState('');
@@ -21,7 +25,6 @@ const AiSuggestionsModal: React.FC<AiSuggestionsModalProps> = ({ onClose, naviga
 
     const handleGetRecommendations = (e: React.FormEvent) => {
         e.preventDefault();
-        // Simple recommendation logic
         let suggested: Item[] = [];
         const activityLower = activity.toLowerCase();
 
@@ -38,11 +41,27 @@ const AiSuggestionsModal: React.FC<AiSuggestionsModalProps> = ({ onClose, naviga
             suggested = [...approvedItems].sort(() => 0.5 - Math.random()).slice(0, 3);
         }
         
-        // Filter further by size if provided
         if (fieldSize && parseInt(fieldSize) < 10 && suggested.length > 1) {
-             // suggest smaller/cheaper items for smaller fields
              const getMinPrice = (item: Item) => item.purposes.length > 0 ? Math.min(...item.purposes.map(p => p.price)) : Infinity;
              suggested = suggested.sort((a,b) => getMinPrice(a) - getMinPrice(b)).slice(0, 2);
+        }
+
+        const recentBookingItemIds = new Set(
+            bookings
+              .filter(b => b.status === 'Completed' && b.itemId)
+              .slice(-20)
+              .map(b => b.itemId as number)
+        )
+        const boostByHistory = (list: Item[]) => list.sort((a,b) => Number(recentBookingItemIds.has(b.id)) - Number(recentBookingItemIds.has(a.id)))
+        suggested = boostByHistory(suggested)
+
+        if (summary.rainNext3Days) {
+            suggested = suggested.filter(i => i.category !== ItemCategory.Harvesters)
+        }
+
+        if (cropType.trim().toLowerCase().includes('paddy')) {
+            const harvesters = approvedItems.filter(i => i.name.toLowerCase().includes('harvester'))
+            suggested = [...harvesters, ...suggested].slice(0, 3)
         }
         setRecommendations(suggested);
     };

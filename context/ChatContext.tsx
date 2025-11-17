@@ -1,6 +1,7 @@
 import React, { createContext, useState, useContext, ReactNode, useMemo, useCallback, useEffect } from 'react';
 import { ChatMessage } from '../types';
 import { supabase } from '../lib/supabase';
+import { useNotification } from './NotificationContext';
 
 type ConversationSummary = {
     chatId: string;
@@ -20,6 +21,7 @@ const ChatContext = createContext<ChatContextType | undefined>(undefined);
 
 export const ChatProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     const [messages, setMessages] = useState<ChatMessage[]>([]);
+    const { addNotification } = useNotification() as any;
 
     useEffect(() => {
         const load = async () => {
@@ -39,6 +41,11 @@ export const ChatProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         const newMsg: ChatMessage = { id: Date.now(), chatId, timestamp: new Date().toISOString(), read: false, ...messageData } as ChatMessage;
         await supabase.from('chatMessages').upsert([newMsg]);
         setMessages(prev => [...prev, newMsg]);
+        const lower = (newMsg.text || '').toLowerCase();
+        const blacklist = ['abuse','idiot','stupid','fool','fraud'];
+        if (blacklist.some(w => lower.includes(w))) {
+            addNotification && addNotification({ userId: 0, message: `Potential abusive chat detected from user ${newMsg.senderId}.`, type: 'admin' });
+        }
     }, []);
 
     const getConversationsForUser = useCallback((userId: number) => {

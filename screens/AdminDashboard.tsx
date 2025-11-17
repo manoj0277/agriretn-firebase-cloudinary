@@ -78,6 +78,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ setActiveTab }) => {
                 <div className="bg-white dark:bg-neutral-800 p-6 rounded-lg border border-neutral-200 dark:border-neutral-700">
                     <h2 className="text-xl font-bold text-neutral-800 dark:text-neutral-100">{t('welcomeAdmin', { name: user?.name || '' })}!</h2>
                     <p className="text-neutral-600 dark:text-neutral-300 mt-1">{t('summary')}</p>
+                    <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-2">{new Date().toLocaleString()}</p>
                 </div>
                 
                 {/* Overview Stats */}

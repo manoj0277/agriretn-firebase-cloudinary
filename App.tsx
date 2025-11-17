@@ -33,17 +33,20 @@ import TrackingScreen from './screens/TrackingScreen';
 import ReportDamageScreen from './screens/ReportDamageScreen';
 import AiAssistantScreen from './screens/AiAssistantScreen';
 import { AiAssistantProvider } from './context/AiAssistantContext';
+import { WeatherProvider } from './context/WeatherContext';
 import SettingsScreen from './screens/SettingsScreen';
 import PolicyScreen from './screens/PolicyScreen';
 import PaymentHistoryScreen from './screens/PaymentHistoryScreen';
 import BookingHistoryScreen from './screens/BookingHistoryScreen';
 import AdminView from './screens/AdminView';
+import AdminDashboard from './screens/AdminDashboard';
 import VoiceAssistantScreen from './screens/VoiceAssistantScreen';
 import AiScanScreen from './screens/AiScanScreen';
 import MyAccountScreen from './screens/MyAccountScreen';
 import ConversationsScreen from './screens/ConversationsScreen';
 import CommunityScreen from './screens/CommunityScreen';
 import PaymentScreen from './screens/PaymentScreen';
+import CropCalendarScreen from './screens/CropCalendarScreen';
 
 
 const AppContent: React.FC = () => {
@@ -67,6 +70,9 @@ const AppContent: React.FC = () => {
         }
     }, [user]);
 
+    if (user === undefined) {
+        return <div>Loading...</div>;
+    }
     if (!user) {
         return <AuthScreen />;
     }
@@ -112,6 +118,8 @@ const AppContent: React.FC = () => {
             return <VoiceAssistantScreen navigate={navigate} goBack={goBack} />;
         case 'AI_SCAN':
             return <AiScanScreen navigate={navigate} goBack={goBack} />;
+        case 'CROP_CALENDAR':
+            return <CropCalendarScreen navigate={navigate} goBack={goBack} />;
         case 'SETTINGS':
             return <SettingsScreen navigate={navigate} goBack={goBack} />;
         case 'POLICY':
@@ -152,6 +160,7 @@ const App: React.FC = () => {
                                             <ChatProvider>
                                                 <SettingsProvider>
                                                     <AiAssistantProvider>
+                                                        <WeatherProvider>
                                                         {/* REACT NATIVE MIGRATION NOTE:
                                                             This main container <div> would be replaced by a <SafeAreaView> or <View> component
                                                             from 'react-native' to ensure content is displayed correctly on mobile devices with notches.
@@ -162,6 +171,7 @@ const App: React.FC = () => {
                                                                 <Toast />
                                                             </div>
                                                         </div>
+                                                        </WeatherProvider>
                                                     </AiAssistantProvider>
                                                 </SettingsProvider>
                                             </ChatProvider>

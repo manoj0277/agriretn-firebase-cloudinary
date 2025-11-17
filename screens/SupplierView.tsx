@@ -57,6 +57,7 @@ const AddItemScreen: React.FC<{ itemToEdit: Item | null, onBack: () => void }> =
     const [condition, setCondition] = useState<'New' | 'Good' | 'Fair'>('Good');
     const [priceSuggestion, setPriceSuggestion] = useState('');
     const [isSuggestingPrice, setIsSuggestingPrice] = useState(false);
+    const [autoPriceOptimization, setAutoPriceOptimization] = useState(false);
 
     const isWorker = useMemo(() => category === ItemCategory.Workers, [category]);
     const isHeavyMachinery = useMemo(() => HEAVY_MACHINERY_CATEGORIES.includes(category), [category]);
@@ -240,6 +241,7 @@ const AddItemScreen: React.FC<{ itemToEdit: Item | null, onBack: () => void }> =
             horsepower: isHeavyMachinery && horsepower ? parseInt(horsepower) : undefined,
             condition: isHeavyMachinery || isEquipment ? condition : undefined,
             gender: isWorker ? gender : undefined,
+            autoPriceOptimization
         };
         
         if (itemToEdit) {
@@ -402,6 +404,21 @@ const AddItemScreen: React.FC<{ itemToEdit: Item | null, onBack: () => void }> =
                     onChange={e => setOperatorCharge(e.target.value)} 
                     required={isHeavyMachinery} 
                 />
+                <div className="flex items-center justify-between p-3 bg-neutral-50 dark:bg-neutral-900/40 rounded-lg border border-neutral-200 dark:border-neutral-600">
+                    <div>
+                        <p className="text-sm font-bold text-neutral-800 dark:text-neutral-100">Auto Price Optimization</p>
+                        <p className="text-xs text-neutral-600 dark:text-neutral-300">Adjust prices based on demand and season</p>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={autoPriceOptimization}
+                      onClick={() => setAutoPriceOptimization(prev => !prev)}
+                      className={`relative inline-flex items-center h-6 rounded-full w-11 transition-colors ${autoPriceOptimization ? 'bg-primary' : 'bg-neutral-200'}`}
+                    >
+                      <span className={`inline-block w-4 h-4 transform bg-white rounded-full transition-transform ${autoPriceOptimization ? 'translate-x-6' : 'translate-x-1'}`} />
+                    </button>
+                </div>
                 {isWorker && (
                      <Input label="Available Quantity" type="number" value={quantityAvailable} onChange={e => setQuantityAvailable(e.target.value)} placeholder="e.g., 10" required min="0" />
                 )}
@@ -413,7 +430,8 @@ const AddItemScreen: React.FC<{ itemToEdit: Item | null, onBack: () => void }> =
 
 const SupplierListingsScreen: React.FC<{ onAddItem: () => void, onEditItem: (m: Item) => void }> = ({ onAddItem, onEditItem }) => {
     const { user } = useAuth();
-    const { items, deleteItem } = useItem();
+    const { items, deleteItem, updateItem } = useItem();
+    const { bookings } = useBooking();
     const myItems = items.filter(m => m.ownerId === user?.id);
     const [itemToDelete, setItemToDelete] = useState<Item | null>(null);
 
@@ -436,6 +454,34 @@ const SupplierListingsScreen: React.FC<{ onAddItem: () => void, onEditItem: (m: 
             default: return 'bg-gray-100 text-gray-800';
         }
     };
+
+    const optimizePrices = (item: Item) => {
+        const seasonBoost = (() => {
+            const m = new Date().getMonth() + 1
+            if ([9,10,11].includes(m)) return 1.15
+            if ([3,4,5].includes(m)) return 1.1
+            return 1
+        })()
+        const demandBoost = (() => {
+            const count = bookings.filter(b => b.itemId === item.id && ['Confirmed','Completed','Pending Payment','Arrived','In Process'].includes(b.status)).length
+            if (count > 10) return 1.2
+            if (count > 5) return 1.1
+            return 1
+        })()
+        const competitorAvg = (() => {
+            const peers = items.filter(i => i.category === item.category && i.location === item.location && i.id !== item.id)
+            const prices = peers.flatMap(p => p.purposes.map(x => x.price))
+            if (prices.length === 0) return undefined
+            return prices.reduce((a,b)=>a+b,0)/prices.length
+        })()
+        const updatedPurposes = item.purposes.map(p => {
+            const base = p.price
+            const adjusted = Math.round(base * seasonBoost * demandBoost)
+            if (competitorAvg && adjusted < competitorAvg * 0.9) return { ...p, price: Math.round(competitorAvg * 0.95) }
+            return { ...p, price: adjusted }
+        })
+        updateItem({ ...item, purposes: updatedPurposes })
+    }
 
     return (
         <div className="dark:text-neutral-200">
@@ -463,6 +509,8 @@ const SupplierListingsScreen: React.FC<{ onAddItem: () => void, onEditItem: (m: 
                                  <div className="text-right mt-4 border-t border-neutral-100 dark:border-neutral-600 pt-3 flex justify-end space-x-2">
                                     <button onClick={() => onEditItem(item)} className="bg-primary text-white font-bold py-1 px-3 rounded-lg text-sm hover:bg-primary-dark transition-colors">Edit</button>
                                     <button onClick={() => setItemToDelete(item)} className="bg-red-600 text-white font-bold py-1 px-3 rounded-lg text-sm hover:bg-red-700 transition-colors">Delete</button>
+                                    <button onClick={() => optimizePrices(item)} className="bg-blue-600 text-white font-bold py-1 px-3 rounded-lg text-sm hover:bg-blue-700 transition-colors">Optimize Now</button>
+                                    <span className={`text-xs px-2 py-1 rounded-md ${item.autoPriceOptimization ? 'bg-green-100 text-green-700' : 'bg-neutral-100 text-neutral-600'}`}>{item.autoPriceOptimization ? 'Auto Opt: On' : 'Auto Opt: Off'}</span>
                                 </div>
                             </div>
                              )
@@ -499,7 +547,7 @@ const StatCard: React.FC<{ title: string; value: string | number; icon: React.Re
 
 const SupplierDashboardScreen: React.FC<SupplierViewProps & { goToTab?: (name: string) => void }> = ({ navigate, goToTab }) => {
     const { user, logout } = useAuth();
-    const { bookings } = useBooking();
+    const { bookings, damageReports } = useBooking();
     const { items } = useItem();
     const { reviews } = useReview();
     const { t } = useLanguage();
@@ -541,6 +589,53 @@ const SupplierDashboardScreen: React.FC<SupplierViewProps & { goToTab?: (name: s
 
     }, [bookings, items, supplierItemIds]);
 
+    const performance = useMemo(() => {
+        const supplierBookings = bookings.filter(b => b.itemId && supplierItemIds.includes(b.itemId))
+        const total = supplierBookings.length || 1
+        const arrived = supplierBookings.filter(b => b.status === 'Arrived').length
+        const confirmed = supplierBookings.filter(b => b.status === 'Confirmed').length
+        const completed = supplierBookings.filter(b => b.status === 'Completed').length
+        const acceptanceRatio = confirmed / total
+        const onTimeRatio = arrived / total
+        const averageRating = avgRating || 0
+        const complaints = damageReports.filter(d => d.itemId && supplierItemIds.includes(d.itemId)).length
+        const complaintRatio = complaints / total
+        const conditionScore = (() => {
+            const conds = items.filter(i => supplierItemIds.includes(i.id)).map(i => i.condition)
+            if (conds.length === 0) return 0.8
+            const map: Record<string, number> = { New: 1, Good: 0.9, Fair: 0.75 }
+            return conds.reduce((a,c) => a + (map[c || 'Good'] || 0.9), 0) / conds.length
+        })()
+        const score = Math.max(0, Math.min(100,
+            Math.round(
+                acceptanceRatio * 25 +
+                onTimeRatio * 25 +
+                (averageRating / 5) * 25 +
+                conditionScore * 15 -
+                complaintRatio * 10
+            )
+        ))
+        return { score, acceptanceRatio, onTimeRatio, averageRating, complaintRatio }
+    }, [bookings, supplierItemIds, avgRating, damageReports, items])
+    const finance = useMemo(() => {
+        const completed = bookings.filter(b => b.itemId && supplierItemIds.includes(b.itemId) && b.status === 'Completed')
+        const byDay: Record<string, number> = {}
+        const byItem: Record<number, number> = {}
+        completed.forEach(b => {
+            const d = new Date(b.paymentDetails?.paymentDate || new Date().toISOString())
+            const key = d.toISOString().split('T')[0]
+            const amt = b.supplierPaymentAmount || b.finalPrice || 0
+            byDay[key] = (byDay[key] || 0) + amt
+            if (b.itemId) byItem[b.itemId] = (byItem[b.itemId] || 0) + amt
+        })
+        const todayKey = new Date().toISOString().split('T')[0]
+        const dailyRevenue = byDay[todayKey] || 0
+        const last7DaysKeys = Array.from({ length: 7 }, (_, i) => { const d = new Date(); d.setDate(d.getDate() - i); return d.toISOString().split('T')[0] }).reverse()
+        const weeklyTrend = last7DaysKeys.map(k => ({ date: k, amount: byDay[k] || 0 }))
+        const machineWise = Object.entries(byItem).sort((a,b) => b[1] - a[1]).slice(0, 5).map(([id, amt]) => ({ name: items.find(i => i.id === Number(id))?.name || 'Item', amount: amt }))
+        return { dailyRevenue, weeklyTrend, machineWise }
+    }, [bookings, supplierItemIds, items])
+
     const ProfileLink: React.FC<{ label: string, onClick: () => void, icon?: React.ReactElement }> = ({ label, onClick, icon }) => (
          <button onClick={onClick} className="w-full text-left p-4 bg-white dark:bg-neutral-800 flex justify-between items-center hover:bg-neutral-50 dark:hover:bg-neutral-600 transition-colors">
             <span className="font-semibold text-neutral-800 dark:text-neutral-100">{label}</span>
@@ -572,6 +667,11 @@ const SupplierDashboardScreen: React.FC<SupplierViewProps & { goToTab?: (name: s
                     value={avgRating > 0 ? `${avgRating.toFixed(1)}/5` : 'N/A'}
                     icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.783-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" /></svg>}
                 />
+                 <StatCard 
+                    title="Performance Score"
+                    value={`${performance.score}/100`}
+                    icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 17a1 1 0 100 2h2a1 1 0 100-2h-2zM12 3l7 7-7 11-7-11 7-7z" /></svg>}
+                 />
             </div>
             
             <div className="bg-white dark:bg-neutral-700 p-4 rounded-lg border border-neutral-200 dark:border-neutral-600">
@@ -588,6 +688,61 @@ const SupplierDashboardScreen: React.FC<SupplierViewProps & { goToTab?: (name: s
                 ) : (
                     <p className="text-center text-sm text-neutral-500 py-4">No bookings yet to determine popularity.</p>
                 )}
+            </div>
+            <div className="bg-white dark:bg-neutral-700 p-4 rounded-lg border border-neutral-200 dark:border-neutral-600">
+                <h3 className="text-lg font-bold text-neutral-800 dark:text-neutral-100 mb-2">Performance Breakdown</h3>
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                    <div className="p-3 bg-neutral-50 dark:bg-neutral-800 rounded-md">
+                        <p className="text-neutral-600 dark:text-neutral-300">Acceptance</p>
+                        <p className="font-bold text-neutral-800 dark:text-neutral-100">{Math.round(performance.acceptanceRatio * 100)}%</p>
+                    </div>
+                    <div className="p-3 bg-neutral-50 dark:bg-neutral-800 rounded-md">
+                        <p className="text-neutral-600 dark:text-neutral-300">On-time Arrival</p>
+                        <p className="font-bold text-neutral-800 dark:text-neutral-100">{Math.round(performance.onTimeRatio * 100)}%</p>
+                    </div>
+                    <div className="p-3 bg-neutral-50 dark:bg-neutral-800 rounded-md">
+                        <p className="text-neutral-600 dark:text-neutral-300">Avg Rating</p>
+                        <p className="font-bold text-neutral-800 dark:text-neutral-100">{avgRating > 0 ? `${avgRating.toFixed(1)}/5` : 'N/A'}</p>
+                    </div>
+                    <div className="p-3 bg-neutral-50 dark:bg-neutral-800 rounded-md">
+                        <p className="text-neutral-600 dark:text-neutral-300">Complaints</p>
+                        <p className="font-bold text-neutral-800 dark:text-neutral-100">{Math.round(performance.complaintRatio * 100)}%</p>
+                    </div>
+                </div>
+            </div>
+            <div className="bg-white dark:bg-neutral-700 p-4 rounded-lg border border-neutral-200 dark:border-neutral-600">
+                <h3 className="text-lg font-bold text-neutral-800 dark:text-neutral-100 mb-2">Financial Dashboard</h3>
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                    <div className="p-3 bg-neutral-50 dark:bg-neutral-800 rounded-md">
+                        <p className="text-neutral-600 dark:text-neutral-300">Daily Revenue</p>
+                        <p className="font-bold text-neutral-800 dark:text-neutral-100">₹{finance.dailyRevenue.toLocaleString()}</p>
+                    </div>
+                </div>
+                <div className="mt-4">
+                    <p className="text-sm font-bold text-neutral-800 dark:text-neutral-100 mb-2">Weekly Trend</p>
+                    <div className="space-y-2">
+                        {finance.weeklyTrend.map((d, i) => (
+                            <div key={i} className="flex justify-between text-sm p-2 bg-neutral-50 dark:bg-neutral-800 rounded-md">
+                                <span>{d.date}</span>
+                                <span className="font-bold">₹{d.amount.toLocaleString()}</span>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+                <div className="mt-4">
+                    <p className="text-sm font-bold text-neutral-800 dark:text-neutral-100 mb-2">Top Machines</p>
+                    <div className="space-y-2">
+                        {finance.machineWise.map((m, i) => (
+                            <div key={i} className="flex justify-between text-sm p-2 bg-neutral-50 dark:bg-neutral-800 rounded-md">
+                                <span>{m.name}</span>
+                                <span className="font-bold">₹{m.amount.toLocaleString()}</span>
+                            </div>
+                        ))}
+                        {finance.machineWise.length === 0 && (
+                            <p className="text-neutral-600 dark:text-neutral-300 text-sm">No earnings yet.</p>
+                        )}
+                    </div>
+                </div>
             </div>
             
             <div className="space-y-4">

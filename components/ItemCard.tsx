@@ -3,6 +3,7 @@
 import React from 'react';
 import { Item, ItemCategory } from '../types';
 import StarRating from './StarRating';
+import { useSettings } from '../context/SettingsContext';
 
 interface ItemCardProps {
     item: Item;
@@ -27,6 +28,8 @@ const CategoryIcon: React.FC<{ category: ItemCategory }> = ({ category }) => {
 
 const ItemCard: React.FC<ItemCardProps> = ({ item, onClick, compact = false }) => {
     const minPrice = item.purposes.length > 0 ? Math.min(...item.purposes.map(p => p.price)) : 0;
+    const { ruralMode } = useSettings();
+    const imgSrc = ruralMode ? "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 800 450'%3E%3Crect width='800' height='450' fill='%23e5e7eb'/%3E%3Ctext x='400' y='225' font-size='24' text-anchor='middle' dominant-baseline='middle' fill='%236b7280' font-family='Arial'%3ELow%20Data%20Mode%3C/text%3E%3C/svg%3E" : item.images[0];
 
     return (
         <div
@@ -36,7 +39,7 @@ const ItemCard: React.FC<ItemCardProps> = ({ item, onClick, compact = false }) =
             <div>
                 <div className={`w-full ${compact ? 'aspect-[4/3]' : 'aspect-video'} bg-neutral-100 dark:bg-neutral-600`}>
                     <img 
-                        src={item.images[0]} 
+                        src={imgSrc} 
                         alt={item.name} 
                         className={`w-full h-full object-cover ${compact ? 'brightness-100' : ''}`}
                         referrerPolicy="no-referrer"

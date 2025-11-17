@@ -3,7 +3,7 @@ import { Booking, DamageReport, Item, ItemCategory } from '../types';
 import { useToast } from './ToastContext';
 import { useNotification } from './NotificationContext';
 import { useItem } from './ItemContext';
-import { supabase } from '../lib/supabase';
+import { supabase, supabaseConfigured } from '../lib/supabase';
 
 interface BookingContextType {
     bookings: Booking[];
@@ -50,13 +50,25 @@ export const BookingProvider: React.FC<{ children: ReactNode }> = ({ children })
     const { showToast } = useToast();
     const { addNotification } = useNotification();
     const { items, updateItem } = useItem();
+    const recentPaymentTimestamps: number[] = [];
+    const supplierRejectCounts: Record<number, { count: number; firstTs: number }> = {};
 
     useEffect(() => {
+        const cached = localStorage.getItem('agrirent-bookings-cache');
+        if (cached) {
+            try {
+                const parsed = JSON.parse(cached) as Booking[];
+                if (Array.isArray(parsed)) setBookings(parsed);
+            } catch {}
+        }
+        if (!supabaseConfigured) return;
         const loadBookings = async () => {
             try {
                 const { data, error } = await supabase.from('bookings').select('*');
                 if (error) throw error;
-                setBookings((data || []) as Booking[]);
+                const arr = (data || []) as Booking[];
+                setBookings(arr);
+                localStorage.setItem('agrirent-bookings-cache', JSON.stringify(arr));
             } catch {
                 showToast('Could not load bookings.', 'error');
             }
@@ -65,6 +77,7 @@ export const BookingProvider: React.FC<{ children: ReactNode }> = ({ children })
     }, []);
 
     useEffect(() => {
+        if (!supabaseConfigured) return;
         const loadReports = async () => {
             try {
                 const { data } = await supabase.from('damageReports').select('*');
@@ -84,6 +97,7 @@ export const BookingProvider: React.FC<{ children: ReactNode }> = ({ children })
         try {
             const { error } = await supabase.from('bookings').upsert(bookingsToAdd);
             if (error) throw error;
+            localStorage.setItem('agrirent-bookings-cache', JSON.stringify(bookingsToAdd));
         } catch {
             showToast('Failed to create booking.', 'error');
             return;
@@ -99,6 +113,26 @@ export const BookingProvider: React.FC<{ children: ReactNode }> = ({ children })
         
         showToast(message, 'success');
     };
+
+    useEffect(() => {
+        const t = setInterval(() => {
+            const now = new Date();
+            const list = bookings.filter(b => b.status === 'Confirmed' && b.startTime && b.date && !b.otpVerified);
+            list.forEach(b => {
+                const dt = new Date(b.date);
+                const [hh, mm] = (b.startTime || '00:00').split(':');
+                dt.setHours(parseInt(hh || '0'), parseInt(mm || '0'), 0, 0);
+                const diff = now.getTime() - dt.getTime();
+                if (diff > 20 * 60 * 1000) {
+                    const comp = Math.round((b.finalPrice || b.estimatedPrice || 0) * 0.05);
+                    supabase.from('bookings').update({ discountAmount: comp }).eq('id', b.id);
+                    addNotification({ userId: b.farmerId, message: 'Supplier delay detected. Compensation applied.', type: 'booking' });
+                    addNotification({ userId: 0, message: `Delay >20m for booking ${b.id}.`, type: 'admin' });
+                }
+            });
+        }, 60000);
+        return () => clearInterval(t);
+    }, [bookings]);
     
     const rejectBooking = (bookingId: string) => {
         const booking = bookings.find(b => b.id === bookingId);
@@ -114,6 +148,19 @@ export const BookingProvider: React.FC<{ children: ReactNode }> = ({ children })
             message: `Your direct request was rejected and is now being sent to all suppliers. Prices may vary.`,
             type: 'booking'
         });
+        if (booking.supplierId) {
+            const sId = booking.supplierId;
+            const now = Date.now();
+            const rec = supplierRejectCounts[sId];
+            if (!rec || now - rec.firstTs > 24 * 60 * 60 * 1000) {
+                supplierRejectCounts[sId] = { count: 1, firstTs: now };
+            } else {
+                rec.count += 1;
+                if (rec.count >= 3) {
+                    addNotification({ userId: 0, message: `Supplier ${sId} rejected multiple direct requests in 24h.`, type: 'admin' });
+                }
+            }
+        }
     };
 
     const cancelBooking = (bookingId: string) => {
@@ -157,6 +204,16 @@ export const BookingProvider: React.FC<{ children: ReactNode }> = ({ children })
         }
         
         const duration = Math.max(1, getDurationInHours(booking.startTime, undefined, booking.estimatedDuration));
+        const surgeMultiplier = (() => {
+            const month = new Date(booking.date || new Date().toISOString()).getMonth() + 1;
+            let base = 1;
+            if ([9,10,11].includes(month)) base = 1.25;
+            if ([3,4,5].includes(month)) base = Math.max(base, 1.15);
+            const demand = bookings.filter(b => b.itemCategory === booking.itemCategory && b.status === 'Searching' && b.location === booking.location).length;
+            if (demand > 10) base = Math.max(base, 1.4);
+            else if (demand > 5) base = Math.max(base, 1.25);
+            return base;
+        })();
         const machineCategories = [ItemCategory.Tractors, ItemCategory.Harvesters, ItemCategory.JCB, ItemCategory.Borewell];
 
         // --- Case 1: Driver accepts an 'Awaiting Operator' booking ---
@@ -183,7 +240,7 @@ export const BookingProvider: React.FC<{ children: ReactNode }> = ({ children })
                  showToast('This item does not support the requested work purpose.', 'error');
                  return false;
             }
-            const finalPrice = (purposeDetails.price * duration) + ((booking.operatorRequired && item.operatorCharge) ? (item.operatorCharge * duration) : 0);
+            const finalPrice = Math.round(((purposeDetails.price * duration) + ((booking.operatorRequired && item.operatorCharge) ? (item.operatorCharge * duration) : 0)) * surgeMultiplier);
              
              supabase.from('bookings').update({ status: 'Confirmed', finalPrice }).eq('id', bookingId);
              updateItem({ ...item, available: false });
@@ -210,7 +267,7 @@ export const BookingProvider: React.FC<{ children: ReactNode }> = ({ children })
                     status: 'Awaiting Operator',
                     supplierId: supplierId,
                     itemId: itemId,
-                    finalPrice: priceForPurpose * duration, // Price for machine only
+                    finalPrice: Math.round(priceForPurpose * duration * surgeMultiplier),
                 };
                 setBookings(prev => prev.map(b => b.id === bookingId ? updatedBooking : b));
                 updateItem({ ...item, available: false });
@@ -235,7 +292,7 @@ export const BookingProvider: React.FC<{ children: ReactNode }> = ({ children })
                 status: 'Confirmed',
                 quantity: quantityToConfirm,
                 operatorId: (isMachineWithOp && options?.operateSelf === true) ? supplierId : undefined,
-                finalPrice: (priceForPurpose * quantityToConfirm * duration) + ((booking.operatorRequired && item.operatorCharge) ? (item.operatorCharge * duration) : 0),
+                finalPrice: Math.round(((priceForPurpose * quantityToConfirm * duration) + ((booking.operatorRequired && item.operatorCharge) ? (item.operatorCharge * duration) : 0)) * surgeMultiplier),
                 allowMultipleSuppliers: false,
             };
 
@@ -369,6 +426,8 @@ export const BookingProvider: React.FC<{ children: ReactNode }> = ({ children })
         }
     };
 
+    const recentPaymentTimestamps: number[] = [];
+
     const makeFinalPayment = (bookingId: string, method: 'Cash' | 'Online' = 'Cash') => {
         const booking = bookings.find(b => b.id === bookingId);
         if (!booking || booking.status !== 'Pending Payment') {
@@ -393,6 +452,13 @@ export const BookingProvider: React.FC<{ children: ReactNode }> = ({ children })
         showToast(method === 'Cash' ? 'Cash payment recorded! Booking completed.' : 'Final payment successful! Your booking is complete.', 'success');
         if (booking.supplierId) {
             addNotification({ userId: booking.supplierId, message: `${method === 'Cash' ? 'Cash' : 'Online'} payment received for booking #${bookingId.substring(0, 5)}. Supplier payout: ₹${supplierPaymentAmount}.`, type: 'booking' });
+        }
+        const now = Date.now();
+        recentPaymentTimestamps.push(now);
+        const windowStart = now - 10 * 60 * 1000;
+        const recent = recentPaymentTimestamps.filter(ts => ts >= windowStart);
+        if (recent.length >= 10) {
+            addNotification({ userId: 0, message: 'Payment attempts spike detected in the last 10 minutes.', type: 'admin' });
         }
     };
 

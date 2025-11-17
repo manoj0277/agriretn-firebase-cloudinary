@@ -25,6 +25,8 @@ import { useToast } from '../context/ToastContext';
 import StarRating from '../components/StarRating';
 import FarmerMapScreen from './FarmerMapScreen';
 import { useLanguage } from '../context/LanguageContext';
+import AiSuggestionsModal from './AiSuggestionsModal';
+import { useWeather } from '../context/WeatherContext';
 
 const apiKey = typeof process !== 'undefined' && process.env && process.env.API_KEY
   ? process.env.API_KEY
@@ -62,6 +64,9 @@ const FarmerHomeScreen: React.FC<FarmerViewProps> = ({ navigate }) => {
     const { addNotification } = useNotification();
     const { t } = useLanguage();
     const unreadChatCount = user ? getUnreadMessageCount(user.id) : 0;
+    const { summary } = useWeather();
+    const [showRainTip, setShowRainTip] = useState(true);
+    const [showDryTip, setShowDryTip] = useState(true);
 
     // Search and Sort State
     const [searchQuery, setSearchQuery] = useState('');
@@ -70,6 +75,7 @@ const FarmerHomeScreen: React.FC<FarmerViewProps> = ({ navigate }) => {
 
     // Advanced Filter State
     const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
+    const [isSuggestionsOpen, setIsSuggestionsOpen] = useState(false);
     const [priceRange, setPriceRange] = useState({ min: '', max: '' });
     const [minRating, setMinRating] = useState(0);
     const [showAvailableOnly, setShowAvailableOnly] = useState(false);
@@ -262,7 +268,7 @@ const FarmerHomeScreen: React.FC<FarmerViewProps> = ({ navigate }) => {
                 <NotificationBell />
             </Header>
             <div className="p-4">
-                 <div className="flex items-center space-x-2 mb-4">
+                <div className="flex items-center space-x-2 mb-4">
                     <input
                         type="text"
                         placeholder={t('searchPlaceholder')}
@@ -280,7 +286,49 @@ const FarmerHomeScreen: React.FC<FarmerViewProps> = ({ navigate }) => {
                         </svg>
                         {areFiltersActive && <span className="absolute -top-1 -right-1 block h-3 w-3 rounded-full bg-red-500 ring-2 ring-white"></span>}
                     </button>
-                 </div>
+                    <button
+                        onClick={() => {
+                            if (!navigator.geolocation) return;
+                            navigator.geolocation.getCurrentPosition(pos => {
+                                const { latitude, longitude } = pos.coords;
+                                const nearest = processedItems
+                                    .filter(i => i.available)
+                                    .map(i => {
+                                        const la = i.locationCoords?.lat ?? latitude;
+                                        const ln = i.locationCoords?.lng ?? longitude;
+                                        const dLat = (la - latitude) * Math.PI / 180;
+                                        const dLng = (ln - longitude) * Math.PI / 180;
+                                        const r = Math.sin(dLat/2)**2 + Math.cos(latitude*Math.PI/180) * Math.cos(la*Math.PI/180) * Math.sin(dLng/2)**2;
+                                        const dist = 2 * 6371 * Math.asin(Math.sqrt(r));
+                                        return { i, dist };
+                                    })
+                                    .sort((x,y)=>x.dist - y.dist)[0]?.i;
+                                if (nearest) navigate({ view: 'ITEM_DETAIL', item: nearest });
+                            });
+                        }}
+                        className="p-3 border rounded-full transition-colors bg-white dark:bg-neutral-700 border-neutral-200 dark:border-neutral-600 text-neutral-700 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-600"
+                        aria-label="Nearest Supplier"
+                        title="Nearest Supplier"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 2a10 10 0 100 20 10 10 0 000-20zm0 5a2 2 0 110 4 2 2 0 010-4zm0 4c-2.21 0-4 1.343-4 3v3h8v-3c0-1.657-1.79-3-4-3z"/></svg>
+                    </button>
+                    <button
+                        onClick={() => setIsSuggestionsOpen(true)}
+                        aria-label="Smart Suggestions"
+                        title="Smart Suggestions"
+                        className="p-3 border rounded-full transition-colors bg-white dark:bg-neutral-700 border-neutral-200 dark:border-neutral-600 text-neutral-700 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-600"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3c3.866 0 7 3.134 7 7 0 2.577-1.429 4.815-3.539 6.002-.26.151-.461.401-.521.693l-.25 1.25A1 1 0 0013.7 19H10.3a1 1 0 01-.97-.73l-.25-1.25a1 1 0 00-.522-.693A6.996 6.996 0 015 10c0-3.866 3.134-7 7-7zM9 21h6"/></svg>
+                    </button>
+                    <button
+                        onClick={() => navigate({ view: 'CROP_CALENDAR' })}
+                        aria-label="Crop Calendar"
+                        title="Crop Calendar"
+                        className="p-3 border rounded-full transition-colors bg-white dark:bg-neutral-700 border-neutral-200 dark:border-neutral-600 text-neutral-700 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-600"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                    </button>
+                </div>
                 <div className="flex space-x-2 overflow-x-auto pb-2 mb-6 hide-scrollbar">
                     {itemCategories.map(type => (
                         <button 
@@ -292,6 +340,22 @@ const FarmerHomeScreen: React.FC<FarmerViewProps> = ({ navigate }) => {
                         </button>
                     ))}
                 </div>
+                {summary.rainNext3Days && showRainTip && (
+                    <div className="mb-4 p-3 bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-300 text-sm rounded-lg flex items-center justify-between">
+                        <span>Rain expected soon. Avoid harvesting and consider booking covered storage.</span>
+                        <button aria-label="Dismiss" onClick={() => setShowRainTip(false)} className="ml-3 p-1 rounded hover:bg-yellow-200 dark:hover:bg-yellow-800/40">
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                        </button>
+                    </div>
+                )}
+                {summary.dryNext5Days && showDryTip && (
+                    <div className="mb-4 p-3 bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-200 text-sm rounded-lg flex items-center justify-between">
+                        <span>Dry spell ahead. Good time for spraying or threshing.</span>
+                        <button aria-label="Dismiss" onClick={() => setShowDryTip(false)} className="ml-3 p-1 rounded hover:bg-blue-200 dark:hover:bg-blue-800/40">
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                        </button>
+                    </div>
+                )}
 
                 <div className="mb-6">
                     <h2 className="text-xl font-bold text-neutral-800 dark:text-neutral-100 mb-3">{t('popularNearYou')}</h2>
@@ -388,6 +452,9 @@ const FarmerHomeScreen: React.FC<FarmerViewProps> = ({ navigate }) => {
                     </div>
                 </div>
             )}
+            {isSuggestionsOpen && (
+                <AiSuggestionsModal onClose={() => setIsSuggestionsOpen(false)} navigate={navigate} />
+            )}
         </div>
     );
 };
@@ -424,28 +491,54 @@ const FullMapScreen: React.FC<FarmerViewProps> = ({ navigate }) => {
                     setLocationError(null);
                 },
                 (error) => {
-                    console.error("Geolocation error:", error);
                     let errorMessage = "Could not get your location. Map features will be limited.";
                     switch (error.code) {
-                        case 1: // PERMISSION_DENIED
+                        case 1:
                             errorMessage = "Geolocation permission denied. Please enable location services in your browser settings.";
                             break;
-                        case 2: // POSITION_UNAVAILABLE
+                        case 2:
                             errorMessage = "Location information is unavailable. Please try again later.";
                             break;
-                        case 3: // TIMEOUT
+                        case 3:
                             errorMessage = "The request to get user location timed out.";
                             break;
                     }
                     setLocationError(errorMessage);
-                    setUserLocation({ lat: 17.3850, lng: 78.4867 }); // Default to Hyderabad, Telangana
+                    setUserLocation({ lat: 17.3850, lng: 78.4867 });
                 }
             );
         } else {
             setLocationError("Geolocation is not supported by this browser.");
-            setUserLocation({ lat: 17.3850, lng: 78.4867 }); // Default to Hyderabad, Telangana
+            setUserLocation({ lat: 17.3850, lng: 78.4867 });
         }
     }, []);
+
+    const retryLocation = () => {
+        if (!navigator.geolocation) return;
+        navigator.geolocation.getCurrentPosition(
+            (position) => {
+                setUserLocation({ lat: position.coords.latitude, lng: position.coords.longitude });
+                setLocationError(null);
+            },
+            (error) => {
+                let errorMessage = "Could not get your location. Map features will be limited.";
+                switch (error.code) {
+                    case 1:
+                        errorMessage = "Geolocation permission denied. Please enable location services in your browser settings.";
+                        break;
+                    case 2:
+                        errorMessage = "Location information is unavailable. Please try again later.";
+                        break;
+                    case 3:
+                        errorMessage = "The request to get user location timed out.";
+                        break;
+                }
+                setLocationError(errorMessage);
+                setUserLocation({ lat: 17.3850, lng: 78.4867 });
+            },
+            { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+        );
+    };
 
     const approvedItems = useMemo(() => items.filter(m => m.status === 'approved'), [items]);
 
@@ -492,9 +585,15 @@ const FullMapScreen: React.FC<FarmerViewProps> = ({ navigate }) => {
                         </svg>
                     </button>
                  </div>
-                 {locationError && (
-                    <div className="p-3 bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-300 text-sm rounded-lg mb-4 text-center">
-                        {locationError}
+                {locationError && (
+                    <div className="p-3 bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-300 text-sm rounded-lg mb-4 flex items-center justify-between">
+                        <span>{locationError}</span>
+                        <div className="flex items-center gap-2">
+                            <button onClick={retryLocation} className="px-2 py-1 text-xs rounded bg-yellow-200 hover:bg-yellow-300 text-yellow-900 dark:bg-yellow-800/40 dark:hover:bg-yellow-700">Retry</button>
+                            <button aria-label="Dismiss" onClick={() => setLocationError(null)} className="p-1 rounded hover:bg-yellow-200 dark:hover:bg-yellow-800/40">
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                            </button>
+                        </div>
                     </div>
                 )}
             </div>
