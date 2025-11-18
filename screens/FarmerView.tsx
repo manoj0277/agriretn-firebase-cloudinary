@@ -125,32 +125,7 @@ const FarmerHomeScreen: React.FC<FarmerViewProps> = ({ navigate }) => {
         return priceRange.min !== '' || priceRange.max !== '' || minRating > 0 || showAvailableOnly || filterDate !== '';
     }, [priceRange, minRating, showAvailableOnly, filterDate]);
 
-    useEffect(() => {
-        const getProactiveTip = async () => {
-            if (!ai || !user) return;
-            try {
-                const prompt = `The weather forecast shows clear skies for the next 3 days. It's a great time for spraying crops. Craft a short, friendly, and proactive notification for a farmer named ${user.name}, suggesting they might want to book a drone for spraying from our app. The response should be a single string.`;
-                const response = await ai.models.generateContent({
-                    model: 'gemini-2.5-flash',
-                    contents: prompt,
-                });
-                addNotification({
-                    userId: user.id,
-                    message: response.text,
-                    type: 'offer',
-                });
-            } catch (error) {
-                console.error("Error fetching proactive tip:", error);
-            }
-        };
-
-        const hasShownTip = sessionStorage.getItem('proactiveTipShown');
-        if (!hasShownTip) {
-            // Simulate weather check
-            setTimeout(getProactiveTip, 2000);
-            sessionStorage.setItem('proactiveTipShown', 'true');
-        }
-    }, [user, addNotification]);
+    
 
     const approvedItems = useMemo(() => items.filter(m => m.status === 'approved'), [items]);
     
@@ -340,22 +315,7 @@ const FarmerHomeScreen: React.FC<FarmerViewProps> = ({ navigate }) => {
                         </button>
                     ))}
                 </div>
-                {summary.rainNext3Days && showRainTip && (
-                    <div className="mb-4 p-3 bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-300 text-sm rounded-lg flex items-center justify-between">
-                        <span>Rain expected soon. Avoid harvesting and consider booking covered storage.</span>
-                        <button aria-label="Dismiss" onClick={() => setShowRainTip(false)} className="ml-3 p-1 rounded hover:bg-yellow-200 dark:hover:bg-yellow-800/40">
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                        </button>
-                    </div>
-                )}
-                {summary.dryNext5Days && showDryTip && (
-                    <div className="mb-4 p-3 bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-200 text-sm rounded-lg flex items-center justify-between">
-                        <span>Dry spell ahead. Good time for spraying or threshing.</span>
-                        <button aria-label="Dismiss" onClick={() => setShowDryTip(false)} className="ml-3 p-1 rounded hover:bg-blue-200 dark:hover:bg-blue-800/40">
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                        </button>
-                    </div>
-                )}
+                
 
                 <div className="mb-6">
                     <h2 className="text-xl font-bold text-neutral-800 dark:text-neutral-100 mb-3">{t('popularNearYou')}</h2>
@@ -599,6 +559,11 @@ const FullMapScreen: React.FC<FarmerViewProps> = ({ navigate }) => {
             </div>
             <div className="flex-grow">
                 <FarmerMapScreen items={processedItems} navigate={navigate} userLocation={userLocation} />
+            </div>
+            <div className="p-4">
+                <div className="mt-2 p-3 bg-blue-50 text-blue-800 dark:bg-blue-900/20 dark:text-blue-200 text-sm rounded-lg text-center">
+                    Select the Field/Crop Area on the map.
+                </div>
             </div>
              {isFilterModalOpen && (
                // Filter modal JSX would be here, identical to the one in FarmerHomeScreen. It is omitted for brevity but the logic is implied to be present.

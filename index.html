@@ -11,32 +11,13 @@
     />
     <title>AgriRent</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-      if (typeof tailwind !== 'undefined') {
-        tailwind.config = {
-          darkMode: 'class',
-          theme: {
-            extend: {
-              colors: {
-                primary: '#28a745',
-                'primary-dark': '#218838',
-                secondary: '#ffffff',
-                neutral: {
-                  50: '#f8f9fa',
-                  100: '#e9ecef',
-                  200: '#dee2e6',
-                  700: '#495057',
-                  800: '#343a40',
-                  900: '#212529',
-                }
-              }
-            }
-          }
-        };
-      }
-    </script>
+    <link rel="stylesheet" href="https://unpkg.com/tailwindcss@2.2.19/dist/tailwind.min.css" crossorigin="anonymous" />
   <style>
+    .text-primary { color: #28a745; }
+    .bg-primary { background-color: #28a745; }
+    .border-primary { border-color: #28a745; }
+    .text-primary-dark { color: #218838; }
+    .bg-primary-dark { background-color: #218838; }
     .hide-scrollbar::-webkit-scrollbar {
         display: none;
     }
@@ -58,8 +39,7 @@
         background: #fff;
     }
   </style>
-  
-<link rel="stylesheet" href="/index.css">
+ 
 </head>
   <body>
     <noscript>You need to enable JavaScript to run this app.</noscript>

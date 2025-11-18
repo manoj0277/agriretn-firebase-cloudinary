@@ -1,4 +1,6 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react'
+import { useNotification } from './NotificationContext'
+import { useAuth } from './AuthContext'
 
 type WeatherSummary = {
   rainToday: boolean
@@ -29,6 +31,8 @@ export const WeatherProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [coords, setCoords] = useState<{ lat: number; lng: number } | undefined>()
   const [summary, setSummary] = useState<WeatherSummary>({ rainToday: false, rainNext3Days: false, dryNext5Days: false })
   const [loading, setLoading] = useState(false)
+  const { addNotification } = useNotification()
+  const { user } = useAuth()
 
   useEffect(() => {
     const init = async () => {
@@ -58,6 +62,28 @@ export const WeatherProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
     init()
   }, [])
+
+  useEffect(() => {
+    if (!summary) return
+    const sent = sessionStorage.getItem('weatherTipSent')
+    if (sent) return
+    const targetUserId = user?.id ?? 0
+    if (summary.dryNext5Days) {
+      addNotification({
+        userId: targetUserId,
+        message: 'Clear skies expected for the next 5 days. Good time to schedule spraying. Consider booking a drone sprayer.',
+        type: 'offer',
+      })
+      sessionStorage.setItem('weatherTipSent', 'true')
+    } else if (summary.rainNext3Days) {
+      addNotification({
+        userId: targetUserId,
+        message: 'Rain forecasted within 3 days. Avoid harvesting and plan rain-prep or reschedule field work.',
+        type: 'info',
+      })
+      sessionStorage.setItem('weatherTipSent', 'true')
+    }
+  }, [summary, addNotification, user])
 
   const value = useMemo(() => ({ coords, summary, loading }), [coords, summary, loading])
   return <WeatherContext.Provider value={value}>{children}</WeatherContext.Provider>

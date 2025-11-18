@@ -1,12 +1,12 @@
 import React, { createContext, useState, useContext, ReactNode, useMemo, useEffect } from 'react';
 import { ForumPost, CommunityReply } from '../types';
 import { useToast } from './ToastContext';
-const API_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3001/api';
+import { supabase } from '../lib/supabase';
 
 interface CommunityContextType {
     posts: ForumPost[];
-    addPost: (post: Omit<ForumPost, 'id' | 'replies'>) => void;
-    addReply: (postId: number, reply: Omit<CommunityReply, 'id'>) => void;
+    addPost: (post: Omit<ForumPost, 'id' | 'replies' | 'timestamp'>) => Promise<void>;
+    addReply: (postId: number, reply: Omit<CommunityReply, 'id' | 'timestamp'>) => Promise<void>;
 }
 
 const CommunityContext = createContext<CommunityContextType | undefined>(undefined);
@@ -16,42 +16,43 @@ export const CommunityProvider: React.FC<{ children: ReactNode }> = ({ children 
     const { showToast } = useToast();
 
     useEffect(() => {
-        const load = async () => {
+        const fetchPosts = async () => {
             try {
-                const resp = await fetch(`${API_URL}/posts`);
-                if (resp.ok) {
-                    const data = await resp.json();
-                    setPosts((data as ForumPost[]).sort((a,b) => (b.timestamp?.localeCompare?.(a.timestamp || '') || 0)));
-                } else {
-                    showToast('Could not load forum posts.', 'error');
-                }
-            } catch {
-                showToast('Could not load forum posts.', 'error');
+                const { data, error } = await supabase.from('forumPosts').select('*');
+                if (error) throw error;
+                const rows = (data || []) as ForumPost[];
+                rows.sort((a, b) => (b.timestamp?.localeCompare?.(a.timestamp || '') || 0));
+                setPosts(rows);
+            } catch (error) {
+                showToast('Could not load community posts.', 'error');
             }
         };
-        load();
+        fetchPosts();
     }, []);
 
-    const addPost = async (postData: Omit<ForumPost, 'id' | 'replies'>) => {
+    const addPost = async (postData: Omit<ForumPost, 'id' | 'replies' | 'timestamp'>) => {
         try {
-            const resp = await fetch(`${API_URL}/posts`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(postData) });
-            if (!resp.ok) throw new Error('post-failed');
-            const saved = await resp.json();
-            setPosts(prev => [saved as ForumPost, ...prev]);
+            const newPost: ForumPost = { id: Date.now(), timestamp: new Date().toISOString(), replies: [], ...postData } as ForumPost;
+            const { error } = await supabase.from('forumPosts').upsert([newPost]);
+            if (error) throw error;
+            setPosts(prev => [newPost, ...prev]);
             showToast('Post created successfully!', 'success');
-        } catch {
+        } catch (error) {
             showToast('Failed to create post.', 'error');
         }
     };
 
-    const addReply = async (postId: number, replyData: Omit<CommunityReply, 'id'>) => {
+    const addReply = async (postId: number, replyData: Omit<CommunityReply, 'id' | 'timestamp'>) => {
         try {
-            const resp = await fetch(`${API_URL}/posts/${postId}/replies`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(replyData) });
-            if (!resp.ok) throw new Error('reply-failed');
-            const saved = await resp.json();
-            setPosts(prev => prev.map(p => p.id === postId ? { ...p, replies: [...(p.replies || []), saved as CommunityReply] } : p));
+            const newReply: CommunityReply = { id: Date.now(), timestamp: new Date().toISOString(), ...replyData } as CommunityReply;
+            const { data } = await supabase.from('forumPosts').select('replies').eq('id', postId).limit(1);
+            const existing = (data && data[0] && (data[0] as any).replies) || [];
+            const updatedReplies = [...existing, newReply];
+            const { error } = await supabase.from('forumPosts').update({ replies: updatedReplies }).eq('id', postId);
+            if (error) throw error;
+            setPosts(prev => prev.map(post => post.id === postId ? { ...post, replies: updatedReplies } : post));
             showToast('Reply posted!', 'success');
-        } catch {
+        } catch (error) {
             showToast('Failed to post reply.', 'error');
         }
     };

@@ -8,9 +8,10 @@ import { useLanguage } from '../context/LanguageContext';
 
 interface BookingHistoryScreenProps {
   navigate: (view: AppView) => void;
+  goBack: () => void;
 }
 
-const BookingHistoryScreen: React.FC<BookingHistoryScreenProps> = ({ navigate }) => {
+const BookingHistoryScreen: React.FC<BookingHistoryScreenProps> = ({ navigate, goBack }) => {
   const { user } = useAuth();
   const { bookings } = useBooking();
   const { items } = useItem();
@@ -34,7 +35,7 @@ const BookingHistoryScreen: React.FC<BookingHistoryScreenProps> = ({ navigate })
 
   return (
     <div className="dark:text-neutral-200">
-      <Header title={t('bookingHistory')} onBack={() => navigate({ view: 'HOME' })} />
+      <Header title={t('bookingHistory')} onBack={goBack} />
       <div className="p-4 space-y-4">
         {history.length === 0 ? (
           <p className="text-neutral-700 dark:text-neutral-300">No past bookings found.</p>

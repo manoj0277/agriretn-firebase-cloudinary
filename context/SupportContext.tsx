@@ -1,7 +1,8 @@
 import React, { createContext, useState, useContext, ReactNode, useMemo, useEffect } from 'react';
 import { SupportTicket, SupportReply } from '../types';
 import { useToast } from './ToastContext';
-import { supabase } from '../lib/supabase';
+import { supabase, supabaseConfigured } from '../lib/supabase';
+import { useAuth } from './AuthContext';
 
 interface SupportContextType {
     tickets: SupportTicket[];
@@ -15,19 +16,21 @@ const SupportContext = createContext<SupportContextType | undefined>(undefined);
 export const SupportProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     const [tickets, setTickets] = useState<SupportTicket[]>([]);
     const { showToast } = useToast();
+    const { user } = useAuth();
 
     useEffect(() => {
         const load = async () => {
+            if (!supabaseConfigured) return;
+            if (!user) return;
             try {
                 const { data, error } = await supabase.from('supportTickets').select('*');
                 if (error) throw error;
                 setTickets((data || []) as SupportTicket[]);
             } catch {
-                showToast('Could not load support tickets.', 'error');
             }
         };
         load();
-    }, []);
+    }, [user]);
 
     const addTicket = async (ticketData: Omit<SupportTicket, 'id' | 'status' | 'timestamp' | 'replies'>) => {
         try {

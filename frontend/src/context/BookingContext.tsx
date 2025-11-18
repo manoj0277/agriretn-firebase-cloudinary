@@ -1,6 +1,6 @@
-import React, { createContext, useState, useContext, ReactNode, useMemo } from 'react';
+import React, { createContext, useState, useContext, ReactNode, useMemo, useEffect } from 'react';
 import { Booking, DamageReport, Item, ItemCategory } from '../types';
-import { bookings as mockBookings, damageReports as mockDamageReports } from '../data/mockData';
+import { supabase, supabaseConfigured } from '../../lib/supabase';
 import { useToast } from './ToastContext';
 import { useNotification } from './NotificationContext';
 import { useItem } from './ItemContext';
@@ -8,18 +8,18 @@ import { useItem } from './ItemContext';
 interface BookingContextType {
     bookings: Booking[];
     damageReports: DamageReport[];
-    addBooking: (bookingData: Omit<Booking, 'id'> | Omit<Booking, 'id'>[]) => void;
+    addBooking: (bookingData: Omit<Booking, 'id'> | Omit<Booking, 'id'>[]) => Promise<void>;
     cancelBooking: (bookingId: string) => void;
     rejectBooking: (bookingId: string) => void;
     raiseDispute: (bookingId: string) => void;
     resolveDispute: (bookingId: string) => void;
-    reportDamage: (report: Omit<DamageReport, 'id' | 'status' | 'timestamp'>) => void;
-    resolveDamageClaim: (reportId: number) => void;
+    reportDamage: (report: Omit<DamageReport, 'id' | 'status' | 'timestamp'>) => Promise<void>;
+    resolveDamageClaim: (reportId: number) => Promise<void>;
     acceptBookingRequest: (bookingId: string, supplierId: number, itemId: number, options?: { operateSelf?: boolean, quantityToProvide?: number }) => boolean;
     markAsArrived: (bookingId: string) => void;
     verifyOtpAndStartWork: (bookingId: string, otp: string) => void;
     completeWork: (bookingId: string) => void;
-    makeFinalPayment: (bookingId: string) => void;
+    makeFinalPayment: (bookingId: string, method?: 'Cash' | 'Online') => void;
 }
 
 const BookingContext = createContext<BookingContextType | undefined>(undefined);
@@ -32,24 +32,64 @@ const generateBookingId = () => {
 };
 
 export const BookingProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-    const [bookings, setBookings] = useState<Booking[]>(mockBookings);
-    const [damageReports, setDamageReports] = useState<DamageReport[]>(mockDamageReports);
+    const [bookings, setBookings] = useState<Booking[]>([]);
+    const [damageReports, setDamageReports] = useState<DamageReport[]>([]);
     const { showToast } = useToast();
     const { addNotification } = useNotification();
     const { items, updateItem } = useItem();
 
-    const addBooking = (newBookingsData: Omit<Booking, 'id'> | Omit<Booking, 'id'>[]) => {
+    useEffect(() => {
+        if (!supabaseConfigured) return;
+        const loadBookings = async () => {
+            try {
+                const { data, error } = await supabase.from('bookings').select('*');
+                if (error) throw error;
+                setBookings((data || []) as Booking[]);
+            } catch {
+                showToast('Could not load bookings.', 'error');
+            }
+        };
+        const loadReports = async () => {
+            try {
+                const { data } = await supabase.from('damageReports').select('*');
+                setDamageReports((data || []) as DamageReport[]);
+            } catch {}
+        };
+        loadBookings();
+        loadReports();
+        const ch = supabase
+            .channel('bookings-live')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'bookings' }, payload => {
+                const newRec = (payload.new || payload.old) as any as Booking;
+                setBookings(prev => {
+                    if (payload.eventType === 'DELETE') {
+                        return prev.filter(b => b.id !== (newRec as any).id);
+                    }
+                    const idx = prev.findIndex(b => b.id === (newRec as any).id);
+                    const next = [...prev];
+                    if (idx >= 0) next[idx] = newRec;
+                    else next.unshift(newRec);
+                    return next;
+                });
+            })
+            .subscribe();
+        return () => { supabase.removeChannel(ch); };
+    }, []);
+
+    const addBooking = async (newBookingsData: Omit<Booking, 'id'> | Omit<Booking, 'id'>[]) => {
         const bookingsDataToAdd = Array.isArray(newBookingsData) ? newBookingsData : [newBookingsData];
         
         const bookingsToAdd: Booking[] = bookingsDataToAdd.map(data => ({
             ...data,
             id: generateBookingId(),
         }));
-
-        setBookings(prevBookings => [
-            ...prevBookings,
-            ...bookingsToAdd
-        ]);
+        try {
+            const { error } = await supabase.from('bookings').upsert(bookingsToAdd);
+            if (error) throw error;
+        } catch {
+            showToast('Failed to create booking.', 'error');
+            return;
+        }
         
         const firstBooking = bookingsDataToAdd[0];
         let message = 'Booking created!';
@@ -69,15 +109,7 @@ export const BookingProvider: React.FC<{ children: ReactNode }> = ({ children })
             return;
         }
 
-        const updatedBooking: Booking = {
-            ...booking,
-            status: 'Searching',
-            isRebroadcast: true,
-            supplierId: undefined,
-            itemId: undefined,
-        };
-
-        setBookings(prev => prev.map(b => b.id === bookingId ? updatedBooking : b));
+        supabase.from('bookings').update({ status: 'Searching', isRebroadcast: true, supplierId: undefined, itemId: undefined }).eq('id', bookingId);
         showToast("Booking rejected. It is now a broadcast to all suppliers.", "info");
         addNotification({
             userId: booking.farmerId,
@@ -109,11 +141,7 @@ export const BookingProvider: React.FC<{ children: ReactNode }> = ({ children })
             }
         }
 
-        setBookings(prevBookings =>
-            prevBookings.map(b =>
-                b.id === bookingId ? { ...b, status: 'Cancelled' } : b
-            )
-        );
+        supabase.from('bookings').update({ status: 'Cancelled' }).eq('id', bookingId);
         showToast('Booking has been cancelled.', 'warning');
     };
     
@@ -135,13 +163,7 @@ export const BookingProvider: React.FC<{ children: ReactNode }> = ({ children })
         // --- Case 1: Driver accepts an 'Awaiting Operator' booking ---
         if (booking.status === 'Awaiting Operator' && item.category === ItemCategory.Drivers) {
             // Price calculation will happen at completion time now.
-            const updatedBooking: Booking = {
-                ...booking,
-                status: 'Confirmed',
-                operatorId: supplierId, // The driver's ID
-            };
-            
-            setBookings(prev => prev.map(b => b.id === bookingId ? updatedBooking : b));
+            supabase.from('bookings').update({ status: 'Confirmed', operatorId: supplierId }).eq('id', bookingId);
             updateItem({ ...item, available: false });
             
             showToast('Operator job confirmed!', 'success');
@@ -155,8 +177,7 @@ export const BookingProvider: React.FC<{ children: ReactNode }> = ({ children })
 
         // --- Case 2: Specific supplier confirms a 'Pending Confirmation' booking ---
         if (booking.status === 'Pending Confirmation') {
-             const updatedBooking: Booking = { ...booking, status: 'Confirmed' };
-             setBookings(prev => prev.map(b => b.id === bookingId ? updatedBooking : b));
+             supabase.from('bookings').update({ status: 'Confirmed' }).eq('id', bookingId);
              updateItem({ ...item, available: false });
              showToast('Direct request confirmed!', 'success');
              addNotification({ userId: booking.farmerId, message: `Your request for ${item.name} has been confirmed!`, type: 'booking' });
@@ -169,13 +190,7 @@ export const BookingProvider: React.FC<{ children: ReactNode }> = ({ children })
             const isMachineWithOp = machineCategories.includes(item.category) && booking.operatorRequired;
 
             if (isMachineWithOp && options?.operateSelf === false) {
-                 const updatedBooking: Booking = {
-                    ...booking,
-                    status: 'Awaiting Operator',
-                    supplierId: supplierId,
-                    itemId: itemId,
-                };
-                setBookings(prev => prev.map(b => b.id === bookingId ? updatedBooking : b));
+                supabase.from('bookings').update({ status: 'Awaiting Operator', supplierId: supplierId, itemId: itemId }).eq('id', bookingId);
                 updateItem({ ...item, available: false });
                 showToast('Machine confirmed. Broadcasting request for operator.', 'success');
                 addNotification({ userId: booking.farmerId, message: `${item.name} is confirmed for your booking. We are now finding a driver.`, type: 'booking' });
@@ -210,18 +225,14 @@ export const BookingProvider: React.FC<{ children: ReactNode }> = ({ children })
             }
             updateItem(updatedItem);
 
-            setBookings(prev => {
-                const otherBookings = prev.filter(b => b.id !== bookingId);
-                const updatedBookings = [...otherBookings, newConfirmedBooking];
-                
-                if (isPartial) {
-                    updatedBookings.push({
-                        ...booking,
-                        quantity: booking.quantity! - quantityToConfirm,
-                    });
-                }
-                return updatedBookings;
-            });
+            supabase.from('bookings').upsert([newConfirmedBooking]);
+            if (isPartial) {
+                const remainingBooking: Booking = {
+                    ...booking,
+                    quantity: booking.quantity! - quantityToConfirm,
+                };
+                supabase.from('bookings').upsert([remainingBooking]);
+            }
             
             addNotification({ userId: booking.farmerId, message: `Your request for ${item.name} has been confirmed!`, type: 'booking' });
             showToast('Job accepted! The farmer has been notified.', 'success');
@@ -232,38 +243,40 @@ export const BookingProvider: React.FC<{ children: ReactNode }> = ({ children })
     };
 
     const raiseDispute = (bookingId: string) => {
-        setBookings(prevBookings =>
-            prevBookings.map(b =>
-                b.id === bookingId ? { ...b, disputeRaised: true } : b
-            )
-        );
+        supabase.from('bookings').update({ disputeRaised: true }).eq('id', bookingId);
         showToast('Dispute has been raised. Admin will review it shortly.', 'info');
     };
 
     const resolveDispute = (bookingId: string) => {
-         setBookings(prevBookings =>
-            prevBookings.map(b =>
-                b.id === bookingId ? { ...b, disputeResolved: true } : b
-            )
-        );
+         supabase.from('bookings').update({ disputeResolved: true }).eq('id', bookingId);
         showToast('Dispute marked as resolved.', 'success');
     };
     
-    const reportDamage = (reportData: Omit<DamageReport, 'id' | 'status' | 'timestamp'>) => {
+    const reportDamage = async (reportData: Omit<DamageReport, 'id' | 'status' | 'timestamp'>) => {
         const newReport: DamageReport = {
             id: Date.now(),
             ...reportData,
             status: 'pending',
             timestamp: new Date().toISOString()
         };
-        setDamageReports(prev => [...prev, newReport]);
-        setBookings(prev => prev.map(b => b.id === reportData.bookingId ? { ...b, damageReported: true } : b));
-        showToast('Damage report submitted to admin.', 'success');
+        try {
+            const { error } = await supabase.from('damageReports').upsert([newReport]);
+            if (error) throw error;
+            await supabase.from('bookings').update({ damageReported: true }).eq('id', String(reportData.bookingId));
+            showToast('Damage report submitted to admin.', 'success');
+        } catch {
+            showToast('Failed to submit damage report.', 'error');
+        }
     };
 
-    const resolveDamageClaim = (reportId: number) => {
-        setDamageReports(prev => prev.map(r => r.id === reportId ? { ...r, status: 'resolved' } : r));
-        showToast('Damage claim marked as resolved.', 'success');
+    const resolveDamageClaim = async (reportId: number) => {
+        try {
+            const { error } = await supabase.from('damageReports').update({ status: 'resolved' }).eq('id', reportId);
+            if (error) throw error;
+            showToast('Damage claim marked as resolved.', 'success');
+        } catch {
+            showToast('Failed to resolve damage claim.', 'error');
+        }
     };
 
     const generateOtp = (): string => Math.floor(100000 + Math.random() * 900000).toString();
@@ -273,7 +286,7 @@ export const BookingProvider: React.FC<{ children: ReactNode }> = ({ children })
         if (!booking) return;
 
         const otp = generateOtp();
-        setBookings(prev => prev.map(b => b.id === bookingId ? { ...b, status: 'Arrived', otpCode: otp, otpVerified: false } : b));
+        supabase.from('bookings').update({ status: 'Arrived', otpCode: otp, otpVerified: false }).eq('id', bookingId);
         showToast('Status updated to Arrived.', 'success');
         addNotification({ userId: booking.farmerId, message: `Your service has arrived. Share this OTP with the supplier to start work: ${otp}`, type: 'booking' });
     };
@@ -289,7 +302,7 @@ export const BookingProvider: React.FC<{ children: ReactNode }> = ({ children })
             showToast('Invalid OTP. Please try again.', 'error');
             return;
         }
-        setBookings(prev => prev.map(b => b.id === bookingId ? { ...b, status: 'In Process', otpVerified: true, workStartTime: new Date().toISOString() } : b));
+        supabase.from('bookings').update({ status: 'In Process', otpVerified: true, workStartTime: new Date().toISOString() }).eq('id', bookingId);
         showToast('OTP verified. Work has now started.', 'success');
         addNotification({ userId: booking.farmerId, message: `Supplier started work for booking #${bookingId.substring(0, 5)}.`, type: 'booking' });
         if (booking.supplierId) {
@@ -333,36 +346,60 @@ export const BookingProvider: React.FC<{ children: ReactNode }> = ({ children })
         
         const finalPrice = ((priceForPurpose + operatorPrice) * durationHours) + (booking.distanceCharge || 0);
 
-        const updatedBooking: Booking = {
-            ...booking,
+        const adminCommission = 0;
+        const supplierPaymentAmount = finalPrice;
+        const paymentDetails = {
+            farmerAmount: finalPrice,
+            supplierAmount: supplierPaymentAmount,
+            commission: adminCommission,
+            totalAmount: finalPrice,
+            paymentDate: new Date().toISOString()
+        };
+
+        supabase.from('bookings').update({
             status: 'Pending Payment',
             workEndTime,
             endTime: workEndTime.split('T')[1].substring(0, 5),
             finalPrice,
-        };
-
-        setBookings(prev => prev.map(b => b.id === bookingId ? updatedBooking : b));
+            farmerPaymentAmount: finalPrice,
+            supplierPaymentAmount,
+            adminCommission,
+            paymentDetails
+        }).eq('id', bookingId);
         showToast('Work marked as completed! Awaiting farmer payment.', 'success');
         addNotification({ userId: booking.farmerId, message: `Work for booking #${bookingId.substring(0, 5)} is complete. Please complete the payment of ₹${finalPrice.toLocaleString()}.`, type: 'booking' });
     };
 
-    const makeFinalPayment = (bookingId: string) => {
+    const makeFinalPayment = (bookingId: string, method: 'Cash' | 'Online' = 'Cash') => {
         const booking = bookings.find(b => b.id === bookingId);
         if (!booking || booking.status !== 'Pending Payment') {
             showToast("Cannot make final payment for this booking.", "error");
             return;
         }
-
-        const updatedBooking: Booking = {
-            ...booking,
-            status: 'Completed',
-            finalPaymentId: `final_pay_${Date.now()}`
+        const finalPrice = booking.finalPrice || booking.estimatedPrice || 0;
+        const adminCommission = 0;
+        const supplierPaymentAmount = finalPrice;
+        const paymentDetails = {
+            farmerAmount: finalPrice,
+            supplierAmount: supplierPaymentAmount,
+            commission: adminCommission,
+            totalAmount: finalPrice,
+            paymentDate: new Date().toISOString(),
+            method
         };
 
-        setBookings(prev => prev.map(b => b.id === bookingId ? updatedBooking : b));
-        showToast('Final payment successful! Your booking is complete.', 'success');
+        supabase.from('bookings').update({
+            status: 'Completed',
+            finalPaymentId: method === 'Cash' ? `cash_${Date.now()}` : `final_pay_${Date.now()}`,
+            paymentMethod: method,
+            farmerPaymentAmount: finalPrice,
+            supplierPaymentAmount,
+            adminCommission,
+            paymentDetails
+        }).eq('id', bookingId);
+        showToast(method === 'Cash' ? 'Cash payment recorded! Booking completed.' : 'Final payment successful! Your booking is complete.', 'success');
         if (booking.supplierId) {
-            addNotification({ userId: booking.supplierId, message: `Final payment received for booking #${bookingId.substring(0, 5)}.`, type: 'booking' });
+            addNotification({ userId: booking.supplierId, message: `${method === 'Cash' ? 'Cash' : 'Online'} payment received for booking #${bookingId.substring(0, 5)}.`, type: 'booking' });
         }
     };
 

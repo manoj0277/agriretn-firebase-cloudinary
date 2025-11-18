@@ -41,7 +41,7 @@ const ReportDamageScreen: React.FC<ReportDamageScreenProps> = ({ booking, naviga
     if (!item) {
         return (
             <div>
-                <Header title="Report Damage" onBack={() => navigate({ view: 'HOME' })} />
+                <Header title="Report Damage" onBack={goBack} />
                 <p className="p-4">Item not found.</p>
             </div>
         );

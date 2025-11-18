@@ -12,7 +12,7 @@ interface SettingsScreenProps {
 }
 
 const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigate, goBack }) => {
-    const { theme, toggleTheme } = useSettings();
+    const { theme, toggleTheme, ruralMode, toggleRuralMode } = useSettings();
     const { language, changeLanguage, t } = useLanguage();
     
     // In a real app, these values would come from user preferences storage.
@@ -50,6 +50,10 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigate, goBack }) => 
                         <li className="p-4 flex justify-between items-center">
                             <span className="font-semibold text-neutral-800 dark:text-neutral-100">{t('darkMode')}</span>
                             <Toggle isEnabled={theme === 'dark'} onToggle={toggleTheme} />
+                        </li>
+                        <li className="p-4 flex justify-between items-center">
+                            <span className="font-semibold text-neutral-800 dark:text-neutral-100">Rural Mode</span>
+                            <Toggle isEnabled={ruralMode} onToggle={toggleRuralMode} />
                         </li>
                         <li className="p-4 flex justify-between items-center">
                             <span className="font-semibold text-neutral-800 dark:text-neutral-100">{t('language')}</span>

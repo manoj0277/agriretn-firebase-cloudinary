@@ -316,7 +316,7 @@ const VoiceAssistantScreen: React.FC<VoiceAssistantScreenProps> = ({ navigate, g
     }, [transcription, currentTranscription]);
 
     const StatusIndicator = () => {
-        let colorClass = 'bg-neutral-500';
+        let colorClass = 'bg-primary';
         let icon = <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="M19 11a7 7 0 01-14 0m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v3a3 3 0 01-3 3z"/></svg>;
         let animationContent = null;
 
@@ -328,7 +328,7 @@ const VoiceAssistantScreen: React.FC<VoiceAssistantScreenProps> = ({ navigate, g
         }
 
         return (
-            <div className={`relative w-32 h-32 rounded-full flex items-center justify-center transition-colors duration-300 ${colorClass}`}>
+            <div className={`relative w-32 h-32 rounded-full flex items-center justify-center transition-colors duration-300 ${colorClass} shadow-xl ring-2 ring-white/70 dark:ring-neutral-300/60`}>
                 {animationContent}
                 <div className="relative z-10">{icon}</div>
             </div>

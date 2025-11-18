@@ -19,7 +19,7 @@ import SupplierBookingsScreen from './SupplierBookingsScreen';
 import { useBooking } from '../context/BookingContext';
 import { useReview } from '../context/ReviewContext';
 import SupplierScheduleScreen from './SupplierScheduleScreen';
-import { supabase } from '../lib/supabase';
+import { supabase, supabaseConfigured } from '../lib/supabase';
 import { GoogleGenAI } from "@google/genai";
 import { useLanguage } from '../context/LanguageContext';
 
@@ -501,7 +501,7 @@ const AddItemScreen: React.FC<{ itemToEdit: Item | null, onBack: () => void }> =
     );
 };
 
-const SupplierListingsScreen: React.FC<{ onAddItem: () => void, onEditItem: (m: Item) => void }> = ({ onAddItem, onEditItem }) => {
+const SupplierListingsScreen: React.FC<{ onAddItem: () => void, onEditItem: (m: Item) => void, kycStatus?: string | null, openKycForm?: () => void }> = ({ onAddItem, onEditItem, kycStatus, openKycForm }) => {
     const { user } = useAuth();
     const { items, deleteItem, updateItem } = useItem();
     const { bookings } = useBooking();
@@ -559,9 +559,14 @@ const SupplierListingsScreen: React.FC<{ onAddItem: () => void, onEditItem: (m: 
     return (
         <div className="dark:text-neutral-200">
             <div className="p-4">
-                 <div className="flex justify-between items-center mb-4">
+                <div className="flex justify-between items-center mb-4">
                     <h2 className="text-xl font-bold text-neutral-800 dark:text-neutral-100">My Items & Services</h2>
-                    <button onClick={handleAddItemClick} className="bg-primary text-white font-bold py-2 px-4 rounded-lg hover:bg-primary-dark transition-colors">+ Add Item</button>
+                    <div className="flex flex-col items-end">
+                        <button onClick={handleAddItemClick} disabled={!(kycStatus === 'Pending' || kycStatus === 'Submitted' || kycStatus === 'Approved')} className="bg-primary text-white font-bold py-2 px-4 rounded-lg hover:bg-primary-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:blur-sm">+ Add Item</button>
+                        {(!kycStatus || kycStatus === 'Rejected') && (
+                            <button onClick={openKycForm} className="mt-1 text-xs text-yellow-800 bg-yellow-100 px-2 py-1 rounded">Do KYC to add items</button>
+                        )}
+                    </div>
                 </div>
 
                 <div className="space-y-3">
@@ -607,14 +612,21 @@ const SupplierListingsScreen: React.FC<{ onAddItem: () => void, onEditItem: (m: 
     )
 }
 
-const SupplierKycInlineForm: React.FC<{ onSubmitted: () => void }> = ({ onSubmitted }) => {
+export const SupplierKycInlineForm: React.FC<{ onSubmitted: () => void }> = ({ onSubmitted }) => {
     const { user } = useAuth();
     const [fullName, setFullName] = useState('');
     const [phone, setPhone] = useState('');
     const [location, setLocation] = useState('');
+    const [address, setAddress] = useState('');
+    const [aadhaarNumber, setAadhaarNumber] = useState('');
+    const [panNumber, setPanNumber] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [aadhaarPreview, setAadhaarPreview] = useState<string>('');
     const [photoPreview, setPhotoPreview] = useState<string>('');
+    const [panPreview, setPanPreview] = useState<string>('');
+    const [aadhaarFile, setAadhaarFile] = useState<File | null>(null);
+    const [photoFile, setPhotoFile] = useState<File | null>(null);
+    const [panFile, setPanFile] = useState<File | null>(null);
     const [geo, setGeo] = useState<{ lat: number; lng: number } | null>(null);
     const [center, setCenter] = useState<[number, number]>([17.3850, 78.4867]);
     const mapRef = useRef<any>(null);
@@ -632,11 +644,51 @@ const SupplierKycInlineForm: React.FC<{ onSubmitted: () => void }> = ({ onSubmit
         if (!user) return;
         setIsSubmitting(true);
         try {
-            const docs = [
-                aadhaarPreview ? { type: 'Aadhaar', url: aadhaarPreview, status: 'Submitted' } : null,
-                photoPreview ? { type: 'Photo', url: photoPreview, status: 'Submitted' } : null,
-            ].filter(Boolean) as any[];
-            await supabase.from('kycSubmissions').upsert([{ userId: user.id, status: 'Pending', submittedAt: new Date().toISOString(), docs, geo }], { onConflict: 'userId' });
+            let docs: any[] = [];
+            const submittedAt = new Date().toISOString();
+            if (supabaseConfigured) {
+                const bucket = supabase.storage.from('kyc');
+                const uploads: { type: 'Aadhaar' | 'Photo' | 'PAN'; file: File | null }[] = [
+                    { type: 'Aadhaar', file: aadhaarFile },
+                    { type: 'Photo', file: photoFile },
+                    { type: 'PAN', file: panFile },
+                ];
+                for (const u of uploads) {
+                    if (!u.file) continue;
+                    const ext = u.file.name.split('.').pop() || 'jpg';
+                    const path = `${user.id}/${u.type}/${Date.now()}.${ext}`;
+                    const { error } = await bucket.upload(path, u.file, { upsert: true });
+                    if (!error) {
+                        const { data } = bucket.getPublicUrl(path);
+                        docs.push({ type: u.type, url: data.publicUrl, status: 'Submitted' });
+                    }
+                }
+                await supabase.from('kycSubmissions').upsert([{ userId: user.id, status: 'Pending', submittedAt, docs, geo }], { onConflict: 'userId' });
+                const aadhaarUrl = docs.find(d => d.type === 'Aadhaar')?.url
+                const photoUrl = docs.find(d => d.type === 'Photo')?.url
+                await supabase.from('users').update({
+                  aadhaarNumber,
+                  aadhaarImage: aadhaarUrl,
+                  profilePicture: photoUrl,
+                  address,
+                  location
+                }).eq('id', user.id)
+            } else {
+                docs = [
+                    aadhaarPreview ? { type: 'Aadhaar', url: aadhaarPreview, status: 'Submitted' } : null,
+                    photoPreview ? { type: 'Photo', url: photoPreview, status: 'Submitted' } : null,
+                    panPreview ? { type: 'PAN', url: panPreview, status: 'Submitted' } : null,
+                ].filter(Boolean) as any[];
+            }
+            if (typeof window !== 'undefined') {
+                try {
+                    if (!supabaseConfigured) {
+                        localStorage.setItem(`kycStatus:${user.id}`, 'Pending');
+                        localStorage.setItem(`kycDocs:${user.id}`, JSON.stringify(docs));
+                        localStorage.setItem(`kycSubmittedAt:${user.id}`, submittedAt);
+                    }
+                } catch {}
+            }
             onSubmitted();
         } finally {
             setIsSubmitting(false);
@@ -655,12 +707,21 @@ const SupplierKycInlineForm: React.FC<{ onSubmitted: () => void }> = ({ onSubmit
         if (!file) return;
         const url = await readFileAsDataUrl(file);
         setAadhaarPreview(url);
+        setAadhaarFile(file);
     };
     const onPhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
         const url = await readFileAsDataUrl(file);
         setPhotoPreview(url);
+        setPhotoFile(file);
+    };
+    const onPanSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        const url = await readFileAsDataUrl(file);
+        setPanPreview(url);
+        setPanFile(file);
     };
     const itemIcon = L.icon({
         iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
@@ -681,11 +742,14 @@ const SupplierKycInlineForm: React.FC<{ onSubmitted: () => void }> = ({ onSubmit
         });
     }, []);
 
-    const canSubmit = Boolean(aadhaarPreview && photoPreview && geo);
+    const canSubmit = Boolean(
+        aadhaarPreview && photoPreview && geo && fullName && phone && address && aadhaarNumber
+    );
     return (
         <form className="space-y-4" onSubmit={handleSubmit}>
             <Input label="Full Name" value={fullName} onChange={e => setFullName(e.target.value)} required />
             <Input label="Phone" value={phone} onChange={e => setPhone(e.target.value)} required />
+            <Input label="Address" value={address} onChange={e => setAddress(e.target.value)} required />
             <div>
                 <label className="block text-neutral-700 dark:text-neutral-300 text-sm font-bold mb-2">Select Location on Map <span className="text-red-600">*</span></label>
                 <div className="rounded overflow-hidden border border-neutral-200 dark:border-neutral-600">
@@ -721,10 +785,17 @@ const SupplierKycInlineForm: React.FC<{ onSubmitted: () => void }> = ({ onSubmit
                 {aadhaarPreview && <img src={aadhaarPreview} alt="Aadhaar" className="h-24 w-32 object-cover rounded-md mb-2" />}
                 <input type="file" accept="image/*" capture="environment" required onChange={onAadhaarSelect} className="shadow appearance-none border border-neutral-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg w-full py-2 px-3 text-neutral-800 dark:text-white" />
             </div>
+            <Input label="Aadhaar Number" value={aadhaarNumber} onChange={e => setAadhaarNumber(e.target.value)} required />
             <div>
                 <label className="block text-neutral-700 dark:text-neutral-300 text-sm font-bold mb-2">Live Photo <span className="text-red-600">*</span></label>
                 {photoPreview && <img src={photoPreview} alt="Live" className="h-24 w-24 object-cover rounded-full mb-2" />}
                 <input type="file" accept="image/*" capture="user" required onChange={onPhotoSelect} className="shadow appearance-none border border-neutral-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg w-full py-2 px-3 text-neutral-800 dark:text-white" />
+            </div>
+            <div>
+                <label className="block text-neutral-700 dark:text-neutral-300 text-sm font-bold mb-2">PAN (Optional)</label>
+                {panPreview && <img src={panPreview} alt="PAN" className="h-24 w-32 object-cover rounded-md mb-2" />}
+                <input type="file" accept="image/*,application/pdf" onChange={onPanSelect} className="shadow appearance-none border border-neutral-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg w-full py-2 px-3 text-neutral-800 dark:text-white" />
+                <Input label="PAN Number (Optional)" value={panNumber} onChange={e => setPanNumber(e.target.value)} />
             </div>
             
             <Button type="submit" disabled={isSubmitting || !canSubmit}>{isSubmitting ? 'Processing...' : 'Submit KYC'}</Button>
@@ -1000,8 +1071,15 @@ const SupplierView: React.FC<SupplierViewProps> = ({ navigate }) => {
                 const { data } = await supabase.from('kycSubmissions').select('status').eq('userId', user.id).limit(1);
                 const status = (data && data[0] && (data[0] as any).status) || null;
                 setKycStatus(status);
+                if (typeof window !== 'undefined' && status) {
+                    try { localStorage.setItem(`kycStatus:${user.id}`, status); } catch {}
+                }
             } catch {
-                setKycStatus(null);
+                let cached: string | null = null;
+                if (typeof window !== 'undefined') {
+                    try { cached = localStorage.getItem(`kycStatus:${user.id}`); } catch {}
+                }
+                setKycStatus(cached || null);
             }
         };
         loadKyc();
@@ -1046,21 +1124,7 @@ const SupplierView: React.FC<SupplierViewProps> = ({ navigate }) => {
             case 'bookings': return <SupplierBookingsScreen navigate={navigate} />;
             case 'schedule': return <SupplierScheduleScreen />;
             case 'listings':
-                if (!hasKyc) {
-                    if (!showKycForm) {
-                        return (
-                            <div className="p-4">
-                                <div className="bg-white dark:bg-neutral-700 p-6 rounded-lg border border-neutral-200 dark:border-neutral-600">
-                                    <h2 className="text-xl font-bold text-neutral-800 dark:text-neutral-100 mb-2">Supplier KYC</h2>
-                                    <p className="text-neutral-700 dark:text-neutral-300 mb-4">Please complete KYC to access Listings.</p>
-                                    <Button onClick={() => setShowKycForm(true)}>Add KYC</Button>
-                                </div>
-                            </div>
-                        );
-                    }
-                    return <SupplierKycInlineForm onSubmitted={() => { setShowKycForm(false); setKycStatus('Submitted'); }} />;
-                }
-                return <SupplierListingsScreen onAddItem={handleAddItem} onEditItem={handleEditItem} />;
+                return <SupplierListingsScreen onAddItem={handleAddItem} onEditItem={handleEditItem} kycStatus={kycStatus} openKycForm={() => navigate({ view: 'MY_ACCOUNT' })} />;
             default: return <SupplierDashboardScreen navigate={navigate}/>;
         }
     }

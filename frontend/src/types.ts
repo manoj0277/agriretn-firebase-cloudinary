@@ -237,8 +237,12 @@ export type AppView =
     | { view: 'AI_SCAN' }
     | { view: 'MANAGE_SUPPORT_TICKETS' }
     | { view: 'MY_ACCOUNT' }
+    | { view: 'PERSONAL_DETAILS' }
+    | { view: 'CHANGE_PASSWORD' }
+    | { view: 'EDIT_DETAILS' }
     | { view: 'SETTINGS' }
     | { view: 'PAYMENT_HISTORY' }
     | { view: 'POLICY' }
     | { view: 'COMMUNITY' }
+    | { view: 'SUPPLIER_KYC' }
     | { view: 'PAYMENT'; booking: Booking; fromCompletion?: boolean };

@@ -92,7 +92,31 @@ const FarmersManagement: React.FC = () => {
 
   return (
     <div className="p-4">
-      <div className="p-4 flex items-center justify-end gap-3">
+      <div className="p-4 flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-2">
+          <label className="text-sm">Sort</label>
+          <select
+            className="px-2 py-1 rounded border border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-900"
+            value={sortKey}
+            onChange={e => setSortKey(e.target.value)}
+          >
+            <option value="totalSpent">Total Amount Spent</option>
+            <option value="totalBookings">Total Bookings</option>
+            <option value="name">Name</option>
+            <option value="location">Location</option>
+            <option value="status">Status</option>
+            <option value="kycStatus">KYC Status</option>
+          </select>
+          <select
+            className="px-2 py-1 rounded border border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-900"
+            value={sortDir}
+            onChange={e => setSortDir(e.target.value as 'asc' | 'desc')}
+          >
+            <option value="desc">Desc</option>
+            <option value="asc">Asc</option>
+          </select>
+        </div>
+        <div className="flex items-center gap-3">
         <button
           aria-label="Export Excel"
           className="p-2 rounded bg-neutral-100 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700"
@@ -130,29 +154,7 @@ const FarmersManagement: React.FC = () => {
         >
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" className="h-5 w-5 text-neutral-700 dark:text-neutral-200"><path fill="currentColor" d="M6 2h9l5 5v13a2 2 0 01-2 2H6a2 2 0 01-2-2V4a2 2 0 012-2zm8 2v4h4"/></svg>
         </button>
-      </div>
-      <div className="p-4 flex items-center gap-3">
-        <label className="text-sm">Sort</label>
-        <select
-          className="px-2 py-1 rounded border border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-900"
-          value={sortKey}
-          onChange={e => setSortKey(e.target.value)}
-        >
-          <option value="totalSpent">Total Amount Spent</option>
-          <option value="totalBookings">Total Bookings</option>
-          <option value="name">Name</option>
-          <option value="location">Location</option>
-          <option value="status">Status</option>
-          <option value="kycStatus">KYC Status</option>
-        </select>
-        <select
-          className="px-2 py-1 rounded border border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-900"
-          value={sortDir}
-          onChange={e => setSortDir(e.target.value as 'asc' | 'desc')}
-        >
-          <option value="desc">Desc</option>
-          <option value="asc">Asc</option>
-        </select>
+        </div>
       </div>
       <DataTable
         title="Farmers"

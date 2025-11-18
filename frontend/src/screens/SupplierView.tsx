@@ -23,7 +23,7 @@ import { GoogleGenAI } from "@google/genai";
 import { useLanguage } from '../context/LanguageContext';
 import { TranslationKey } from '../translations';
 import { FALLBACK_IMAGE, onImgErrorSetFallback } from '../utils/imageFallback';
-import { supabase } from '../../lib/supabase';
+import { supabase, supabaseConfigured } from '../../lib/supabase';
 
 const apiKey = typeof process !== 'undefined' && process.env && process.env.API_KEY
   ? process.env.API_KEY
@@ -386,7 +386,7 @@ const AddItemScreen: React.FC<{ itemToEdit: Item | null, onBack: () => void }> =
     );
 };
 
-const SupplierListingsScreen: React.FC<{ onAddItem: () => void, onEditItem: (m: Item) => void }> = ({ onAddItem, onEditItem }) => {
+const SupplierListingsScreen: React.FC<{ onAddItem: () => void, onEditItem: (m: Item) => void, kycStatus?: string | null, openKycForm?: () => void }> = ({ onAddItem, onEditItem, kycStatus, openKycForm }) => {
     const { user } = useAuth();
     const { items, deleteItem } = useItem();
     const { t } = useLanguage();
@@ -416,10 +416,26 @@ const SupplierListingsScreen: React.FC<{ onAddItem: () => void, onEditItem: (m: 
     return (
         <div className="dark:text-neutral-200">
             <div className="p-4">
-                 <div className="flex justify-between items-center mb-4">
+                <div className="flex justify-between items-center mb-2">
                     <h2 className="text-xl font-bold text-neutral-800 dark:text-neutral-100">{t('myItemsAndServices')}</h2>
-                    <button onClick={handleAddItemClick} className="bg-primary text-white font-bold py-2 px-4 rounded-lg hover:bg-primary-dark transition-colors">+ {t('addItem')}</button>
+                    <div className="flex flex-col items-end">
+                        <button onClick={handleAddItemClick} disabled={!(kycStatus === 'Pending' || kycStatus === 'Submitted' || kycStatus === 'Approved')} className="bg-primary text-white font-bold py-2 px-4 rounded-lg hover:bg-primary-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:blur-sm">+ {t('addItem')}</button>
+                        {(!kycStatus || kycStatus === 'Rejected') && (
+                            <button onClick={openKycForm} className="mt-1 text-xs text-yellow-800 bg-yellow-100 px-2 py-1 rounded">Do KYC to add items</button>
+                        )}
+                    </div>
                 </div>
+                {(!kycStatus || kycStatus === 'Rejected') && (
+                    <div className="mb-4 p-3 bg-yellow-100 text-yellow-800 rounded-md text-sm flex items-center justify-between">
+                        <span>Complete KYC to add items.</span>
+                        <button onClick={openKycForm} className="text-xs px-2 py-1 bg-yellow-200 hover:bg-yellow-300 rounded">Start KYC</button>
+                    </div>
+                )}
+                {(kycStatus === 'Pending' || kycStatus === 'Submitted') && (
+                    <div className="mb-4 p-3 bg-yellow-100 text-yellow-800 rounded-md text-sm">
+                        KYC submitted. Verification pending.
+                    </div>
+                )}
 
                 <div className="space-y-3">
                     {myItems.length > 0 ? (
@@ -467,7 +483,7 @@ const SupplierListingsScreen: React.FC<{ onAddItem: () => void, onEditItem: (m: 
     )
 }
 
-const SupplierKycForm: React.FC<{ onSubmitted: () => void }> = ({ onSubmitted }) => {
+export const SupplierKycForm: React.FC<{ onSubmitted: () => void }> = ({ onSubmitted }) => {
     const { user, updateUser } = useAuth();
     const { t } = useLanguage();
     const [fullName, setFullName] = useState('');
@@ -477,16 +493,31 @@ const SupplierKycForm: React.FC<{ onSubmitted: () => void }> = ({ onSubmitted })
     const [currentLoc, setCurrentLoc] = useState<{ lat: number; lng: number } | null>(null);
     const [email, setEmail] = useState('');
     const [idNumber, setIdNumber] = useState('');
+    const [aadhaarFile, setAadhaarFile] = useState<File | null>(null);
+    const [photoFile, setPhotoFile] = useState<File | null>(null);
+    const [panFile, setPanFile] = useState<File | null>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [searchQuery, setSearchQuery] = useState('');
+    const [searchResults, setSearchResults] = useState<Array<{ display_name: string; lat: string; lon: string }>>([]);
+    const [existingDocs, setExistingDocs] = useState<Array<{ type: 'Aadhaar' | 'Photo' | 'PAN'; url?: string; status?: string }>>([]);
+    const [showMissing, setShowMissing] = useState(false);
+    const [missingFields, setMissingFields] = useState<string[]>([]);
 
     useEffect(() => {
-        if (user) {
-            setFullName(user.name || '');
-            setPhone(user.phone || '');
-            setLocation(user.location || '');
-            setEmail(user.email || '');
-            if (user.locationCoords) setCoords(user.locationCoords);
-        }
+        if (!user) return;
+        const draftStr = typeof window !== 'undefined' ? localStorage.getItem(`kycForm:${user.id}`) : null;
+        const draft = draftStr ? JSON.parse(draftStr) : null;
+        setFullName(draft?.fullName ?? (user.name || ''));
+        setPhone(draft?.phone ?? (user.phone || ''));
+        setLocation(draft?.location ?? (user.location || ''));
+        setEmail(draft?.email ?? (user.email || ''));
+        setIdNumber(draft?.idNumber ?? '');
+        if (draft?.coords) setCoords(draft.coords);
+        try {
+            const docsStr = typeof window !== 'undefined' ? localStorage.getItem(`kycDocs:${user.id}`) : null;
+            const docs = docsStr ? JSON.parse(docsStr) : [];
+            setExistingDocs(docs || []);
+        } catch {}
     }, [user]);
 
     useEffect(() => {
@@ -497,33 +528,138 @@ const SupplierKycForm: React.FC<{ onSubmitted: () => void }> = ({ onSubmitted })
         });
     }, []);
 
+    const toDataUrl = (file: File) => new Promise<string>((resolve) => { const r = new FileReader(); r.onload = () => resolve(String(r.result)); r.readAsDataURL(file) })
+    const uploadDoc = async (file: File, type: 'Aadhaar' | 'Photo' | 'PAN') => {
+        if (!supabaseConfigured) { const url = await toDataUrl(file); return url }
+        const path = `${user!.id}/${type}-${Date.now()}-${file.name}`
+        const { error } = await supabase.storage.from('kyc').upload(path, file, { upsert: true })
+        if (error) throw error
+        const { data } = await supabase.storage.from('kyc').getPublicUrl(path)
+        return data.publicUrl
+    }
+
+    const handleSearch = async (e: React.FormEvent) => {
+        e.preventDefault();
+        const q = searchQuery.trim();
+        if (q.length < 2) { setSearchResults([]); return; }
+        try {
+            const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=5`);
+            const data = await res.json();
+            setSearchResults(Array.isArray(data) ? data.slice(0, 5) : []);
+        } catch {
+            setSearchResults([]);
+        }
+    };
+
+    const handleSelectPlace = (r: { display_name: string; lat: string; lon: string }) => {
+        const lat = parseFloat(r.lat);
+        const lon = parseFloat(r.lon);
+        setCoords({ lat, lng: lon });
+        setLocation(r.display_name);
+        setSearchResults([]);
+        if (user && typeof window !== 'undefined') {
+            try { localStorage.setItem(`kycForm:${user.id}`, JSON.stringify({ fullName, phone, location: r.display_name, email, idNumber, coords: { lat, lng: lon } })); } catch {}
+        }
+    };
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!user) return;
         setIsSubmitting(true);
         try {
+            const docs: { type: 'Aadhaar' | 'Photo' | 'PAN'; url?: string; status: 'Submitted' }[] = []
+            if (aadhaarFile) { const url = await uploadDoc(aadhaarFile, 'Aadhaar'); docs.push({ type: 'Aadhaar', url, status: 'Submitted' }) }
+            if (photoFile) { const url = await uploadDoc(photoFile, 'Photo'); docs.push({ type: 'Photo', url, status: 'Submitted' }) }
+            if (panFile) { const url = await uploadDoc(panFile, 'PAN'); docs.push({ type: 'PAN', url, status: 'Submitted' }) }
+            const existing = existingDocs.filter(d => d.url).map(d => ({ type: d.type, url: d.url, status: 'Submitted' as const }))
+            const combined = [...existing.filter(d => !docs.some(nd => nd.type === d.type)), ...docs]
+
+            const missing: string[] = []
+            if (!fullName.trim()) missing.push('Full Name')
+            if (!email.trim()) missing.push('Email')
+            if (!phone.trim()) missing.push('Phone')
+            if (!location.trim()) missing.push('Location')
+            if (!coords) missing.push('Map Location')
+            if (!idNumber.trim()) missing.push('Government ID Number')
+            const hasAadhaar = combined.some(d => d.type === 'Aadhaar' && d.url)
+            const hasPhoto = combined.some(d => d.type === 'Photo' && d.url)
+            if (!hasAadhaar) missing.push('Aadhaar Image')
+            if (!hasPhoto) missing.push('Personal Photo')
+            if (missing.length > 0) {
+                setMissingFields(missing)
+                setShowMissing(true)
+                return
+            }
+            const geo = coords || user.locationCoords || null
+            const aadhaarUrl = combined.find(d => d.type === 'Aadhaar')?.url
+            const photoUrl = combined.find(d => d.type === 'Photo')?.url
             const updatedUser = {
                 ...user,
                 email,
                 location,
                 locationCoords: coords || user.locationCoords,
+                aadhaarNumber: idNumber || user.aadhaarNumber,
+                aadhaarImage: aadhaarUrl || user.aadhaarImage,
+                profilePicture: photoUrl || user.profilePicture,
             };
             await updateUser(updatedUser);
-            await supabase.from('kycSubmissions').upsert([{ userId: user.id, status: 'Submitted', timestamp: new Date().toISOString() }], { onConflict: 'userId' });
+            const submittedAt = new Date().toISOString();
+            if (supabaseConfigured) {
+                try {
+                    await supabase.from('kycSubmissions').upsert([{ userId: user.id, status: 'Pending', submittedAt, docs: combined, geo }], { onConflict: 'userId' });
+                } catch {}
+            }
+            if (typeof window !== 'undefined') {
+                try {
+                    localStorage.setItem(`kycStatus:${user.id}`, 'Submitted');
+                    localStorage.setItem(`kycDocs:${user.id}`, JSON.stringify(combined));
+                    localStorage.setItem(`kycSubmittedAt:${user.id}`, submittedAt);
+                    if (geo) localStorage.setItem(`kycGeo:${user.id}`, JSON.stringify(geo));
+                    localStorage.setItem(`kycForm:${user.id}`, JSON.stringify({ fullName, phone, location, email, idNumber, coords }))
+                } catch {}
+            }
             onSubmitted();
         } finally {
             setIsSubmitting(false);
         }
     };
 
+    const persist = (partial: any) => {
+        if (!user || typeof window === 'undefined') return;
+        try {
+            const key = `kycForm:${user.id}`;
+            const prevStr = localStorage.getItem(key);
+            const prev = prevStr ? JSON.parse(prevStr) : {};
+            localStorage.setItem(key, JSON.stringify({ ...prev, ...partial }));
+        } catch {}
+    }
+
     return (
         <div className="p-4">
             <h2 className="text-xl font-bold text-neutral-800 dark:text-neutral-100 mb-4">Supplier KYC</h2>
             <form className="space-y-4" onSubmit={handleSubmit}>
-                <Input label="Full Name" value={fullName} onChange={e => setFullName(e.target.value)} required />
-                <Input label="Email" type="email" value={email} onChange={e => setEmail(e.target.value)} required />
-                <Input label="Phone" value={phone} onChange={e => setPhone(e.target.value)} required />
-                <Input label="Location" value={location} onChange={e => setLocation(e.target.value)} required />
+                <Input label="Full Name" value={fullName} onChange={e => { setFullName(e.target.value); persist({ fullName: e.target.value }); }} required />
+                <Input label="Email" type="email" value={email} onChange={e => { setEmail(e.target.value); persist({ email: e.target.value }); }} required />
+                <Input label="Phone" value={phone} onChange={e => { setPhone(e.target.value); persist({ phone: e.target.value }); }} required />
+                <Input label="Location" value={location} onChange={e => { setLocation(e.target.value); persist({ location: e.target.value }); }} required />
+                <div className="flex items-center gap-2">
+                    <input
+                        value={searchQuery}
+                        onChange={e => setSearchQuery(e.target.value)}
+                        placeholder="Search place"
+                        className="flex-1 shadow appearance-none border border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-700 rounded-lg py-2 px-3 text-neutral-800 dark:text-white text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                    />
+                    <button type="button" onClick={handleSearch} className="px-3 py-2 bg-primary text-white rounded-md text-sm">Search</button>
+                </div>
+                {searchResults.length > 0 && (
+                    <div className="mt-1 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-md max-h-40 overflow-auto">
+                        {searchResults.map((r, i) => (
+                            <button key={i} type="button" onClick={() => handleSelectPlace(r)} className="w-full text-left p-2 text-sm hover:bg-neutral-50 dark:hover:bg-neutral-700">
+                                {r.display_name}
+                            </button>
+                        ))}
+                    </div>
+                )}
                 <div className="w-full h-64 rounded-md overflow-hidden">
                     <MapContainer
                         center={coords ? [coords.lat, coords.lng] : [17.385, 78.4867]}
@@ -554,6 +690,7 @@ const SupplierKycForm: React.FC<{ onSubmitted: () => void }> = ({ onSubmitted })
                         <TileLayer
                             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
                             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                            errorTileUrl="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgYAAAAAMAASsJTYQAAAAASUVORK5CYII="
                         />
                         {currentLoc && (
                             <Marker
@@ -580,9 +717,38 @@ const SupplierKycForm: React.FC<{ onSubmitted: () => void }> = ({ onSubmitted })
                     </MapContainer>
                     <p className="text-xs text-neutral-600 mt-1">Tap to select location. Use two fingers to pan.</p>
                 </div>
-                <Input label="Government ID Number" value={idNumber} onChange={e => setIdNumber(e.target.value)} required />
+                <Input label="Government ID Number" value={idNumber} onChange={e => { setIdNumber(e.target.value); persist({ idNumber: e.target.value }); }} required />
+                <div>
+                    <label className="block text-neutral-700 dark:text-neutral-300 text-sm font-bold mb-2">Aadhaar Image</label>
+                    <input type="file" accept="image/*" onChange={e => setAadhaarFile(e.target.files?.[0] || null)} className="w-full" />
+                    {existingDocs.some(d => d.type === 'Aadhaar' && d.url) && (
+                        <img src={existingDocs.find(d => d.type === 'Aadhaar' && d.url)?.url || ''} alt="Aadhaar" className="mt-2 h-20 w-28 object-cover rounded" />
+                    )}
+                </div>
+                <div>
+                    <label className="block text-neutral-700 dark:text-neutral-300 text-sm font-bold mb-2">Personal Photo</label>
+                    <input type="file" accept="image/*" onChange={e => setPhotoFile(e.target.files?.[0] || null)} className="w-full" />
+                    {existingDocs.some(d => d.type === 'Photo' && d.url) && (
+                        <img src={existingDocs.find(d => d.type === 'Photo' && d.url)?.url || ''} alt="Photo" className="mt-2 h-20 w-20 object-cover rounded-full" />
+                    )}
+                </div>
+                <div>
+                    <label className="block text-neutral-700 dark:text-neutral-300 text-sm font-bold mb-2">PAN (Optional)</label>
+                    <input type="file" accept="image/*,application/pdf" onChange={e => setPanFile(e.target.files?.[0] || null)} className="w-full" />
+                </div>
                 <Button type="submit" disabled={isSubmitting}>{isSubmitting ? t('processing') : 'Submit KYC'}</Button>
             </form>
+            {showMissing && (
+                <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center" onClick={() => setShowMissing(false)}>
+                    <div className="bg-white dark:bg-neutral-800 rounded-lg border border-neutral-200 dark:border-neutral-700 w-[90%] max-w-sm p-4" onClick={e => e.stopPropagation()}>
+                        <h4 className="font-semibold mb-2">Please enter details</h4>
+                        <ul className="text-sm space-y-1 mb-3">
+                            {missingFields.map((f,i) => (<li key={i} className="text-red-600">• {f}</li>))}
+                        </ul>
+                        <Button onClick={() => setShowMissing(false)}>OK</Button>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
@@ -743,8 +909,15 @@ const SupplierView: React.FC<SupplierViewProps> = ({ navigate }) => {
                 const { data } = await supabase.from('kycSubmissions').select('status').eq('userId', user.id).limit(1);
                 const status = (data && data[0] && (data[0] as any).status) || null;
                 setKycStatus(status);
+                if (typeof window !== 'undefined' && status) {
+                    try { localStorage.setItem(`kycStatus:${user.id}`, status); } catch {}
+                }
             } catch {
-                setKycStatus(null);
+                let cached: string | null = null;
+                if (typeof window !== 'undefined') {
+                    try { cached = localStorage.getItem(`kycStatus:${user?.id}`); } catch {}
+                }
+                setKycStatus(cached || null);
             }
         };
         loadKyc();
@@ -772,12 +945,12 @@ const SupplierView: React.FC<SupplierViewProps> = ({ navigate }) => {
     
     const renderContent = () => {
         switch(activeTab) {
-            case 'dashboard': return <SupplierDashboardScreen navigate={navigate} goToTab={setActiveTab} openKycForm={() => setShowKycForm(true)} kycStatus={kycStatus} />;
+            case 'dashboard': return <SupplierDashboardScreen navigate={navigate} goToTab={setActiveTab} openKycForm={() => navigate({ view: 'SUPPLIER_KYC' })} kycStatus={kycStatus} />;
             case 'requests': return <SupplierRequestsScreen />;
             case 'bookings': return <SupplierBookingsScreen navigate={navigate} />;
             case 'schedule': return <SupplierScheduleScreen />;
             case 'listings':
-                return <SupplierListingsScreen onAddItem={handleAddItem} onEditItem={handleEditItem} />;
+                return <SupplierListingsScreen onAddItem={handleAddItem} onEditItem={handleEditItem} kycStatus={kycStatus} openKycForm={() => navigate({ view: 'SUPPLIER_KYC' })} />;
             default: return <SupplierDashboardScreen navigate={navigate}/>;
         }
     }
@@ -786,9 +959,7 @@ const SupplierView: React.FC<SupplierViewProps> = ({ navigate }) => {
         return <AddItemScreen itemToEdit={itemToEdit} onBack={handleBackToDashboard} />;
     }
 
-    if (showKycForm) {
-        return <SupplierKycForm onSubmitted={() => { setShowKycForm(false); setKycStatus('Submitted'); }} />;
-    }
+    
 
     return (
         <div className="pb-20">

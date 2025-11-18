@@ -259,11 +259,15 @@ export type AppView =
     | { view: 'AI_SCAN' }
     | { view: 'MANAGE_SUPPORT_TICKETS' }
     | { view: 'MY_ACCOUNT' }
+    | { view: 'PERSONAL_DETAILS' }
+    | { view: 'CHANGE_PASSWORD' }
+    | { view: 'EDIT_DETAILS' }
     | { view: 'SETTINGS' }
     | { view: 'PAYMENT_HISTORY' }
     | { view: 'POLICY' }
     | { view: 'COMMUNITY' }
-    | { view: 'CROP_CALENDAR' };
+    | { view: 'CROP_CALENDAR' }
+    | { view: 'SUPPLIER_KYC' };
 
 export type RiskLevel = 'LOW' | 'MEDIUM' | 'HIGH';
 

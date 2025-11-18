@@ -3,7 +3,7 @@
 // In a real React Native app, this would be replaced by a robust library like React Navigation
 // (https://reactnavigation.org/) to handle stack, tab, and drawer navigators.
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { BookingProvider } from './context/BookingContext';
 import { ItemProvider } from './context/ItemContext';
@@ -34,6 +34,9 @@ import PolicyScreen from './screens/PolicyScreen';
 import PaymentHistoryScreen from './screens/PaymentHistoryScreen';
 import AdminView from './screens/AdminView';
 import MyAccountScreen from './screens/MyAccountScreen';
+import PersonalDetailsScreen from './screens/PersonalDetailsScreen';
+import ChangePasswordScreen from './screens/ChangePasswordScreen';
+import EditDetailsScreen from './screens/EditDetailsScreen';
 import ConversationsScreen from './screens/ConversationsScreen';
 import CommunityScreen from './screens/CommunityScreen';
 import { AiAssistantProvider } from './context/AiAssistantContext';
@@ -41,21 +44,53 @@ import AiAssistantScreen from './screens/AiAssistantScreen';
 import VoiceAssistantScreen from './screens/VoiceAssistantScreen';
 import AiScanScreen from './screens/AiScanScreen';
 import PaymentScreen from './screens/PaymentScreen';
+import SupplierKycFormScreen from './screens/SupplierKycFormScreen';
 
 
 const AppContent: React.FC = () => {
     const { user } = useAuth();
-    const [viewStack, setViewStack] = useState<AppView[]>([{ view: 'HOME' }]);
+    const [viewStack, setViewStack] = useState<AppView[]>(() => {
+        try {
+            const saved = localStorage.getItem('agrirent-current-view');
+            if (saved) {
+                const v = JSON.parse(saved);
+                if (v && typeof v.view === 'string') return [v];
+            }
+            const ss = sessionStorage.getItem('agrirent-current-view');
+            if (ss) {
+                const v2 = JSON.parse(ss);
+                if (v2 && typeof v2.view === 'string') return [v2];
+            }
+        } catch {}
+        return [{ view: 'HOME' }];
+    });
 
     const navigate = useCallback((view: AppView) => {
-        setViewStack(prev => [...prev, view]);
+        setViewStack(prev => {
+            const next = [...prev, view];
+            try { localStorage.setItem('agrirent-current-view', JSON.stringify(view)); } catch {}
+            return next;
+        });
     }, []);
 
     const goBack = useCallback(() => {
-        setViewStack(prev => prev.length > 1 ? prev.slice(0, -1) : prev);
+        setViewStack(prev => {
+            const next = prev.length > 1 ? prev.slice(0, -1) : [{ view: 'HOME' }];
+            try { localStorage.setItem('agrirent-current-view', JSON.stringify(next[next.length - 1])); } catch {}
+            try { sessionStorage.setItem('agrirent-current-view', JSON.stringify(next[next.length - 1])); } catch {}
+            return next;
+        });
     }, []);
 
     const currentView = viewStack[viewStack.length - 1];
+
+    useEffect(() => {
+        try {
+            const json = JSON.stringify(currentView);
+            localStorage.setItem('agrirent-current-view', json);
+            sessionStorage.setItem('agrirent-current-view', json);
+        } catch {}
+    }, [currentView]);
 
     if (!user) {
         return <AuthScreen />;
@@ -109,7 +144,15 @@ const AppContent: React.FC = () => {
         case 'PAYMENT_HISTORY':
             return <PaymentHistoryScreen navigate={navigate} goBack={goBack} />;
         case 'MY_ACCOUNT':
-            return <MyAccountScreen goBack={goBack} />;
+            return <MyAccountScreen goBack={goBack} navigate={navigate} />;
+        case 'SUPPLIER_KYC':
+            return <SupplierKycFormScreen navigate={navigate} goBack={goBack} />;
+        case 'PERSONAL_DETAILS':
+            return <PersonalDetailsScreen goBack={goBack} navigate={navigate} />;
+        case 'CHANGE_PASSWORD':
+            return <ChangePasswordScreen goBack={goBack} />;
+        case 'EDIT_DETAILS':
+            return <EditDetailsScreen goBack={goBack} />;
         case 'COMMUNITY':
             return <CommunityScreen goBack={goBack} />;
         case 'PAYMENT':

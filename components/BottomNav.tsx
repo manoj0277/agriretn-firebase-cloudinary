@@ -20,7 +20,7 @@ interface BottomNavProps {
 const BottomNav: React.FC<BottomNavProps> = ({ activeTab, setActiveTab, navItems }) => {
     const { t } = useLanguage();
     return (
-        <div className="fixed bottom-0 left-0 right-0 max-w-lg mx-auto bg-secondary dark:bg-neutral-800 border-t border-neutral-200 dark:border-neutral-700">
+        <div className="fixed bottom-0 left-0 right-0 max-w-lg mx-auto bg-white border-t border-gray-200">
             <div className="flex justify-around items-center h-16">
                 {navItems.map((item) => {
                     if (item.isCenter) {
@@ -39,7 +39,7 @@ const BottomNav: React.FC<BottomNavProps> = ({ activeTab, setActiveTab, navItems
                         <button
                             key={item.name}
                             onClick={() => setActiveTab(item.name)}
-                            className={`flex-1 flex flex-col items-center justify-center h-full text-sm transition-colors duration-200 ${activeTab === item.name ? 'text-primary' : 'text-gray-500 dark:text-gray-400'}`}
+                            className={`flex-1 flex flex-col items-center justify-center h-full text-sm transition-colors duration-200 ${activeTab === item.name ? 'text-primary' : 'text-gray-500'}`}
                         >
                             {item.icon}
                             <span className="mt-1">{t(item.name)}</span>

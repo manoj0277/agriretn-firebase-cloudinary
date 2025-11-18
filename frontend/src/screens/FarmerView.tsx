@@ -137,32 +137,7 @@ const FarmerHomeScreen: React.FC<FarmerViewProps> = ({ navigate }) => {
         return () => clearInterval(interval);
     }, [popularRef]);
 
-    useEffect(() => {
-        const getProactiveTip = async () => {
-            if (!ai || !user) return;
-            try {
-                const prompt = `The weather forecast shows clear skies for the next 3 days. It's a great time for spraying crops. Craft a short, friendly, and proactive notification for a farmer named ${user.name}, suggesting they might want to book a drone for spraying from our app. The response should be a single string.`;
-                const response = await ai.models.generateContent({
-                    model: 'gemini-2.5-flash',
-                    contents: prompt,
-                });
-                addNotification({
-                    userId: user.id,
-                    message: response.text,
-                    type: 'offer',
-                });
-            } catch (error) {
-                console.error("Error fetching proactive tip:", error);
-            }
-        };
-
-        const hasShownTip = sessionStorage.getItem('proactiveTipShown');
-        if (!hasShownTip) {
-            // Simulate weather check
-            setTimeout(getProactiveTip, 2000);
-            sessionStorage.setItem('proactiveTipShown', 'true');
-        }
-    }, [user, addNotification]);
+    
 
     const approvedItems = useMemo(() => items.filter(m => m.status === 'approved'), [items]);
     
@@ -501,6 +476,11 @@ const FullMapScreen: React.FC<FarmerViewProps> = ({ navigate }) => {
             </div>
             <div className="flex-grow">
                 <FarmerMapScreen items={processedItems} navigate={navigate} userLocation={userLocation} />
+            </div>
+            <div className="p-4">
+                <div className="mt-2 p-3 bg-blue-50 text-blue-800 dark:bg-blue-900/20 dark:text-blue-200 text-sm rounded-lg text-center">
+                    Select the Field/Crop Area on the map.
+                </div>
             </div>
              {isFilterModalOpen && (
                // Filter modal JSX would be here, identical to the one in FarmerHomeScreen. It is omitted for brevity but the logic is implied to be present.

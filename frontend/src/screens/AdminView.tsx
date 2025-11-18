@@ -10,6 +10,7 @@ import ManageItemsScreen from './ManageItemsScreen';
 import ManageBookingsScreen from './ManageBookingsScreen';
 import ManageSupportTicketsScreen from './ManageSupportTicketsScreen';
 import AdminAnalyticsScreen from './AdminAnalyticsScreen';
+import SupplierKycScreen from '../../screens/SupplierKycScreen';
 import NotificationBell from '../components/NotificationBell';
 import { useAuth } from '../context/AuthContext';
 import Button from '../components/Button';
@@ -59,6 +60,10 @@ const AdminView: React.FC<AdminViewProps> = ({ navigate }) => {
                     <span className="font-semibold text-neutral-700 dark:text-neutral-200">{t('analytics')}</span>
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-neutral-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
                 </button>
+                 <button onClick={() => setActiveTab('kyc')} className="w-full text-left p-4 hover:bg-neutral-50 dark:hover:bg-neutral-700/50 transition-colors flex justify-between items-center">
+                    <span className="font-semibold text-neutral-700 dark:text-neutral-200">Supplier KYC</span>
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-neutral-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                </button>
                  <button onClick={() => navigate({ view: 'SETTINGS' })} className="w-full text-left p-4 hover:bg-neutral-50 dark:hover:bg-neutral-700/50 transition-colors flex justify-between items-center">
                     <span className="font-semibold text-neutral-700 dark:text-neutral-200">{t('settings')}</span>
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-neutral-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
@@ -82,6 +87,8 @@ const AdminView: React.FC<AdminViewProps> = ({ navigate }) => {
                 return <ManageSupportTicketsScreen onBack={() => setActiveTab('more')} />;
             case 'analytics':
                 return <AdminAnalyticsScreen />;
+            case 'kyc':
+                return <SupplierKycScreen />;
             case 'more':
                 return <MoreScreen />;
             default:
@@ -95,6 +102,8 @@ const AdminView: React.FC<AdminViewProps> = ({ navigate }) => {
                 return t('supportTickets');
             case 'analytics':
                 return t('platformAnalytics');
+            case 'kyc':
+                return 'Supplier KYC';
             default:
                 return `${t('admin')} ${t(activeTab as TranslationKey)}`;
         }

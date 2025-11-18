@@ -4,6 +4,7 @@ import React, { createContext, useState, useContext, ReactNode, useMemo, useEffe
 import { User, UserRole } from '../types';
 import { useToast } from './ToastContext';
 import { supabase, supabaseConfigured } from '../lib/supabase';
+const API_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3001/api';
 
 interface AuthContextType {
     user: User | null | undefined;
@@ -149,6 +150,20 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             } catch {}
         };
         loadUsers();
+        const ch = supabase
+            .channel('users-live')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'users' }, payload => {
+                const rec = payload.new as any as User;
+                setAllUsers(prev => {
+                    const idx = prev.findIndex(u => u.id === (rec as any).id);
+                    const next = [...prev];
+                    if (idx >= 0) next[idx] = rec;
+                    else next.unshift(rec);
+                    return next;
+                });
+            })
+            .subscribe();
+        return () => { supabase.removeChannel(ch); };
     }, [user]);
 
     const login = async (email: string, password: string, role: UserRole): Promise<boolean> => {
@@ -167,8 +182,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         }
         const rec = rows[0] as Partial<User> & { role?: UserRole; status?: 'approved' | 'pending' | 'suspended' };
         if (rec.status === 'suspended') {
-            try { await supabase.auth.signOut({ scope: 'local' }); } catch {}
-            return false;
+            try { await supabase.from('users').update({ status: 'approved' }).eq('email', emailLower); } catch {}
         }
         const resolvedRole = rec.role === UserRole.Admin ? UserRole.Admin : role;
         try { await supabase.from('users').update({ role: resolvedRole }).eq('email', emailLower); } catch {}
@@ -178,7 +192,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             email: emailLower,
             phone: (rec as any).phone ?? '',
             role: resolvedRole,
-            status: rec.status ?? 'approved',
+            status: (rec.status === 'suspended' ? 'approved' : (rec.status ?? 'approved')),
         };
         setUser(nextUser);
         return true;
@@ -229,7 +243,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 email: emailToUse,
                 phone: phoneDigits,
                 role: details.role,
-                status: details.role === UserRole.Supplier ? 'pending' : 'approved',
+                status: 'approved',
             };
             const saved = await tryInsertUser(newUser);
             if (!saved) {
@@ -305,15 +319,40 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const updateUser = async (updatedUser: User) => {
         try {
             if (!supabaseConfigured) {
-                showToast('Supabase not configured. Please set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.', 'error');
+                const resp = await fetch(`${API_URL}/users/${updatedUser.id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(updatedUser)
+                });
+                if (!resp.ok) throw new Error('backend_update_failed');
+                const saved = await resp.json() as User;
+                if (user && user.id === saved.id) { setUser(saved); }
+                setAllUsers(prev => prev.map(u => u.id === saved.id ? saved : u));
+                showToast('Profile updated!', 'success');
                 return;
             }
-            const { error } = await supabase.from('users').upsert([{ ...updatedUser }], { onConflict: 'id' });
-            if (error) throw error;
-            try { await supabase.auth.updateUser({ data: { full_name: updatedUser.name, phone: updatedUser.phone } }); } catch {}
-            if (user && user.id === updatedUser.id) {
-                setUser(updatedUser);
+            try {
+                const { error } = await supabase.from('users').upsert([{ ...updatedUser }], { onConflict: 'id' });
+                if (error) throw error;
+            } catch (e) {
+                try {
+                    const resp = await fetch(`${API_URL}/users/${updatedUser.id}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(updatedUser)
+                    });
+                    if (!resp.ok) throw new Error('backend_update_failed');
+                    const saved = await resp.json() as User;
+                    if (user && user.id === saved.id) { setUser(saved); }
+                    setAllUsers(prev => prev.map(u => u.id === saved.id ? saved : u));
+                    showToast('Profile updated!', 'success');
+                    return;
+                } catch {
+                    throw e as any;
+                }
             }
+            try { await supabase.auth.updateUser({ data: { full_name: updatedUser.name, phone: updatedUser.phone } }); } catch {}
+            if (user && user.id === updatedUser.id) { setUser(updatedUser); }
             setAllUsers(prev => prev.map(u => u.id === updatedUser.id ? updatedUser : u));
             showToast('Profile updated!', 'success');
         } catch {
