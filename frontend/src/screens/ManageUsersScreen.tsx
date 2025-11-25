@@ -18,7 +18,7 @@ const ManageUsersScreen: React.FC = () => {
     const load = async () => {
       if (supabaseConfigured) {
         try {
-          const { data } = await supabase.from('kycSubmissions').select('*')
+          const { data } = await supabase.from('kycsubmissions').select('*')
           const map: Record<number, any> = {}
           ;(data || []).forEach((r: any) => { map[r.userId] = { status: r.status, submittedAt: r.submittedAt, docs: r.docs || [] } })
           setKycMap(map)
@@ -48,7 +48,7 @@ const ManageUsersScreen: React.FC = () => {
   const approve = async (userId: number) => {
     try {
       if (supabaseConfigured) {
-        await supabase.from('kycSubmissions').update({ status: 'Approved' }).eq('userId', userId)
+        await supabase.from('kycsubmissions').update({ status: 'Approved' }).eq('userId', userId)
         await supabase.from('users').update({ status: 'approved' }).eq('id', userId)
       } else {
         const user = allUsers.find(u => u.id === userId)

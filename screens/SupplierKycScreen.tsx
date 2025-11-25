@@ -35,31 +35,37 @@ const SupplierKycScreen: React.FC = () => {
 
       if (supabaseConfigured) {
         try {
-          const { data } = await supabase.from('kycSubmissions').select('*')
+          const { data } = await supabase.from('kycsubmissions').select('*')
           const server = (data || []) as KycSubmission[]
-          setKyc(server)
+          const offline = buildOffline()
+          const merged: KycSubmission[] = [...server]
+          offline.forEach(o => { if (!merged.some(m => m.userId === o.userId)) merged.push(o) })
+          setKyc(merged)
         } catch {
-          setKyc([])
+          setKyc(buildOffline())
         }
       } else {
         setKyc(buildOffline())
       }
     }
     load()
-    const ch = supabase
-      .channel('kyc-live')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'kycSubmissions' }, payload => {
-        setKyc(prev => {
-          const rec = payload.new as any
-          const idx = prev.findIndex(r => r.id === rec.id)
-          const next = [...prev]
-          if (idx >= 0) next[idx] = rec
-          else next.unshift(rec)
-          return next
+    if (supabaseConfigured) {
+      const ch = supabase
+        .channel('kyc-live')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'kycsubmissions' }, payload => {
+          setKyc(prev => {
+            const rec = payload.new as any
+            const idx = prev.findIndex(r => r.id === rec.id)
+            const next = [...prev]
+            if (idx >= 0) next[idx] = rec
+            else next.unshift(rec)
+            return next
+          })
         })
-      })
-      .subscribe()
-    return () => { supabase.removeChannel(ch) }
+        .subscribe()
+      return () => { supabase.removeChannel(ch) }
+    }
+    return () => {}
   }, [])
 
   const rows = useMemo(() => (
@@ -83,10 +89,10 @@ const SupplierKycScreen: React.FC = () => {
 
   const approve = async (u: User) => {
     if (supabaseConfigured) {
-      const { data } = await supabase.from('kycSubmissions').select('*').eq('userId', u.id).limit(1)
+      const { data } = await supabase.from('kycsubmissions').select('*').eq('userId', u.id).limit(1)
       const rec = (data && data[0]) as KycSubmission | undefined
       const docsApproved = rec ? rec.docs.map(d => ({ ...d, status: 'Approved' })) : []
-      await supabase.from('kycSubmissions').update({ status: 'Approved', docs: docsApproved }).eq('userId', u.id)
+      await supabase.from('kycsubmissions').update({ status: 'Approved', docs: docsApproved }).eq('userId', u.id)
       const aadhaarUrl = docsApproved.find(d => d.type === 'Aadhaar')?.url
       const photoUrl = docsApproved.find(d => d.type === 'Photo')?.url
       await supabase.from('users').update({ status: 'approved', aadhaarImage: aadhaarUrl || null, profilePicture: photoUrl || null }).eq('id', u.id)
@@ -106,7 +112,7 @@ const SupplierKycScreen: React.FC = () => {
   }
   const reject = async (u: User) => {
     if (supabaseConfigured) {
-      const { data } = await supabase.from('kycSubmissions').select('*').eq('userId', u.id).limit(1)
+      const { data } = await supabase.from('kycsubmissions').select('*').eq('userId', u.id).limit(1)
       const rec = (data && data[0]) as KycSubmission | undefined
       if (rec) {
         const paths: string[] = (rec.docs || [])
@@ -119,7 +125,7 @@ const SupplierKycScreen: React.FC = () => {
           })
           .filter(Boolean)
         if (paths.length > 0) { await supabase.storage.from('kyc').remove(paths).catch(() => {}) }
-        await supabase.from('kycSubmissions').delete().eq('id', rec.id)
+        await supabase.from('kycsubmissions').delete().eq('id', rec.id)
       }
       await supabase.from('users').update({ status: 'suspended', aadhaarImage: null, profilePicture: null, aadhaarNumber: null }).eq('id', u.id)
     } else {
@@ -138,11 +144,11 @@ const SupplierKycScreen: React.FC = () => {
   const askReupload = async (u: User, docType: KycDocument['type']) => {
     let updatedDocs: KycDocument[] = []
     if (supabaseConfigured) {
-      const { data } = await supabase.from('kycSubmissions').select('*').eq('userId', u.id).limit(1)
+      const { data } = await supabase.from('kycsubmissions').select('*').eq('userId', u.id).limit(1)
       const rec = (data && data[0]) as KycSubmission | undefined
       if (rec) {
         updatedDocs = rec.docs.map(d => d.type === docType ? { ...d, status: 'ReuploadRequested' } : d)
-        await supabase.from('kycSubmissions').update({ docs: updatedDocs }).eq('id', rec.id)
+        await supabase.from('kycsubmissions').update({ docs: updatedDocs }).eq('id', rec.id)
       }
     } else {
       const row = kyc.find(k => k.userId === u.id)
@@ -167,11 +173,11 @@ const SupplierKycScreen: React.FC = () => {
   const addNote = async (u: User, note: string) => {
     let nextNotes: string[] = []
     if (supabaseConfigured) {
-      const { data } = await supabase.from('kycSubmissions').select('*').eq('userId', u.id).limit(1)
+      const { data } = await supabase.from('kycsubmissions').select('*').eq('userId', u.id).limit(1)
       const rec = (data && data[0]) as KycSubmission | undefined
       if (rec) {
         nextNotes = [...(rec.adminNotes || []), note]
-        await supabase.from('kycSubmissions').update({ adminNotes: nextNotes }).eq('id', rec.id)
+        await supabase.from('kycsubmissions').update({ adminNotes: nextNotes }).eq('id', rec.id)
       }
     } else {
       const row = kyc.find(k => k.userId === u.id)

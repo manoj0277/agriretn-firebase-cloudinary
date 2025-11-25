@@ -36,7 +36,7 @@ const SuppliersManagement: React.FC = () => {
       setEarningsMap(eMap)
       setUtilMap(uMap)
       setRatingMap(rMap)
-      const { data: kycData } = await supabase.from('kycSubmissions').select('userId,status')
+      const { data: kycData } = await supabase.from('kycsubmissions').select('userId,status')
       const km: Record<number, string> = {}
       suppliers.forEach(u => { km[u.id] = ((kycData || []).find((k: any) => k.userId === u.id)?.status) || '-' })
       setKycMap(km)

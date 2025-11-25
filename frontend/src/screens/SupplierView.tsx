@@ -606,7 +606,7 @@ export const SupplierKycForm: React.FC<{ onSubmitted: () => void }> = ({ onSubmi
             const submittedAt = new Date().toISOString();
             if (supabaseConfigured) {
                 try {
-                    await supabase.from('kycSubmissions').upsert([{ userId: user.id, status: 'Pending', submittedAt, docs: combined, geo }], { onConflict: 'userId' });
+                    await supabase.from('kycsubmissions').upsert([{ userId: user.id, status: 'Pending', submittedAt, docs: combined, geo }], { onConflict: 'userId' });
                 } catch {}
             }
             if (typeof window !== 'undefined') {
@@ -906,7 +906,7 @@ const SupplierView: React.FC<SupplierViewProps> = ({ navigate }) => {
         const loadKyc = async () => {
             if (!user) return;
             try {
-                const { data } = await supabase.from('kycSubmissions').select('status').eq('userId', user.id).limit(1);
+                const { data } = await supabase.from('kycsubmissions').select('status').eq('userId', user.id).limit(1);
                 const status = (data && data[0] && (data[0] as any).status) || null;
                 setKycStatus(status);
                 if (typeof window !== 'undefined' && status) {

@@ -614,6 +614,7 @@ const SupplierListingsScreen: React.FC<{ onAddItem: () => void, onEditItem: (m: 
 
 export const SupplierKycInlineForm: React.FC<{ onSubmitted: () => void }> = ({ onSubmitted }) => {
     const { user } = useAuth();
+    const { showToast } = useToast();
     const [fullName, setFullName] = useState('');
     const [phone, setPhone] = useState('');
     const [location, setLocation] = useState('');
@@ -663,7 +664,7 @@ export const SupplierKycInlineForm: React.FC<{ onSubmitted: () => void }> = ({ o
                         docs.push({ type: u.type, url: data.publicUrl, status: 'Submitted' });
                     }
                 }
-                await supabase.from('kycSubmissions').upsert([{ userId: user.id, status: 'Pending', submittedAt, docs, geo }], { onConflict: 'userId' });
+                await supabase.from('kycsubmissions').upsert([{ userId: user.id, status: 'Pending', submittedAt, docs, geo }], { onConflict: 'userId' });
                 const aadhaarUrl = docs.find(d => d.type === 'Aadhaar')?.url
                 const photoUrl = docs.find(d => d.type === 'Photo')?.url
                 await supabase.from('users').update({
@@ -689,6 +690,7 @@ export const SupplierKycInlineForm: React.FC<{ onSubmitted: () => void }> = ({ o
                     }
                 } catch {}
             }
+            showToast('KYC submitted. Verification pending.', 'success');
             onSubmitted();
         } finally {
             setIsSubmitting(false);
@@ -813,13 +815,37 @@ const StatCard: React.FC<{ title: string; value: string | number; icon: React.Re
 );
 
 
-const SupplierDashboardScreen: React.FC<SupplierViewProps & { goToTab?: (name: string) => void }> = ({ navigate, goToTab }) => {
+const SupplierDashboardScreen: React.FC<SupplierViewProps & { goToTab?: (name: string) => void, kycStatus?: string | null }> = ({ navigate, goToTab, kycStatus }) => {
     const { user, logout } = useAuth();
     const { bookings, damageReports } = useBooking();
     const { items } = useItem();
     const { reviews } = useReview();
     const { t } = useLanguage();
     const [showWeeklyTrend, setShowWeeklyTrend] = useState(false);
+    const [reuploadTypes, setReuploadTypes] = useState<string[]>([]);
+
+    useEffect(() => {
+        const loadReupload = async () => {
+            if (!user) return;
+            try {
+                const { data } = await supabase.from('kycsubmissions').select('docs').eq('userId', user.id).limit(1);
+                const docs = (data && data[0] && (data[0] as any).docs) || [];
+                const types = Array.isArray(docs) ? docs.filter((d: any) => d && d.status === 'ReuploadRequested').map((d: any) => d.type) : [];
+                setReuploadTypes(types);
+                if (typeof window !== 'undefined') {
+                    try { localStorage.setItem(`kycDocs:${user.id}`, JSON.stringify(docs)); } catch {}
+                }
+            } catch {
+                let cachedDocs: any[] = [];
+                if (typeof window !== 'undefined') {
+                    try { cachedDocs = JSON.parse(localStorage.getItem(`kycDocs:${user.id}`) || '[]'); } catch {}
+                }
+                const types = Array.isArray(cachedDocs) ? cachedDocs.filter((d: any) => d && d.status === 'ReuploadRequested').map((d: any) => d.type) : [];
+                setReuploadTypes(types);
+            }
+        };
+        loadReupload();
+    }, [user]);
 
     const supplierItems = useMemo(() => items.filter(i => i.ownerId === user?.id), [items, user]);
     const supplierItemIds = useMemo(() => supplierItems.map(i => i.id), [supplierItems]);
@@ -922,6 +948,15 @@ const SupplierDashboardScreen: React.FC<SupplierViewProps & { goToTab?: (name: s
                     <h2 className="text-xl font-bold text-neutral-800 dark:text-neutral-100">{t('welcome')}, {user?.name}!</h2>
                     <p className="text-neutral-700 dark:text-neutral-300 text-sm">{user?.email}</p>
                     {user?.status === 'pending' && <p className="text-yellow-700 mt-2 text-xs p-2 bg-yellow-100 rounded-md">Your account is pending admin approval.</p>}
+                    {kycStatus && (kycStatus === 'Submitted' || kycStatus === 'Pending') && (
+                        <p className="text-yellow-700 mt-2 text-xs p-2 bg-yellow-100 rounded-md">KYC submitted. Verification pending.</p>
+                    )}
+                    {reuploadTypes.length > 0 && (
+                        <div className="mt-2 flex items-center gap-2">
+                            <p className="text-yellow-700 text-xs p-2 bg-yellow-100 rounded-md">Admin requested re-upload: {reuploadTypes.join(', ')}</p>
+                            <button onClick={() => navigate({ view: 'MY_ACCOUNT' })} className="text-xs px-2 py-1 rounded bg-primary text-white">Re-upload now</button>
+                        </div>
+                    )}
                 </div>
             </div>
 
@@ -1068,7 +1103,7 @@ const SupplierView: React.FC<SupplierViewProps> = ({ navigate }) => {
         const loadKyc = async () => {
             if (!user) return;
             try {
-                const { data } = await supabase.from('kycSubmissions').select('status').eq('userId', user.id).limit(1);
+                const { data } = await supabase.from('kycsubmissions').select('status').eq('userId', user.id).limit(1);
                 const status = (data && data[0] && (data[0] as any).status) || null;
                 setKycStatus(status);
                 if (typeof window !== 'undefined' && status) {
@@ -1119,7 +1154,7 @@ const SupplierView: React.FC<SupplierViewProps> = ({ navigate }) => {
     
     const renderContent = () => {
         switch(activeTab) {
-            case 'dashboard': return <SupplierDashboardScreen navigate={navigate} goToTab={setActiveTab} />;
+            case 'dashboard': return <SupplierDashboardScreen navigate={navigate} goToTab={setActiveTab} kycStatus={kycStatus} />;
             case 'requests': return <SupplierRequestsScreen />;
             case 'bookings': return <SupplierBookingsScreen navigate={navigate} />;
             case 'schedule': return <SupplierScheduleScreen />;

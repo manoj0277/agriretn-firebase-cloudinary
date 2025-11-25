@@ -49,7 +49,7 @@ const AdminOverviewDashboard: React.FC = () => {
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'supportTickets' }, () => {
         setActivity(a => [{ type: 'Support', text: 'New complaint', ts: new Date().toISOString() }, ...a].slice(0, 50))
       })
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'kycSubmissions' }, () => {
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'kycsubmissions' }, () => {
         setActivity(a => [{ type: 'KYC', text: 'KYC submitted', ts: new Date().toISOString() }, ...a].slice(0, 50))
       })
       .subscribe()
