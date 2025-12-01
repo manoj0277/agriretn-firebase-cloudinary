@@ -1,11 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { useAuth } from '../context/AuthContext'
-import { supabase, supabaseConfigured } from '../lib/supabase'
 import Button from '../components/Button'
 import { User, KycSubmission, KycDocument, RiskLevel } from '../types'
 import { useNotification } from '../context/NotificationContext'
 
-interface KycRec { id: number; userId: number; status: string; timestamp?: string }
+const API_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3001/api';
 
 const SupplierKycScreen: React.FC = () => {
   const { allUsers, updateUser } = useAuth()
@@ -13,60 +12,28 @@ const SupplierKycScreen: React.FC = () => {
   const [kyc, setKyc] = useState<KycSubmission[]>([])
   const suppliers = useMemo(() => allUsers.filter(u => u.role === 'Supplier'), [allUsers])
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+  const [statusFilter, setStatusFilter] = useState<'ALL' | 'Pending' | 'Approved' | 'Rejected'>('ALL')
 
   useEffect(() => {
     const load = async () => {
-      const buildOffline = (): KycSubmission[] => {
-        return suppliers.map(u => {
+      try {
+        const submissions: KycSubmission[] = [];
+        for (const u of suppliers) {
           try {
-            const status = typeof window !== 'undefined' ? localStorage.getItem(`kycStatus:${u.id}`) : null
-            const submittedAt = typeof window !== 'undefined' ? localStorage.getItem(`kycSubmittedAt:${u.id}`) : null
-            const docsStr = typeof window !== 'undefined' ? localStorage.getItem(`kycDocs:${u.id}`) : null
-            const notesStr = typeof window !== 'undefined' ? localStorage.getItem(`kycAdminNotes:${u.id}`) : null
-            const docs = docsStr ? JSON.parse(docsStr) as KycDocument[] : []
-            const adminNotes = notesStr ? JSON.parse(notesStr) as string[] : []
-            if (!submittedAt) return null
-            return { id: u.id, userId: u.id, status: (status as any) || 'Pending', submittedAt, docs, riskLevel: 'LOW', adminNotes } as any
-          } catch {
-            return null
-          }
-        }).filter(Boolean) as KycSubmission[]
-      }
-
-      if (supabaseConfigured) {
-        try {
-          const { data } = await supabase.from('kycsubmissions').select('*')
-          const server = (data || []) as KycSubmission[]
-          const offline = buildOffline()
-          const merged: KycSubmission[] = [...server]
-          offline.forEach(o => { if (!merged.some(m => m.userId === o.userId)) merged.push(o) })
-          setKyc(merged)
-        } catch {
-          setKyc(buildOffline())
+            const res = await fetch(`${API_URL}/kyc/${u.id}`);
+            if (res.ok) {
+              const data = await res.json();
+              submissions.push(data);
+            }
+          } catch { }
         }
-      } else {
-        setKyc(buildOffline())
+        setKyc(submissions);
+      } catch (error) {
+        console.error('Failed to load KYC', error);
       }
     }
     load()
-    if (supabaseConfigured) {
-      const ch = supabase
-        .channel('kyc-live')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'kycsubmissions' }, payload => {
-          setKyc(prev => {
-            const rec = payload.new as any
-            const idx = prev.findIndex(r => r.id === rec.id)
-            const next = [...prev]
-            if (idx >= 0) next[idx] = rec
-            else next.unshift(rec)
-            return next
-          })
-        })
-        .subscribe()
-      return () => { supabase.removeChannel(ch) }
-    }
-    return () => {}
-  }, [])
+  }, [suppliers])
 
   const rows = useMemo(() => (
     kyc
@@ -81,123 +48,95 @@ const SupplierKycScreen: React.FC = () => {
       })
       .filter(Boolean) as { user: User; kycStatus: KycSubmission['status']; submittedAt?: string; docs: KycDocument[]; risk: RiskLevel; hasRequiredDocs: boolean }[]
   ), [kyc, allUsers])
-  const [statusFilter, setStatusFilter] = useState<'ALL' | 'Pending' | 'Approved' | 'Rejected'>('ALL')
+
   const filteredRows = useMemo(() => {
     if (statusFilter === 'ALL') return rows
     return rows.filter(r => r.kycStatus === statusFilter)
   }, [rows, statusFilter])
 
   const approve = async (u: User) => {
-    if (supabaseConfigured) {
-      const { data } = await supabase.from('kycsubmissions').select('*').eq('userId', u.id).limit(1)
-      const rec = (data && data[0]) as KycSubmission | undefined
-      const docsApproved = rec ? rec.docs.map(d => ({ ...d, status: 'Approved' })) : []
-      await supabase.from('kycsubmissions').update({ status: 'Approved', docs: docsApproved }).eq('userId', u.id)
-      const aadhaarUrl = docsApproved.find(d => d.type === 'Aadhaar')?.url
-      const photoUrl = docsApproved.find(d => d.type === 'Photo')?.url
-      await supabase.from('users').update({ status: 'approved', aadhaarImage: aadhaarUrl || null, profilePicture: photoUrl || null }).eq('id', u.id)
-    } else {
-      await updateUser({ ...u, status: 'approved' })
-      try { if (typeof window !== 'undefined') localStorage.setItem(`kycStatus:${u.id}`, 'Approved') } catch {}
+    try {
+      const res = await fetch(`${API_URL}/kyc/${u.id}`);
+      if (res.ok) {
+        const kycData = await res.json();
+        const docsApproved = kycData.docs.map((d: any) => ({ ...d, status: 'Approved' }));
+
+        // Update KYC
+        await fetch(`${API_URL}/kyc`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: u.id, status: 'Approved', docs: docsApproved })
+        });
+
+        // Update User Status
+        await fetch(`${API_URL}/admin/users/${u.id}/approve`, { method: 'POST' });
+
+        // Update Local State
+        setKyc(prev => {
+          const idx = prev.findIndex(k => k.userId === u.id)
+          if (idx === -1) return prev
+          const next = [...prev]
+          next[idx] = { ...next[idx], status: 'Approved', docs: docsApproved }
+          return next
+        })
+        addNotification({ userId: u.id, message: 'KYC approved', type: 'admin' })
+      }
+    } catch (error) {
+      console.error('Approve failed', error);
     }
-    setKyc(prev => {
-      const idx = prev.findIndex(k => k.userId === u.id)
-      if (idx === -1) return prev
-      const next = [...prev]
-      const docsApproved = (next[idx].docs || []).map(d => ({ ...d, status: 'Approved' as const }))
-      next[idx] = { ...next[idx], status: 'Approved', docs: docsApproved }
-      return next
-    })
-    addNotification({ userId: u.id, message: 'KYC approved', type: 'admin' })
   }
+
   const reject = async (u: User) => {
-    if (supabaseConfigured) {
-      const { data } = await supabase.from('kycsubmissions').select('*').eq('userId', u.id).limit(1)
-      const rec = (data && data[0]) as KycSubmission | undefined
-      if (rec) {
-        const paths: string[] = (rec.docs || [])
-          .map(d => d.url || '')
-          .map(url => {
-            try {
-              const idx = url.indexOf('/public/kyc/')
-              return idx >= 0 ? url.substring(idx + '/public/kyc/'.length) : ''
-            } catch { return '' }
-          })
-          .filter(Boolean)
-        if (paths.length > 0) { await supabase.storage.from('kyc').remove(paths).catch(() => {}) }
-        await supabase.from('kycsubmissions').delete().eq('id', rec.id)
-      }
-      await supabase.from('users').update({ status: 'suspended', aadhaarImage: null, profilePicture: null, aadhaarNumber: null }).eq('id', u.id)
-    } else {
-      await updateUser({ ...u, status: 'suspended', aadhaarImage: undefined, profilePicture: undefined, aadhaarNumber: undefined })
-      try {
-        if (typeof window !== 'undefined') {
-          localStorage.removeItem(`kycStatus:${u.id}`)
-          localStorage.removeItem(`kycDocs:${u.id}`)
-          localStorage.removeItem(`kycSubmittedAt:${u.id}`)
-        }
-      } catch {}
+    try {
+      await fetch(`${API_URL}/kyc`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: u.id, status: 'Rejected' })
+      });
+
+      await fetch(`${API_URL}/admin/users/${u.id}/suspend`, { method: 'POST' });
+
+      setKyc(prev => {
+        const idx = prev.findIndex(k => k.userId === u.id)
+        if (idx === -1) return prev
+        const next = [...prev]
+        next[idx] = { ...next[idx], status: 'Rejected' }
+        return next
+      })
+      addNotification({ userId: u.id, message: 'KYC rejected', type: 'admin' })
+    } catch (error) {
+      console.error('Reject failed', error);
     }
-    setKyc(prev => prev.filter(k => k.userId !== u.id))
-    addNotification({ userId: u.id, message: 'KYC rejected and deleted', type: 'admin' })
   }
+
   const askReupload = async (u: User, docType: KycDocument['type']) => {
-    let updatedDocs: KycDocument[] = []
-    if (supabaseConfigured) {
-      const { data } = await supabase.from('kycsubmissions').select('*').eq('userId', u.id).limit(1)
-      const rec = (data && data[0]) as KycSubmission | undefined
-      if (rec) {
-        updatedDocs = rec.docs.map(d => d.type === docType ? { ...d, status: 'ReuploadRequested' } : d)
-        await supabase.from('kycsubmissions').update({ docs: updatedDocs }).eq('id', rec.id)
-      }
-    } else {
-      const row = kyc.find(k => k.userId === u.id)
-      const currentDocs = (row?.docs || []) as KycDocument[]
-      updatedDocs = currentDocs.map(d => d.type === docType ? { ...d, status: 'ReuploadRequested' } : d)
-      try { if (typeof window !== 'undefined') localStorage.setItem(`kycDocs:${u.id}`, JSON.stringify(updatedDocs)) } catch {}
-    }
-    if (updatedDocs.length === 0) {
-      const row = kyc.find(k => k.userId === u.id)
-      const currentDocs = (row?.docs || []) as KycDocument[]
-      updatedDocs = currentDocs.map(d => d.type === docType ? { ...d, status: 'ReuploadRequested' } : d)
-    }
-    setKyc(prev => {
-      const idx = prev.findIndex(k => k.userId === u.id)
-      if (idx === -1) return prev
-      const next = [...prev]
-      next[idx] = { ...next[idx], docs: updatedDocs }
-      return next
-    })
     addNotification({ userId: u.id, message: `Please re-upload ${docType} for KYC.`, type: 'admin' })
   }
+
   const addNote = async (u: User, note: string) => {
-    let nextNotes: string[] = []
-    if (supabaseConfigured) {
-      const { data } = await supabase.from('kycsubmissions').select('*').eq('userId', u.id).limit(1)
-      const rec = (data && data[0]) as KycSubmission | undefined
-      if (rec) {
-        nextNotes = [...(rec.adminNotes || []), note]
-        await supabase.from('kycsubmissions').update({ adminNotes: nextNotes }).eq('id', rec.id)
+    try {
+      const res = await fetch(`${API_URL}/kyc/${u.id}`);
+      if (res.ok) {
+        const kycData = await res.json();
+        const nextNotes = [...(kycData.adminNotes || []), note];
+
+        await fetch(`${API_URL}/kyc`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: u.id, adminNotes: nextNotes })
+        });
+
+        setKyc(prev => {
+          const idx = prev.findIndex(k => k.userId === u.id)
+          if (idx === -1) return prev
+          const next = [...prev]
+          next[idx] = { ...next[idx], adminNotes: nextNotes }
+          return next
+        })
       }
-    } else {
-      const row = kyc.find(k => k.userId === u.id)
-      const currentNotes = (row?.adminNotes || []) as string[]
-      nextNotes = [...currentNotes, note]
-      try { if (typeof window !== 'undefined') localStorage.setItem(`kycAdminNotes:${u.id}`, JSON.stringify(nextNotes)) } catch {}
-    }
-    if (nextNotes.length === 0) {
-      const row = kyc.find(k => k.userId === u.id)
-      const currentNotes = (row?.adminNotes || []) as string[]
-      nextNotes = [...currentNotes, note]
-    }
-    setKyc(prev => {
-      const idx = prev.findIndex(k => k.userId === u.id)
-      if (idx === -1) return prev
-      const next = [...prev]
-      next[idx] = { ...next[idx], adminNotes: nextNotes }
-      return next
-    })
+    } catch { }
   }
+
   const askReuploadPrompt = async (u: User, docs: KycDocument[]) => {
     const types = (docs && docs.length > 0 ? docs.map(d => d.type) : ['Aadhaar', 'Photo', 'PAN', 'GST', 'MachineProof', 'BankPassbook']) as KycDocument['type'][]
     const input = typeof window !== 'undefined' ? window.prompt(`Enter doc type to re-upload: ${types.join(', ')}`) || '' : ''
@@ -205,12 +144,14 @@ const SupplierKycScreen: React.FC = () => {
     if (!picked) return
     await askReupload(u, picked)
   }
+
   const addNotePrompt = async (u: User) => {
     const text = typeof window !== 'undefined' ? window.prompt('Enter admin note') || '' : ''
     const note = text.trim()
     if (!note) return
     await addNote(u, note)
   }
+
   const triggerFraud = async (u: User, reason: string) => {
     addNotification({ userId: 0, message: `KYC flag: ${u.name} - ${reason}`, type: 'admin' })
   }
@@ -233,11 +174,11 @@ const SupplierKycScreen: React.FC = () => {
                 <th className="p-2">Supplier</th>
                 <th className="p-2">Phone</th>
                 <th className="p-2">Location</th>
-        <th className="p-2">Submitted Docs</th>
-        <th className="p-2">KYC Status</th>
-        <th className="p-2">Risk</th>
-        <th className="p-2">Submitted</th>
-        <th className="p-2">Actions</th>
+                <th className="p-2">Submitted Docs</th>
+                <th className="p-2">KYC Status</th>
+                <th className="p-2">Risk</th>
+                <th className="p-2">Submitted</th>
+                <th className="p-2">Actions</th>
               </tr>
             </thead>
             <tbody>

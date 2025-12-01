@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { useLanguage } from '../context/LanguageContext';
 import { AppView, User } from '../types';
-import { supabase, supabaseConfigured } from '../lib/supabase';
+import { uploadImage } from '../src/lib/upload';
 
 interface PersonalDetailsScreenProps {
   goBack: () => void;
@@ -90,17 +90,16 @@ const PersonalDetailsScreen: React.FC<PersonalDetailsScreenProps> = ({ goBack, n
                 const nameLower = file.name.toLowerCase();
                 const hasAllowedExt = allowedExt.some(ext => nameLower.endsWith(ext));
                 if (!hasAllowedType && !hasAllowedExt) { showToast('Please upload an image (jpg, jpeg, png, heic).', 'error'); e.target.value = ''; return; }
-                const toDataUrl = (f: File) => new Promise<string>((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(r.result as string); r.onerror = () => reject(new Error('read_failed')); r.readAsDataURL(f); });
-                if (supabaseConfigured) {
-                  const path = `${user.id}/profile-${Date.now()}-${file.name}`;
-                  const { error } = await supabase.storage.from('profiles').upload(path, file, { upsert: true });
-                  if (!error) {
-                    const { data: pub } = supabase.storage.from('profiles').getPublicUrl(path);
-                    const url = pub?.publicUrl || '';
-                    if (url) { await updateUser({ ...user, profilePicture: url }); showToast('Profile picture updated.', 'success'); e.target.value = ''; return; }
-                  }
+
+                try {
+                  showToast('Uploading...', 'info');
+                  const url = await uploadImage(file);
+                  await updateUser({ ...user, profilePicture: url });
+                  showToast('Profile picture updated.', 'success');
+                } catch (error) {
+                  console.error(error);
+                  showToast('Failed to upload image.', 'error');
                 }
-                try { const result = await toDataUrl(file); await updateUser({ ...user, profilePicture: result }); showToast('Profile picture selected.', 'success'); } catch { showToast('Failed to read the file.', 'error'); }
                 e.target.value = '';
               }}
             />

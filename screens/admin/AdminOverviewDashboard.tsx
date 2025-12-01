@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { useAuth } from '../../context/AuthContext'
 import { useItem } from '../../context/ItemContext'
 import { useBooking } from '../../context/BookingContext'
-import { supabase } from '../../lib/supabase'
 import { UserRole, ItemCategory } from '../../types'
 import { LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, BarChart, Bar, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts'
 
@@ -23,37 +22,9 @@ const AdminOverviewDashboard: React.FC = () => {
   const [activity, setActivity] = useState<{ type: string; text: string; ts: string }[]>([])
 
   useEffect(() => {
-    const loadPayments = async () => {
-      const { data } = await supabase.from('payments').select('*')
-      setPayments(data || [])
-    }
-    loadPayments()
-    const channel = supabase
-      .channel('admin-overview')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'payments' }, payload => {
-        setPayments(prev => {
-          const next = [...prev]
-          if (payload.eventType === 'INSERT' && payload.new) next.unshift(payload.new as any)
-          return next
-        })
-        setActivity(a => [{ type: 'Payment', text: 'Payment received', ts: new Date().toISOString() }, ...a].slice(0, 50))
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'bookings' }, payload => {
-        const evt = payload.eventType
-        const text = evt === 'INSERT' ? 'New booking' : evt === 'UPDATE' ? 'Booking updated' : 'Booking deleted'
-        setActivity(a => [{ type: 'Booking', text, ts: new Date().toISOString() }, ...a].slice(0, 50))
-      })
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'items' }, () => {
-        setActivity(a => [{ type: 'Supplier', text: 'Supplier added new item', ts: new Date().toISOString() }, ...a].slice(0, 50))
-      })
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'supportTickets' }, () => {
-        setActivity(a => [{ type: 'Support', text: 'New complaint', ts: new Date().toISOString() }, ...a].slice(0, 50))
-      })
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'kycsubmissions' }, () => {
-        setActivity(a => [{ type: 'KYC', text: 'KYC submitted', ts: new Date().toISOString() }, ...a].slice(0, 50))
-      })
-      .subscribe()
-    return () => { supabase.removeChannel(channel) }
+    // TODO: Replace with actual payment API when ready
+    setPayments([])
+    // Real-time updates will be added later
   }, [])
 
   const totals = useMemo(() => {
@@ -94,7 +65,7 @@ const AdminOverviewDashboard: React.FC = () => {
 
   const revenueByDay = useMemo(() => {
     const map = new Map<string, number>()
-    payments.forEach(p => { const d = (p.date || '').slice(0, 10); map.set(d, (map.get(d) || 0) + (p.amount || 0) ) })
+    payments.forEach(p => { const d = (p.date || '').slice(0, 10); map.set(d, (map.get(d) || 0) + (p.amount || 0)) })
     return Array.from(map.entries()).sort(([a], [b]) => a.localeCompare(b)).map(([date, amount]) => ({ date, amount }))
   }, [payments])
 
@@ -104,7 +75,7 @@ const AdminOverviewDashboard: React.FC = () => {
         <Stat label="Total Farmers" value={totals.farmers} />
         <Stat label="Total Suppliers" value={totals.suppliers} />
         <Stat label="Total Bookings" value={totals.totalBookings} />
-        <Stat label="Total Revenue" value={`₹${totals.revenue.toLocaleString()}`}/>
+        <Stat label="Total Revenue" value={`₹${totals.revenue.toLocaleString()}`} />
         <Stat label="Active Users" value={totals.activeUsers} />
         <Stat label="Total Machines" value={totals.machines} />
         <Stat label="Complaints/Tickets" value={totals.complaints} />

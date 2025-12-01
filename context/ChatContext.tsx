@@ -1,7 +1,8 @@
 import React, { createContext, useState, useContext, ReactNode, useMemo, useCallback, useEffect } from 'react';
 import { ChatMessage } from '../types';
-import { supabase } from '../lib/supabase';
 import { useNotification } from './NotificationContext';
+
+const API_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3001/api';
 
 type ConversationSummary = {
     chatId: string;
@@ -26,27 +27,36 @@ export const ChatProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     useEffect(() => {
         const load = async () => {
             try {
-                const { data } = await supabase.from('chatMessages').select('*');
-                setMessages((data || []) as ChatMessage[]);
-            } catch {}
+                const res = await fetch(`${API_URL}/chat-messages`);
+                if (res.ok) {
+                    const data = await res.json();
+                    setMessages(data);
+                }
+            } catch { }
         };
         load();
     }, []);
 
     const getMessagesForChat = useCallback((chatId: string) => {
-        return messages.filter(msg => msg.chatId === chatId).sort((a,b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+        return messages.filter(msg => msg.chatId === chatId).sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
     }, [messages]);
 
     const sendMessage = useCallback(async (chatId: string, messageData: Omit<ChatMessage, 'id' | 'chatId' | 'timestamp' | 'read'>) => {
         const newMsg: ChatMessage = { id: Date.now(), chatId, timestamp: new Date().toISOString(), read: false, ...messageData } as ChatMessage;
-        await supabase.from('chatMessages').upsert([newMsg]);
-        setMessages(prev => [...prev, newMsg]);
-        const lower = (newMsg.text || '').toLowerCase();
-        const blacklist = ['abuse','idiot','stupid','fool','fraud'];
-        if (blacklist.some(w => lower.includes(w))) {
-            addNotification && addNotification({ userId: 0, message: `Potential abusive chat detected from user ${newMsg.senderId}.`, type: 'admin' });
-        }
-    }, []);
+        try {
+            await fetch(`${API_URL}/chat-messages`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(newMsg)
+            });
+            setMessages(prev => [...prev, newMsg]);
+            const lower = (newMsg.text || '').toLowerCase();
+            const blacklist = ['abuse', 'idiot', 'stupid', 'fool', 'fraud'];
+            if (blacklist.some(w => lower.includes(w))) {
+                addNotification && addNotification({ userId: 0, message: `Potential abusive chat detected from user ${newMsg.senderId}.`, type: 'admin' });
+            }
+        } catch { }
+    }, [addNotification]);
 
     const getConversationsForUser = useCallback((userId: number) => {
         const conversations = new Map<string, ChatMessage[]>();
@@ -58,7 +68,7 @@ export const ChatProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         });
 
         const userConversations: ConversationSummary[] = [];
-        
+
         conversations.forEach((msgs, chatId) => {
             const participants = chatId.split('-').map(Number);
             if (participants.includes(userId)) {
@@ -73,7 +83,7 @@ export const ChatProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 }
             }
         });
-        
+
         return userConversations.sort((a, b) => new Date(b.lastMessage.timestamp).getTime() - new Date(a.lastMessage.timestamp).getTime());
     }, [messages]);
 
@@ -84,7 +94,13 @@ export const ChatProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const markChatAsRead = useCallback(async (chatId: string, currentUserId: number) => {
         const unread = messages.filter(m => m.chatId === chatId && m.receiverId === currentUserId && !m.read);
         if (unread.length > 0) {
-            await supabase.from('chatMessages').update({ read: true }).eq('chatId', chatId).eq('receiverId', currentUserId);
+            for (const msg of unread) {
+                await fetch(`${API_URL}/chat-messages/${msg.id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ read: true })
+                });
+            }
         }
         setMessages(prev => prev.map(m => unread.some(u => u.id === m.id) ? { ...m, read: true } : m));
     }, [messages]);

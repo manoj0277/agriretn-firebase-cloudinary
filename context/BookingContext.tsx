@@ -3,7 +3,8 @@ import { Booking, DamageReport, Item, ItemCategory } from '../types';
 import { useToast } from './ToastContext';
 import { useNotification } from './NotificationContext';
 import { useItem } from './ItemContext';
-import { supabase, supabaseConfigured } from '../lib/supabase';
+
+const API_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3001/api';
 
 interface BookingContextType {
     bookings: Booking[];
@@ -34,7 +35,7 @@ const generateBookingId = () => {
 const getDurationInHours = (startTime: string, endTime?: string, estimatedDuration?: number): number => {
     // If estimated duration is provided, use it
     if (estimatedDuration) return estimatedDuration;
-    
+
     // Fallback to old endTime calculation if needed
     if (!startTime || !endTime) return 3; // Default fallback
     const start = new Date(`1970-01-01T${startTime}:00`);
@@ -50,25 +51,17 @@ export const BookingProvider: React.FC<{ children: ReactNode }> = ({ children })
     const { showToast } = useToast();
     const { addNotification } = useNotification();
     const { items, updateItem } = useItem();
-    
+
     const supplierRejectCounts: Record<number, { count: number; firstTs: number }> = {};
 
     useEffect(() => {
-        const cached = localStorage.getItem('agrirent-bookings-cache');
-        if (cached) {
-            try {
-                const parsed = JSON.parse(cached) as Booking[];
-                if (Array.isArray(parsed)) setBookings(parsed);
-            } catch {}
-        }
-        if (!supabaseConfigured) return;
         const loadBookings = async () => {
             try {
-                const { data, error } = await supabase.from('bookings').select('*');
-                if (error) throw error;
-                const arr = (data || []) as Booking[];
-                setBookings(arr);
-                localStorage.setItem('agrirent-bookings-cache', JSON.stringify(arr));
+                const res = await fetch(`${API_URL}/bookings`);
+                if (res.ok) {
+                    const data = await res.json();
+                    setBookings(data);
+                }
             } catch {
                 showToast('Could not load bookings.', 'error');
             }
@@ -77,32 +70,39 @@ export const BookingProvider: React.FC<{ children: ReactNode }> = ({ children })
     }, []);
 
     useEffect(() => {
-        if (!supabaseConfigured) return;
         const loadReports = async () => {
             try {
-                const { data } = await supabase.from('damageReports').select('*');
-                setDamageReports((data || []) as DamageReport[]);
-            } catch {}
+                const res = await fetch(`${API_URL}/damage-reports`);
+                if (res.ok) {
+                    const data = await res.json();
+                    setDamageReports(data);
+                }
+            } catch { }
         };
         loadReports();
     }, []);
 
     const addBooking = async (newBookingsData: Omit<Booking, 'id'> | Omit<Booking, 'id'>[]) => {
         const bookingsDataToAdd = Array.isArray(newBookingsData) ? newBookingsData : [newBookingsData];
-        
+
         const bookingsToAdd: Booking[] = bookingsDataToAdd.map(data => ({
             ...data,
             id: generateBookingId(),
         }));
         try {
-            const { error } = await supabase.from('bookings').upsert(bookingsToAdd);
-            if (error) throw error;
-            localStorage.setItem('agrirent-bookings-cache', JSON.stringify(bookingsToAdd));
+            const res = await fetch(`${API_URL}/bookings`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(bookingsToAdd)
+            });
+            if (!res.ok) throw new Error('Failed');
+            // Optimistic update or refetch? Let's refetch or just add to state
+            setBookings(prev => [...bookingsToAdd, ...prev]);
         } catch {
             showToast('Failed to create booking.', 'error');
             return;
         }
-        
+
         const firstBooking = bookingsDataToAdd[0];
         let message = 'Booking created!';
         if (firstBooking.status === 'Searching') {
@@ -110,7 +110,7 @@ export const BookingProvider: React.FC<{ children: ReactNode }> = ({ children })
         } else if (firstBooking.status === 'Pending Confirmation') {
             message = 'Request sent!';
         }
-        
+
         showToast(message, 'success');
     };
 
@@ -118,14 +118,18 @@ export const BookingProvider: React.FC<{ children: ReactNode }> = ({ children })
         const t = setInterval(() => {
             const now = new Date();
             const list = bookings.filter(b => b.status === 'Confirmed' && b.startTime && b.date && !b.otpVerified);
-            list.forEach(b => {
+            list.forEach(async b => {
                 const dt = new Date(b.date);
                 const [hh, mm] = (b.startTime || '00:00').split(':');
                 dt.setHours(parseInt(hh || '0'), parseInt(mm || '0'), 0, 0);
                 const diff = now.getTime() - dt.getTime();
                 if (diff > 20 * 60 * 1000) {
                     const comp = Math.round((b.finalPrice || b.estimatedPrice || 0) * 0.05);
-                    supabase.from('bookings').update({ discountAmount: comp }).eq('id', b.id);
+                    await fetch(`${API_URL}/bookings/${b.id}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ discountAmount: comp })
+                    });
                     addNotification({ userId: b.farmerId, message: 'Supplier delay detected. Compensation applied.', type: 'booking' });
                     addNotification({ userId: 0, message: `Delay >20m for booking ${b.id}.`, type: 'admin' });
                 }
@@ -133,7 +137,7 @@ export const BookingProvider: React.FC<{ children: ReactNode }> = ({ children })
         }, 60000);
         return () => clearInterval(t);
     }, [bookings]);
-    
+
     const rejectBooking = (bookingId: string) => {
         const booking = bookings.find(b => b.id === bookingId);
         if (!booking || booking.status !== 'Pending Confirmation') {
@@ -141,7 +145,11 @@ export const BookingProvider: React.FC<{ children: ReactNode }> = ({ children })
             return;
         }
 
-        supabase.from('bookings').update({ status: 'Searching', isRebroadcast: true, supplierId: undefined, itemId: undefined }).eq('id', bookingId);
+        fetch(`${API_URL}/bookings/${bookingId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: 'Searching', isRebroadcast: true, supplierId: null, itemId: null })
+        });
         showToast("Booking rejected. It is now a broadcast to all suppliers.", "info");
         addNotification({
             userId: booking.farmerId,
@@ -176,9 +184,9 @@ export const BookingProvider: React.FC<{ children: ReactNode }> = ({ children })
                 const updatedItem: Item = { ...itemToRelease };
                 if (bookingToCancel.quantity) {
                     updatedItem.quantityAvailable = (itemToRelease.quantityAvailable || 0) + bookingToCancel.quantity;
-                     if(updatedItem.quantityAvailable > 0) {
+                    if (updatedItem.quantityAvailable > 0) {
                         updatedItem.available = true;
-                     }
+                    }
                 } else {
                     updatedItem.available = true;
                 }
@@ -186,10 +194,14 @@ export const BookingProvider: React.FC<{ children: ReactNode }> = ({ children })
             }
         }
 
-        supabase.from('bookings').update({ status: 'Cancelled' }).eq('id', bookingId);
+        fetch(`${API_URL}/bookings/${bookingId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: 'Cancelled' })
+        });
         showToast('Booking has been cancelled.', 'warning');
     };
-    
+
     const acceptBookingRequest = (bookingId: string, supplierId: number, itemId: number, options?: { operateSelf?: boolean; quantityToProvide?: number }): boolean => {
         const booking = bookings.find(b => b.id === bookingId);
         if (!booking || !['Searching', 'Awaiting Operator', 'Pending Confirmation'].includes(booking.status)) {
@@ -202,13 +214,13 @@ export const BookingProvider: React.FC<{ children: ReactNode }> = ({ children })
             showToast('Selected item is not available.', 'error');
             return false;
         }
-        
+
         const duration = Math.max(1, getDurationInHours(booking.startTime, undefined, booking.estimatedDuration));
         const surgeMultiplier = (() => {
             const month = new Date(booking.date || new Date().toISOString()).getMonth() + 1;
             let base = 1;
-            if ([9,10,11].includes(month)) base = 1.25;
-            if ([3,4,5].includes(month)) base = Math.max(base, 1.15);
+            if ([9, 10, 11].includes(month)) base = 1.25;
+            if ([3, 4, 5].includes(month)) base = Math.max(base, 1.15);
             const demand = bookings.filter(b => b.itemCategory === booking.itemCategory && b.status === 'Searching' && b.location === booking.location).length;
             if (demand > 10) base = Math.max(base, 1.4);
             else if (demand > 5) base = Math.max(base, 1.25);
@@ -222,9 +234,13 @@ export const BookingProvider: React.FC<{ children: ReactNode }> = ({ children })
             const machineItem = items.find(i => i.id === booking.itemId);
             const driverPrice = driverItem.purposes[0]?.price || 0;
 
-            supabase.from('bookings').update({ status: 'Confirmed', operatorId: supplierId, finalPrice: booking.finalPrice! + (driverPrice * duration) }).eq('id', bookingId);
+            fetch(`${API_URL}/bookings/${bookingId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status: 'Confirmed', operatorId: supplierId, finalPrice: booking.finalPrice! + (driverPrice * duration) })
+            });
             updateItem({ ...driverItem, available: false });
-            
+
             showToast('Operator job confirmed!', 'success');
             addNotification({ userId: booking.farmerId, message: `An operator has been found for your ${machineItem?.name} booking!`, type: 'booking' });
             if (booking.supplierId) {
@@ -237,16 +253,20 @@ export const BookingProvider: React.FC<{ children: ReactNode }> = ({ children })
         if (booking.status === 'Pending Confirmation') {
             const purposeDetails = item.purposes.find(p => p.name === booking.workPurpose);
             if (!purposeDetails) {
-                 showToast('This item does not support the requested work purpose.', 'error');
-                 return false;
+                showToast('This item does not support the requested work purpose.', 'error');
+                return false;
             }
             const finalPrice = Math.round(((purposeDetails.price * duration) + ((booking.operatorRequired && item.operatorCharge) ? (item.operatorCharge * duration) : 0)) * surgeMultiplier);
-             
-             supabase.from('bookings').update({ status: 'Confirmed', finalPrice }).eq('id', bookingId);
-             updateItem({ ...item, available: false });
-             showToast('Direct request confirmed!', 'success');
-             addNotification({ userId: booking.farmerId, message: `Your request for ${item.name} has been confirmed!`, type: 'booking' });
-             return true;
+
+            fetch(`${API_URL}/bookings/${bookingId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status: 'Confirmed', finalPrice })
+            });
+            updateItem({ ...item, available: false });
+            showToast('Direct request confirmed!', 'success');
+            addNotification({ userId: booking.farmerId, message: `Your request for ${item.name} has been confirmed!`, type: 'booking' });
+            return true;
         }
 
 
@@ -254,7 +274,7 @@ export const BookingProvider: React.FC<{ children: ReactNode }> = ({ children })
         if (booking.status === 'Searching') {
             const purposeDetails = item.purposes.find(p => p.name === booking.workPurpose);
             if (!purposeDetails) {
-                 showToast('The selected item does not support the requested work purpose.', 'error');
+                showToast('The selected item does not support the requested work purpose.', 'error');
                 return false;
             }
             const priceForPurpose = purposeDetails.price;
@@ -305,15 +325,23 @@ export const BookingProvider: React.FC<{ children: ReactNode }> = ({ children })
             }
             updateItem(updatedItem);
 
-            supabase.from('bookings').upsert([newConfirmedBooking]);
+            fetch(`${API_URL}/bookings`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify([newConfirmedBooking])
+            });
             if (isPartial) {
                 const remainingBooking: Booking = {
                     ...booking,
                     quantity: booking.quantity! - quantityToConfirm,
                 };
-                supabase.from('bookings').upsert([remainingBooking]);
+                fetch(`${API_URL}/bookings`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify([remainingBooking])
+                });
             }
-            
+
             addNotification({ userId: booking.farmerId, message: `Your request for ${item.name} has been confirmed!`, type: 'booking' });
             showToast('Job accepted! The farmer has been notified.', 'success');
             return true;
@@ -323,15 +351,23 @@ export const BookingProvider: React.FC<{ children: ReactNode }> = ({ children })
     };
 
     const raiseDispute = (bookingId: string) => {
-        supabase.from('bookings').update({ disputeRaised: true }).eq('id', bookingId);
+        fetch(`${API_URL}/bookings/${bookingId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ disputeRaised: true })
+        });
         showToast('Dispute has been raised. Admin will review it shortly.', 'info');
     };
 
     const resolveDispute = (bookingId: string) => {
-        supabase.from('bookings').update({ disputeResolved: true }).eq('id', bookingId);
+        fetch(`${API_URL}/bookings/${bookingId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ disputeResolved: true })
+        });
         showToast('Dispute marked as resolved.', 'success');
     };
-    
+
     const reportDamage = async (reportData: Omit<DamageReport, 'id' | 'status' | 'timestamp'>) => {
         const newReport: DamageReport = {
             id: Date.now(),
@@ -340,9 +376,17 @@ export const BookingProvider: React.FC<{ children: ReactNode }> = ({ children })
             timestamp: new Date().toISOString()
         };
         try {
-            const { error } = await supabase.from('damageReports').upsert([newReport]);
-            if (error) throw error;
-            await supabase.from('bookings').update({ damageReported: true }).eq('id', String(reportData.bookingId));
+            const res = await fetch(`${API_URL}/damage-reports`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(newReport)
+            });
+            if (!res.ok) throw new Error('Failed');
+            await fetch(`${API_URL}/bookings/${reportData.bookingId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ damageReported: true })
+            });
             showToast('Damage report submitted to admin.', 'success');
         } catch {
             showToast('Failed to submit damage report.', 'error');
@@ -351,8 +395,12 @@ export const BookingProvider: React.FC<{ children: ReactNode }> = ({ children })
 
     const resolveDamageClaim = async (reportId: number) => {
         try {
-            const { error } = await supabase.from('damageReports').update({ status: 'resolved' }).eq('id', reportId);
-            if (error) throw error;
+            const res = await fetch(`${API_URL}/damage-reports/${reportId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status: 'resolved' })
+            });
+            if (!res.ok) throw new Error('Failed');
             showToast('Damage claim marked as resolved.', 'success');
         } catch {
             showToast('Failed to resolve damage claim.', 'error');
@@ -368,7 +416,11 @@ export const BookingProvider: React.FC<{ children: ReactNode }> = ({ children })
         if (!booking) return;
 
         const otp = generateOtp();
-        supabase.from('bookings').update({ status: 'Arrived', otpCode: otp, otpVerified: false }).eq('id', bookingId);
+        fetch(`${API_URL}/bookings/${bookingId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: 'Arrived', otpCode: otp, otpVerified: false })
+        });
         showToast('Status updated to Arrived.', 'success');
         addNotification({ userId: booking.farmerId, message: `Your service has arrived. Share this OTP with the supplier to start work: ${otp}`, type: 'booking' });
     };
@@ -384,7 +436,11 @@ export const BookingProvider: React.FC<{ children: ReactNode }> = ({ children })
             showToast('Invalid OTP. Please try again.', 'error');
             return;
         }
-        supabase.from('bookings').update({ status: 'In Process', otpVerified: true, workStartTime: new Date().toISOString() }).eq('id', bookingId);
+        fetch(`${API_URL}/bookings/${bookingId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: 'In Process', otpVerified: true, workStartTime: new Date().toISOString() })
+        });
         showToast('OTP verified. Work has now started.', 'success');
         addNotification({ userId: booking.farmerId, message: `Supplier started work for booking #${bookingId.substring(0, 5)}.`, type: 'booking' });
         if (booking.supplierId) {
@@ -395,12 +451,12 @@ export const BookingProvider: React.FC<{ children: ReactNode }> = ({ children })
     const completeBooking = (bookingId: string) => {
         const booking = bookings.find(b => b.id === bookingId);
         if (!booking) return;
-        
+
         // Calculate payment breakdown
         const finalPrice = booking.finalPrice || booking.estimatedPrice || 0;
         const adminCommission = 0; // 0% commission
         const supplierPaymentAmount = finalPrice;
-        
+
         // Create payment details
         const paymentDetails = {
             farmerAmount: finalPrice,
@@ -409,16 +465,24 @@ export const BookingProvider: React.FC<{ children: ReactNode }> = ({ children })
             totalAmount: finalPrice,
             paymentDate: new Date().toISOString()
         };
-        
+
         // If paid in full upfront, mark as completed directly.
         if (booking.advanceAmount && booking.estimatedPrice && booking.advanceAmount === booking.estimatedPrice) {
-            supabase.from('bookings').update({ status: 'Completed', finalPrice: booking.estimatedPrice, finalPaymentId: booking.advancePaymentId, farmerPaymentAmount: finalPrice, supplierPaymentAmount: supplierPaymentAmount, adminCommission: adminCommission, paymentDetails: paymentDetails }).eq('id', bookingId);
+            fetch(`${API_URL}/bookings/${bookingId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status: 'Completed', finalPrice: booking.estimatedPrice, finalPaymentId: booking.advancePaymentId, farmerPaymentAmount: finalPrice, supplierPaymentAmount: supplierPaymentAmount, adminCommission: adminCommission, paymentDetails: paymentDetails })
+            });
             showToast('Work completed and already paid in full!', 'success');
             if (booking.supplierId) {
                 addNotification({ userId: booking.supplierId, message: `Work for booking #${bookingId.substring(0, 5)} is complete. Payment of ₹${supplierPaymentAmount} will be processed.`, type: 'booking' });
             }
         } else { // Otherwise, move to pending payment
-            supabase.from('bookings').update({ status: 'Pending Payment', finalPrice: finalPrice, farmerPaymentAmount: finalPrice, supplierPaymentAmount: supplierPaymentAmount, adminCommission: adminCommission, paymentDetails: paymentDetails }).eq('id', bookingId);
+            fetch(`${API_URL}/bookings/${bookingId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status: 'Pending Payment', finalPrice: finalPrice, farmerPaymentAmount: finalPrice, supplierPaymentAmount: supplierPaymentAmount, adminCommission: adminCommission, paymentDetails: paymentDetails })
+            });
             showToast('Work marked as completed! Please proceed to final payment.', 'success');
             if (booking.supplierId) {
                 addNotification({ userId: booking.supplierId, message: `The farmer has marked booking #${bookingId.substring(0, 5)} as complete. Awaiting final payment of ₹${finalPrice}.`, type: 'booking' });
@@ -438,7 +502,7 @@ export const BookingProvider: React.FC<{ children: ReactNode }> = ({ children })
         const finalPrice = booking.finalPrice || booking.estimatedPrice || 0;
         const adminCommission = 0; // 0% commission
         const supplierPaymentAmount = finalPrice;
-        
+
         const paymentDetails = {
             farmerAmount: finalPrice,
             supplierAmount: supplierPaymentAmount,
@@ -448,7 +512,11 @@ export const BookingProvider: React.FC<{ children: ReactNode }> = ({ children })
             method
         };
 
-        supabase.from('bookings').update({ status: 'Completed', finalPaymentId: method === 'Cash' ? `cash_${Date.now()}` : `final_pay_${Date.now()}` , paymentMethod: method, farmerPaymentAmount: finalPrice, supplierPaymentAmount: supplierPaymentAmount, adminCommission: adminCommission, paymentDetails: paymentDetails }).eq('id', bookingId);
+        fetch(`${API_URL}/bookings/${bookingId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: 'Completed', finalPaymentId: method === 'Cash' ? `cash_${Date.now()}` : `final_pay_${Date.now()}`, paymentMethod: method, farmerPaymentAmount: finalPrice, supplierPaymentAmount: supplierPaymentAmount, adminCommission: adminCommission, paymentDetails: paymentDetails })
+        });
         showToast(method === 'Cash' ? 'Cash payment recorded! Booking completed.' : 'Final payment successful! Your booking is complete.', 'success');
         if (booking.supplierId) {
             addNotification({ userId: booking.supplierId, message: `${method === 'Cash' ? 'Cash' : 'Online'} payment received for booking #${bookingId.substring(0, 5)}. Supplier payout: ₹${supplierPaymentAmount}.`, type: 'booking' });

@@ -18,7 +18,7 @@ import Button from '../components/Button';
 import { useLanguage } from '../context/LanguageContext';
 import { TranslationKey } from '../translations';
 import { useToast } from '../context/ToastContext';
-import { supabase } from '../lib/supabase';
+
 
 interface AdminViewProps {
     navigate: (view: AppView) => void;
@@ -56,20 +56,20 @@ const AdminView: React.FC<AdminViewProps> = ({ navigate }) => {
 
     const MoreScreen = () => (
         <div className="p-4 space-y-4">
-             <div className="bg-white dark:bg-neutral-800 rounded-lg border border-neutral-200 dark:border-neutral-700 overflow-hidden divide-y divide-neutral-200 dark:divide-neutral-700">
+            <div className="bg-white dark:bg-neutral-800 rounded-lg border border-neutral-200 dark:border-neutral-700 overflow-hidden divide-y divide-neutral-200 dark:divide-neutral-700">
                 <button onClick={() => setActiveTab('support')} className="w-full text-left p-4 hover:bg-neutral-50 dark:hover:bg-neutral-700/50 transition-colors flex justify-between items-center">
                     <span className="font-semibold text-neutral-700 dark:text-neutral-200">{t('supportTickets')}</span>
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-neutral-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
                 </button>
-                 <button onClick={() => setActiveTab('analytics')} className="w-full text-left p-4 hover:bg-neutral-50 dark:hover:bg-neutral-700/50 transition-colors flex justify-between items-center">
+                <button onClick={() => setActiveTab('analytics')} className="w-full text-left p-4 hover:bg-neutral-50 dark:hover:bg-neutral-700/50 transition-colors flex justify-between items-center">
                     <span className="font-semibold text-neutral-700 dark:text-neutral-200">{t('analytics')}</span>
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-neutral-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
                 </button>
-                 <button onClick={() => setActiveTab('fraud')} className="w-full text-left p-4 hover:bg-neutral-50 dark:hover:bg-neutral-700/50 transition-colors flex justify-between items-center">
+                <button onClick={() => setActiveTab('fraud')} className="w-full text-left p-4 hover:bg-neutral-50 dark:hover:bg-neutral-700/50 transition-colors flex justify-between items-center">
                     <span className="font-semibold text-neutral-700 dark:text-neutral-200">Fraud Detection</span>
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-neutral-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
                 </button>
-                 <button onClick={() => setActiveTab('kyc')} className="w-full text-left p-4 hover:bg-neutral-50 dark:hover:bg-neutral-700/50 transition-colors flex justify-between items-center">
+                <button onClick={() => setActiveTab('kyc')} className="w-full text-left p-4 hover:bg-neutral-50 dark:hover:bg-neutral-700/50 transition-colors flex justify-between items-center">
                     <span className="font-semibold text-neutral-700 dark:text-neutral-200">Supplier KYC</span>
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-neutral-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
                 </button>
@@ -106,9 +106,9 @@ const AdminView: React.FC<AdminViewProps> = ({ navigate }) => {
                 return <AdminOverviewDashboard />;
         }
     };
-    
+
     const headerTitle = useMemo(() => {
-        switch(activeTab) {
+        switch (activeTab) {
             case 'support':
                 return t('supportTickets');
             case 'analytics':
@@ -124,7 +124,7 @@ const AdminView: React.FC<AdminViewProps> = ({ navigate }) => {
 
     return (
         <div className="pb-20">
-             <Header title={headerTitle}>
+            <Header title={headerTitle}>
                 <NotificationBell />
             </Header>
             {renderContent()}

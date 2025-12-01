@@ -1,7 +1,8 @@
 import React, { createContext, useState, useContext, ReactNode, useMemo, useEffect } from 'react';
 import { ForumPost, CommunityReply } from '../types';
 import { useToast } from './ToastContext';
-import { supabase } from '../lib/supabase';
+
+const API_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3001/api';
 
 interface CommunityContextType {
     posts: ForumPost[];
@@ -18,12 +19,14 @@ export const CommunityProvider: React.FC<{ children: ReactNode }> = ({ children 
     useEffect(() => {
         const fetchPosts = async () => {
             try {
-                const { data, error } = await supabase.from('forumPosts').select('*');
-                if (error) throw error;
+                const response = await fetch(`${API_URL}/posts`);
+                if (!response.ok) throw new Error('Failed to fetch posts');
+                const data = await response.json();
                 const rows = (data || []) as ForumPost[];
                 rows.sort((a, b) => (b.timestamp?.localeCompare?.(a.timestamp || '') || 0));
                 setPosts(rows);
             } catch (error) {
+                console.error(error);
                 showToast('Could not load community posts.', 'error');
             }
         };
@@ -32,27 +35,46 @@ export const CommunityProvider: React.FC<{ children: ReactNode }> = ({ children 
 
     const addPost = async (postData: Omit<ForumPost, 'id' | 'replies' | 'timestamp'>) => {
         try {
-            const newPost: ForumPost = { id: Date.now(), timestamp: new Date().toISOString(), replies: [], ...postData } as ForumPost;
-            const { error } = await supabase.from('forumPosts').upsert([newPost]);
-            if (error) throw error;
+            const response = await fetch(`${API_URL}/posts`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    ...postData,
+                    timestamp: new Date().toISOString()
+                })
+            });
+            if (!response.ok) throw new Error('Failed to create post');
+            const newPost = await response.json();
             setPosts(prev => [newPost, ...prev]);
             showToast('Post created successfully!', 'success');
         } catch (error) {
+            console.error(error);
             showToast('Failed to create post.', 'error');
         }
     };
 
     const addReply = async (postId: number, replyData: Omit<CommunityReply, 'id' | 'timestamp'>) => {
         try {
-            const newReply: CommunityReply = { id: Date.now(), timestamp: new Date().toISOString(), ...replyData } as CommunityReply;
-            const { data } = await supabase.from('forumPosts').select('replies').eq('id', postId).limit(1);
-            const existing = (data && data[0] && (data[0] as any).replies) || [];
-            const updatedReplies = [...existing, newReply];
-            const { error } = await supabase.from('forumPosts').update({ replies: updatedReplies }).eq('id', postId);
-            if (error) throw error;
-            setPosts(prev => prev.map(post => post.id === postId ? { ...post, replies: updatedReplies } : post));
+            const response = await fetch(`${API_URL}/posts/${postId}/replies`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    ...replyData,
+                    timestamp: new Date().toISOString()
+                })
+            });
+            if (!response.ok) throw new Error('Failed to add reply');
+            const newReply = await response.json();
+
+            setPosts(prev => prev.map(post => {
+                if (post.id === postId) {
+                    return { ...post, replies: [...(post.replies || []), newReply] };
+                }
+                return post;
+            }));
             showToast('Reply posted!', 'success');
         } catch (error) {
+            console.error(error);
             showToast('Failed to post reply.', 'error');
         }
     };

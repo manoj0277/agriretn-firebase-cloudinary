@@ -7,7 +7,8 @@ import React, { createContext, useState, useContext, ReactNode, useMemo, useEffe
 import { Item } from '../types';
 import { useToast } from './ToastContext';
 import { useNotification } from './NotificationContext';
-import { supabase, supabaseConfigured } from '../lib/supabase';
+
+const API_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3001/api';
 
 interface ItemContextType {
     items: Item[];
@@ -24,23 +25,15 @@ export const ItemProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const [items, setItems] = useState<Item[]>([]);
     const { showToast } = useToast();
     const { addNotification } = useNotification() as any;
-    
+
     useEffect(() => {
-        const cached = localStorage.getItem('agrirent-items-cache');
-        if (cached) {
-            try {
-                const parsed = JSON.parse(cached) as Item[];
-                if (Array.isArray(parsed)) setItems(parsed);
-            } catch {}
-        }
         const load = async () => {
-            if (!supabaseConfigured) return;
             try {
-                const { data, error } = await supabase.from('items').select('*');
-                if (error) throw error;
-                const arr = (data || []) as Item[];
-                setItems(arr);
-                localStorage.setItem('agrirent-items-cache', JSON.stringify(arr));
+                const res = await fetch(`${API_URL}/items`);
+                if (res.ok) {
+                    const data = await res.json();
+                    setItems(data);
+                }
             } catch {
                 showToast('Could not load items.', 'error');
             }
@@ -50,14 +43,14 @@ export const ItemProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     const addItem = async (itemData: Omit<Item, 'id'>) => {
         try {
-            const newItem: Item = { id: Date.now(), ...itemData } as Item;
-            const { error } = await supabase.from('items').upsert([newItem]);
-            if (error) throw error;
-            setItems(prev => {
-                const next = [newItem, ...prev];
-                localStorage.setItem('agrirent-items-cache', JSON.stringify(next));
-                return next;
+            const res = await fetch(`${API_URL}/items`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(itemData)
             });
+            if (!res.ok) throw new Error('Failed');
+            const newItem = await res.json();
+            setItems(prev => [newItem, ...prev]);
             showToast('Item submitted for admin approval!', 'success');
         } catch {
             showToast('Failed to add item. Please try again.', 'error');
@@ -67,14 +60,16 @@ export const ItemProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const updateItem = async (updatedItem: Item) => {
         try {
             const prev = items.find(i => i.id === updatedItem.id);
-            const { error } = await supabase.from('items').update({ ...updatedItem }).eq('id', updatedItem.id);
-            if (error) throw error;
-            setItems(prev => {
-                const next = prev.map(i => i.id === updatedItem.id ? updatedItem : i);
-                localStorage.setItem('agrirent-items-cache', JSON.stringify(next));
-                return next;
+            const res = await fetch(`${API_URL}/items/${updatedItem.id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(updatedItem)
             });
+            if (!res.ok) throw new Error('Failed');
+
+            setItems(prevItems => prevItems.map(i => i.id === updatedItem.id ? updatedItem : i));
             showToast('Item updated successfully!', 'success');
+
             if (prev) {
                 const inc = prev.purposes.some(p => {
                     const next = updatedItem.purposes.find(x => x.name === p.name);
@@ -91,13 +86,9 @@ export const ItemProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     const deleteItem = async (itemId: number) => {
         try {
-            const { error } = await supabase.from('items').delete().eq('id', itemId);
-            if (error) throw error;
-            setItems(prev => {
-                const next = prev.filter(i => i.id !== itemId);
-                localStorage.setItem('agrirent-items-cache', JSON.stringify(next));
-                return next;
-            });
+            const res = await fetch(`${API_URL}/items/${itemId}`, { method: 'DELETE' });
+            if (!res.ok) throw new Error('Failed');
+            setItems(prev => prev.filter(i => i.id !== itemId));
             showToast('Item deleted.', 'warning');
         } catch {
             showToast('Failed to delete item.', 'error');
@@ -106,13 +97,14 @@ export const ItemProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     const approveItem = async (itemId: number) => {
         try {
-            const { error } = await supabase.from('items').update({ status: 'approved' }).eq('id', itemId);
-            if (error) throw error;
-            setItems(prev => {
-                const next = prev.map(i => i.id === itemId ? { ...i, status: 'approved' } : i);
-                localStorage.setItem('agrirent-items-cache', JSON.stringify(next));
-                return next;
+            // Assuming update endpoint handles partial updates
+            const res = await fetch(`${API_URL}/items/${itemId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status: 'approved' })
             });
+            if (!res.ok) throw new Error('Failed');
+            setItems(prev => prev.map(i => i.id === itemId ? { ...i, status: 'approved' } : i));
             showToast('Item approved and is now live!', 'success');
         } catch {
             showToast('Failed to approve item.', 'error');
@@ -121,13 +113,13 @@ export const ItemProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     const rejectItem = async (itemId: number) => {
         try {
-            const { error } = await supabase.from('items').update({ status: 'rejected' }).eq('id', itemId);
-            if (error) throw error;
-            setItems(prev => {
-                const next = prev.map(i => i.id === itemId ? { ...i, status: 'rejected' } : i);
-                localStorage.setItem('agrirent-items-cache', JSON.stringify(next));
-                return next;
+            const res = await fetch(`${API_URL}/items/${itemId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status: 'rejected' })
             });
+            if (!res.ok) throw new Error('Failed');
+            setItems(prev => prev.map(i => i.id === itemId ? { ...i, status: 'rejected' } : i));
             showToast('Item rejected.', 'warning');
         } catch {
             showToast('Failed to reject item.', 'error');

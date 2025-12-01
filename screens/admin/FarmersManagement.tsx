@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useState } from 'react'
 import DataTable, { Column } from '../../components/admin/DataTable'
 import { useAuth } from '../../context/AuthContext'
 import { useBooking } from '../../context/BookingContext'
-import { supabase } from '../../lib/supabase'
 import { exportToExcel, exportToPdf } from '../../lib/export'
 import { User } from '../../types'
 
@@ -26,10 +25,11 @@ const FarmersManagement: React.FC = () => {
       const lMap: Record<number, string> = {}
       const fMap: Record<number, string> = {}
 
-      const { data: payments } = await supabase.from('payments').select('*')
-      const { data: chats } = await supabase.from('chatMessages').select('*')
-      const { data: tickets } = await supabase.from('supportTickets').select('*')
-      const { data: kycData } = await supabase.from('kycSubmissions').select('userId,status')
+      // TODO: Replace with actual API calls when endpoints are ready
+      const payments: any[] = []
+      const chats: any[] = []
+      const tickets: any[] = []
+      const kycData: any[] = []
 
       for (const u of farmers) {
         const bs = bookings.filter(b => b.farmerId === u.id)
@@ -88,7 +88,8 @@ const FarmersManagement: React.FC = () => {
     { key: 'status', header: 'Status', sort: (a, b) => String(a.status).localeCompare(String(b.status)) },
   ]
 
-  const suspend = async (userId: number) => { await supabase.from('users').update({ status: 'suspended' }).eq('id', userId) }
+  const { suspendUser } = useAuth()
+  const suspend = async (userId: number) => suspendUser(userId)
 
   return (
     <div className="p-4">
@@ -117,43 +118,43 @@ const FarmersManagement: React.FC = () => {
           </select>
         </div>
         <div className="flex items-center gap-3">
-        <button
-          aria-label="Export Excel"
-          className="p-2 rounded bg-neutral-100 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700"
-          onClick={() => {
-            const rowsForExport = rows.map(r => ({
-              'Farmer Name': r.name,
-              'Phone': r.phone,
-              'Location': r.location,
-              'Total Bookings': r.totalBookings,
-              'Total Amount Spent': r.totalSpent,
-              'KYC Status': r.kycStatus,
-              'Status': r.status,
-            }))
-            exportToExcel(rowsForExport, 'Farmers')
-          }}
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" className="h-5 w-5 text-neutral-700 dark:text-neutral-200"><path fill="currentColor" d="M5 4h14a2 2 0 012 2v2H3V6a2 2 0 012-2zm-2 6h20v8a2 2 0 01-2 2H5a2 2 0 01-2-2v-8zm5 2l2 3 2-3h2l-3 4 3 4h-2l-2-3-2 3H8l3-4-3-4h2z"/></svg>
-        </button>
-        <button
-          aria-label="Export PDF"
-          className="p-2 rounded bg-neutral-100 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700"
-          onClick={() => {
-            const headers = ['Farmer Name','Phone','Location','Total Bookings','Total Amount Spent','KYC Status','Status']
-            const rowsForExport = rows.map(r => ({
-              'Farmer Name': r.name,
-              'Phone': r.phone,
-              'Location': r.location,
-              'Total Bookings': r.totalBookings,
-              'Total Amount Spent': r.totalSpent,
-              'KYC Status': r.kycStatus,
-              'Status': r.status,
-            }))
-            exportToPdf('Farmers', headers, rowsForExport)
-          }}
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" className="h-5 w-5 text-neutral-700 dark:text-neutral-200"><path fill="currentColor" d="M6 2h9l5 5v13a2 2 0 01-2 2H6a2 2 0 01-2-2V4a2 2 0 012-2zm8 2v4h4"/></svg>
-        </button>
+          <button
+            aria-label="Export Excel"
+            className="p-2 rounded bg-neutral-100 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700"
+            onClick={() => {
+              const rowsForExport = rows.map(r => ({
+                'Farmer Name': r.name,
+                'Phone': r.phone,
+                'Location': r.location,
+                'Total Bookings': r.totalBookings,
+                'Total Amount Spent': r.totalSpent,
+                'KYC Status': r.kycStatus,
+                'Status': r.status,
+              }))
+              exportToExcel(rowsForExport, 'Farmers')
+            }}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" className="h-5 w-5 text-neutral-700 dark:text-neutral-200"><path fill="currentColor" d="M5 4h14a2 2 0 012 2v2H3V6a2 2 0 012-2zm-2 6h20v8a2 2 0 01-2 2H5a2 2 0 01-2-2v-8zm5 2l2 3 2-3h2l-3 4 3 4h-2l-2-3-2 3H8l3-4-3-4h2z" /></svg>
+          </button>
+          <button
+            aria-label="Export PDF"
+            className="p-2 rounded bg-neutral-100 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700"
+            onClick={() => {
+              const headers = ['Farmer Name', 'Phone', 'Location', 'Total Bookings', 'Total Amount Spent', 'KYC Status', 'Status']
+              const rowsForExport = rows.map(r => ({
+                'Farmer Name': r.name,
+                'Phone': r.phone,
+                'Location': r.location,
+                'Total Bookings': r.totalBookings,
+                'Total Amount Spent': r.totalSpent,
+                'KYC Status': r.kycStatus,
+                'Status': r.status,
+              }))
+              exportToPdf('Farmers', headers, rowsForExport)
+            }}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" className="h-5 w-5 text-neutral-700 dark:text-neutral-200"><path fill="currentColor" d="M6 2h9l5 5v13a2 2 0 01-2 2H6a2 2 0 01-2-2V4a2 2 0 012-2zm8 2v4h4" /></svg>
+          </button>
         </div>
       </div>
       <DataTable

@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { useBooking } from '../context/BookingContext'
-import { supabase } from '../lib/supabase'
 import Button from '../components/Button'
 import { Notification, FraudFlag, RiskLevel, UserRole } from '../types'
 import { useAuth } from '../context/AuthContext'
@@ -22,22 +21,12 @@ const FraudDetectionScreen: React.FC = () => {
   const [alerts, setAlerts] = useState<Notification[]>([])
   const [flags, setFlags] = useState<FraudFlag[]>([])
 
+  const { notifications } = useNotification()
+
   useEffect(() => {
-    const load = async () => {
-      const { data } = await supabase.from('notifications').select('*').eq('type', 'admin')
-      setAlerts((data || []) as any)
-    }
-    load()
-    const ch = supabase
-      .channel('fraud-detection')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications' }, payload => {
-        if ((payload.new as any)?.type === 'admin') {
-          setAlerts(prev => [payload.new as any, ...prev].slice(0, 100))
-        }
-      })
-      .subscribe()
-    return () => { supabase.removeChannel(ch) }
-  }, [])
+    const adminAlerts = notifications.filter(n => n.type === 'admin')
+    setAlerts(adminAlerts)
+  }, [notifications])
 
   const metrics = useMemo(() => {
     const rebroadcasts = bookings.filter(b => b.isRebroadcast).length
@@ -120,7 +109,7 @@ const FraudDetectionScreen: React.FC = () => {
       if (score > 0) userFlags.push({ id: `supplier-lowutil-${u.id}`, type: 'Supplier', userId: u.id, reason: 'Low machine utilization', score, risk: calcRisk(score), timestamp: new Date(now).toISOString() })
     })
     const multiPhones: Record<string, number[]> = {}
-    allUsers.forEach(u => { const key = (u.phone || '').replace(/\D/g,''); if (!key) return; multiPhones[key] = multiPhones[key] || []; multiPhones[key].push(u.id) })
+    allUsers.forEach(u => { const key = (u.phone || '').replace(/\D/g, ''); if (!key) return; multiPhones[key] = multiPhones[key] || []; multiPhones[key].push(u.id) })
     Object.entries(multiPhones).forEach(([phone, ids]) => { if (ids.length >= 2) ids.forEach(id => userFlags.push({ id: `multi-acc-${id}`, type: 'Farmer', userId: id, reason: 'Multiple accounts same phone', score: 60, risk: 'MEDIUM', timestamp: new Date(now).toISOString() })) })
     setFlags(userFlags)
   }, [bookings, tickets, allUsers])

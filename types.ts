@@ -24,6 +24,8 @@ export interface User {
     locationCoords?: { lat: number; lng: number; };
     aadharImageUrl?: string;
     personalPhotoUrl?: string;
+    aadhaarNumber?: string;
+    address?: string;
 }
 
 export enum ItemCategory {

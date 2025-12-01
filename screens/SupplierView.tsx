@@ -19,13 +19,14 @@ import SupplierBookingsScreen from './SupplierBookingsScreen';
 import { useBooking } from '../context/BookingContext';
 import { useReview } from '../context/ReviewContext';
 import SupplierScheduleScreen from './SupplierScheduleScreen';
-import { supabase, supabaseConfigured } from '../lib/supabase';
+import { uploadImage } from '../src/lib/upload';
 import { GoogleGenAI } from "@google/genai";
 import { useLanguage } from '../context/LanguageContext';
 
+
 const apiKey = typeof process !== 'undefined' && process.env && process.env.API_KEY
-  ? process.env.API_KEY
-  : undefined;
+    ? process.env.API_KEY
+    : undefined;
 const ai = apiKey ? new GoogleGenAI({ apiKey }) : null;
 
 
@@ -126,7 +127,7 @@ const AddItemScreen: React.FC<{ itemToEdit: Item | null, onBack: () => void }> =
             setCurrentLocation({ lat: latitude, lng: longitude });
         });
     }, []);
-    
+
     const handleKycFileSelect = (type: 'aadhar' | 'personal') => (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
@@ -150,7 +151,7 @@ const AddItemScreen: React.FC<{ itemToEdit: Item | null, onBack: () => void }> =
         });
         setShowKyc(false);
     };
-    
+
     const handleSuggestPrice = async (purposeName: WorkPurpose) => {
         if (!ai) {
             showToast("AI service is not configured.", "error");
@@ -160,14 +161,14 @@ const AddItemScreen: React.FC<{ itemToEdit: Item | null, onBack: () => void }> =
         setPriceSuggestion('');
 
         try {
-            const relevantBookings = bookings.filter(b => 
-                b.itemCategory === category && 
-                b.status === 'Completed' && 
+            const relevantBookings = bookings.filter(b =>
+                b.itemCategory === category &&
+                b.status === 'Completed' &&
                 b.workPurpose === purposeName &&
                 b.finalPrice
             );
-            
-            const itemPrices = items.filter(i => 
+
+            const itemPrices = items.filter(i =>
                 i.category === category
             ).flatMap(i => i.purposes.filter(p => p.name === purposeName)).map(p => p.price);
 
@@ -187,7 +188,7 @@ const AddItemScreen: React.FC<{ itemToEdit: Item | null, onBack: () => void }> =
                 Respond with ONLY the suggested range and justification. For example: 'Suggested range: ₹1500 - ₹1800. This is competitive for your area.'
                 If there is not enough data, just say 'Not enough data for a suggestion.'
             `;
-            
+
             const response = await ai.models.generateContent({
                 model: 'gemini-2.5-flash',
                 contents: prompt,
@@ -208,7 +209,7 @@ const AddItemScreen: React.FC<{ itemToEdit: Item | null, onBack: () => void }> =
         newPurposes[index] = { ...newPurposes[index], [field]: value };
         setPurposes(newPurposes);
     };
-    
+
     const addPurpose = () => {
         const usedPurposes = new Set(purposes.map(p => p.name));
         const nextPurpose = WORK_PURPOSES.find(p => !usedPurposes.has(p));
@@ -224,7 +225,7 @@ const AddItemScreen: React.FC<{ itemToEdit: Item | null, onBack: () => void }> =
             setPurposes(purposes.filter((_, i) => i !== index));
         }
     };
-    
+
     const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const files = e.target.files ? Array.from(e.target.files) : [];
         if (files.length === 0) return;
@@ -232,7 +233,7 @@ const AddItemScreen: React.FC<{ itemToEdit: Item | null, onBack: () => void }> =
             showToast('Please upload up to 3 images only.', 'error');
         }
         const limited = files.slice(0, 3);
-        const readers = limited.map(file => new Promise<string>((resolve) => {
+        const readers = limited.map((file: File) => new Promise<string>((resolve) => {
             const reader = new FileReader();
             reader.onload = () => resolve(reader.result as string);
             reader.readAsDataURL(file);
@@ -243,10 +244,10 @@ const AddItemScreen: React.FC<{ itemToEdit: Item | null, onBack: () => void }> =
         });
     };
 
-    const handleSave = (e: React.FormEvent) => {
+    const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!user) return;
-        
+
         if (imagePreviews.length === 0 && category !== ItemCategory.Workers) {
             showToast('Please upload an image for the item.', 'error');
             return;
@@ -261,12 +262,35 @@ const AddItemScreen: React.FC<{ itemToEdit: Item | null, onBack: () => void }> =
             showToast('Please select a location on the map.', 'error');
             return;
         }
-        
+
+        // Upload images if they are base64
+        const uploadedImages: string[] = [];
+        try {
+            if (imagePreviews.length > 0) {
+                showToast('Uploading images...', 'info');
+                for (const preview of imagePreviews) {
+                    if (preview.startsWith('data:')) {
+                        const res = await fetch(preview);
+                        const blob = await res.blob();
+                        const file = new File([blob], "image.jpg", { type: blob.type });
+                        const url = await uploadImage(file);
+                        uploadedImages.push(url);
+                    } else {
+                        uploadedImages.push(preview);
+                    }
+                }
+            }
+        } catch (error) {
+            console.error(error);
+            showToast('Failed to upload images', 'error');
+            return;
+        }
+
         const defaultImages = {
             Male: 'https://images.unsplash.com/photo-1591181825852-f4a45a6c3a81?q=80&w=800&auto=format&fit=crop',
             Female: 'https://images.unsplash.com/photo-1601758123926-4cf339f4c278?q=80&w=800&auto=format&fit=crop'
         };
-        const itemImages = category === ItemCategory.Workers ? [defaultImages[gender]] : imagePreviews;
+        const itemImages = category === ItemCategory.Workers ? [defaultImages[gender]] : uploadedImages;
 
         const itemData: Omit<Item, 'id'> = {
             name,
@@ -289,7 +313,7 @@ const AddItemScreen: React.FC<{ itemToEdit: Item | null, onBack: () => void }> =
             gender: isWorker ? gender : undefined,
             autoPriceOptimization
         };
-        
+
         if (itemToEdit) {
             updateItem({ ...itemToEdit, ...itemData });
         } else {
@@ -297,13 +321,13 @@ const AddItemScreen: React.FC<{ itemToEdit: Item | null, onBack: () => void }> =
         }
         onBack();
     };
-    
+
     return (
         <div className="dark:text-neutral-200">
             <Header title={itemToEdit ? 'Edit Item' : 'Add Item'} onBack={onBack} />
-            
+
             <form className="p-4 space-y-4" onSubmit={handleSave}>
-                 {category !== ItemCategory.Workers && (
+                {category !== ItemCategory.Workers && (
                     <div>
                         <label className="block text-neutral-700 dark:text-neutral-300 text-sm font-bold mb-2">Item Image <span className="text-red-600">*</span></label>
                         <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 dark:border-gray-600 border-dashed rounded-md">
@@ -312,7 +336,7 @@ const AddItemScreen: React.FC<{ itemToEdit: Item | null, onBack: () => void }> =
                                     <div className="flex flex-wrap justify-center gap-2">
                                         {imagePreviews.map((img, i) => (
                                             img && img.trim() !== '' ? (
-                                                <img key={i} src={img} alt={`Preview ${i+1}`} className="h-20 w-28 object-cover rounded-md" />
+                                                <img key={i} src={img} alt={`Preview ${i + 1}`} className="h-20 w-28 object-cover rounded-md" />
                                             ) : null
                                         ))}
                                     </div>
@@ -331,8 +355,8 @@ const AddItemScreen: React.FC<{ itemToEdit: Item | null, onBack: () => void }> =
                             </div>
                         </div>
                     </div>
-                 )}
-                <Input label="Model Name" value={name} onChange={e => setName(e.target.value)} required/>
+                )}
+                <Input label="Model Name" value={name} onChange={e => setName(e.target.value)} required />
                 <div>
                     <label className="block text-neutral-700 dark:text-neutral-300 text-sm font-bold mb-2">Select Item Location on Map <span className="text-red-600">*</span></label>
                     <div className="rounded overflow-hidden border border-neutral-200 dark:border-neutral-600">
@@ -357,7 +381,7 @@ const AddItemScreen: React.FC<{ itemToEdit: Item | null, onBack: () => void }> =
                                     })}
                                 />
                             )}
-                            <Marker 
+                            <Marker
                                 position={itemGeo ? [itemGeo.lat, itemGeo.lng] : itemMapCenter}
                                 icon={L.icon({
                                     iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
@@ -382,14 +406,14 @@ const AddItemScreen: React.FC<{ itemToEdit: Item | null, onBack: () => void }> =
                     <p className="text-xs text-neutral-600 dark:text-neutral-400">This makes the supplier listing location selection intuitive: tap or drag the pin to choose the exact point on the map, and the item save enforces having a selected location</p>
                     {itemGeo && <p className="text-xs text-neutral-600 dark:text-neutral-400">Selected: {itemGeo.lat.toFixed(5)}, {itemGeo.lng.toFixed(5)}</p>}
                 </div>
-                 <div>
+                <div>
                     <label className="block text-neutral-700 dark:text-neutral-300 text-sm font-bold mb-2">Category</label>
                     <select value={category} onChange={e => setCategory(e.target.value as ItemCategory)} className="shadow appearance-none border border-neutral-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg w-full py-3 px-4 text-neutral-800 dark:text-white leading-tight focus:outline-none focus:ring-2 focus:ring-primary/50">
                         {Object.values(ItemCategory).map(t => <option key={t} value={t}>{t}</option>)}
                     </select>
                 </div>
                 {/* Work Purposes Section */}
-                 <div className="space-y-3 p-3 border border-neutral-200 dark:border-neutral-600 rounded-lg">
+                <div className="space-y-3 p-3 border border-neutral-200 dark:border-neutral-600 rounded-lg">
                     <h3 className="font-bold text-neutral-800 dark:text-neutral-100">Work Purposes & Pricing</h3>
                     {priceSuggestion && (
                         <div className="p-3 bg-blue-50 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200 text-sm rounded-md flex justify-between items-center">
@@ -423,7 +447,7 @@ const AddItemScreen: React.FC<{ itemToEdit: Item | null, onBack: () => void }> =
                                     <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                                 </button>
                             </div>
-                             <div className="text-right mt-2">
+                            <div className="text-right mt-2">
                                 <button type="button" onClick={() => handleSuggestPrice(p.name)} disabled={isSuggestingPrice} className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200 disabled:opacity-50">
                                     {isSuggestingPrice ? 'Analyzing...' : 'AI Suggest Price'}
                                 </button>
@@ -446,8 +470,8 @@ const AddItemScreen: React.FC<{ itemToEdit: Item | null, onBack: () => void }> =
                     </div>
                 )}
                 <div>
-                     <label className="block text-neutral-700 dark:text-neutral-300 text-sm font-bold mb-2">Description</label>
-                     <textarea value={description} onChange={e => setDescription(e.target.value)} rows={4} required className="shadow appearance-none border border-neutral-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg w-full py-3 px-4 text-neutral-800 dark:text-white placeholder-gray-400 leading-tight focus:outline-none focus:ring-2 focus:ring-primary/50" />
+                    <label className="block text-neutral-700 dark:text-neutral-300 text-sm font-bold mb-2">Description</label>
+                    <textarea value={description} onChange={e => setDescription(e.target.value)} rows={4} required className="shadow appearance-none border border-neutral-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg w-full py-3 px-4 text-neutral-800 dark:text-white placeholder-gray-400 leading-tight focus:outline-none focus:ring-2 focus:ring-primary/50" />
                 </div>
                 {isHeavyMachinery && (
                     <>
@@ -470,12 +494,12 @@ const AddItemScreen: React.FC<{ itemToEdit: Item | null, onBack: () => void }> =
                         </select>
                     </div>
                 )}
-                <Input 
-                    label={`Operator Charge per hour (₹) ${isHeavyMachinery ? '' : '(Optional)'}`} 
-                    type="number" 
-                    value={operatorCharge} 
-                    onChange={e => setOperatorCharge(e.target.value)} 
-                    required={isHeavyMachinery} 
+                <Input
+                    label={`Operator Charge per hour (₹) ${isHeavyMachinery ? '' : '(Optional)'}`}
+                    type="number"
+                    value={operatorCharge}
+                    onChange={e => setOperatorCharge(e.target.value)}
+                    required={isHeavyMachinery}
                 />
                 <div className="flex items-center justify-between p-3 bg-neutral-50 dark:bg-neutral-900/40 rounded-lg border border-neutral-200 dark:border-neutral-600">
                     <div>
@@ -483,17 +507,17 @@ const AddItemScreen: React.FC<{ itemToEdit: Item | null, onBack: () => void }> =
                         <p className="text-xs text-neutral-600 dark:text-neutral-300">Adjust prices based on demand and season</p>
                     </div>
                     <button
-                      type="button"
-                      role="switch"
-                      aria-checked={autoPriceOptimization}
-                      onClick={() => setAutoPriceOptimization(prev => !prev)}
-                      className={`relative inline-flex items-center h-6 rounded-full w-11 transition-colors ${autoPriceOptimization ? 'bg-primary' : 'bg-neutral-200'}`}
+                        type="button"
+                        role="switch"
+                        aria-checked={autoPriceOptimization}
+                        onClick={() => setAutoPriceOptimization(prev => !prev)}
+                        className={`relative inline-flex items-center h-6 rounded-full w-11 transition-colors ${autoPriceOptimization ? 'bg-primary' : 'bg-neutral-200'}`}
                     >
-                      <span className={`inline-block w-4 h-4 transform bg-white rounded-full transition-transform ${autoPriceOptimization ? 'translate-x-6' : 'translate-x-1'}`} />
+                        <span className={`inline-block w-4 h-4 transform bg-white rounded-full transition-transform ${autoPriceOptimization ? 'translate-x-6' : 'translate-x-1'}`} />
                     </button>
                 </div>
                 {isWorker && (
-                     <Input label="Available Quantity" type="number" value={quantityAvailable} onChange={e => setQuantityAvailable(e.target.value)} placeholder="e.g., 10" required min="0" />
+                    <Input label="Available Quantity" type="number" value={quantityAvailable} onChange={e => setQuantityAvailable(e.target.value)} placeholder="e.g., 10" required min="0" />
                 )}
                 <Button type="submit">{itemToEdit ? 'Save Changes' : 'Submit for Approval'}</Button>
             </form>
@@ -518,7 +542,7 @@ const SupplierListingsScreen: React.FC<{ onAddItem: () => void, onEditItem: (m: 
     const handleAddItemClick = () => {
         onAddItem();
     };
-    
+
     const getStatusClasses = (status: Item['status']) => {
         switch (status) {
             case 'approved': return 'bg-green-100 text-green-800';
@@ -531,12 +555,12 @@ const SupplierListingsScreen: React.FC<{ onAddItem: () => void, onEditItem: (m: 
     const optimizePrices = (item: Item) => {
         const seasonBoost = (() => {
             const m = new Date().getMonth() + 1
-            if ([9,10,11].includes(m)) return 1.15
-            if ([3,4,5].includes(m)) return 1.1
+            if ([9, 10, 11].includes(m)) return 1.15
+            if ([3, 4, 5].includes(m)) return 1.1
             return 1
         })()
         const demandBoost = (() => {
-            const count = bookings.filter(b => b.itemId === item.id && ['Confirmed','Completed','Pending Payment','Arrived','In Process'].includes(b.status)).length
+            const count = bookings.filter(b => b.itemId === item.id && ['Confirmed', 'Completed', 'Pending Payment', 'Arrived', 'In Process'].includes(b.status)).length
             if (count > 10) return 1.2
             if (count > 5) return 1.1
             return 1
@@ -545,7 +569,7 @@ const SupplierListingsScreen: React.FC<{ onAddItem: () => void, onEditItem: (m: 
             const peers = items.filter(i => i.category === item.category && i.location === item.location && i.id !== item.id)
             const prices = peers.flatMap(p => p.purposes.map(x => x.price))
             if (prices.length === 0) return undefined
-            return prices.reduce((a,b)=>a+b,0)/prices.length
+            return prices.reduce((a, b) => a + b, 0) / prices.length
         })()
         const updatedPurposes = item.purposes.map(p => {
             const base = p.price
@@ -573,25 +597,25 @@ const SupplierListingsScreen: React.FC<{ onAddItem: () => void, onEditItem: (m: 
                     {myItems.length > 0 ? (
                         [...myItems].reverse().map(item => {
                             const minPrice = Math.min(...item.purposes.map(p => p.price));
-                             return (
-                             <div key={item.id} className="bg-white dark:bg-neutral-700 p-4 rounded-lg border border-neutral-200 dark:border-neutral-600">
-                                <div className="flex items-center justify-between">
-                                    <div>
-                                        <h3 className="font-bold text-neutral-800 dark:text-neutral-100">{item.name}</h3>
-                                        <p className="text-sm text-neutral-700 dark:text-neutral-300">Starting from ₹{minPrice}/hr</p>
+                            return (
+                                <div key={item.id} className="bg-white dark:bg-neutral-700 p-4 rounded-lg border border-neutral-200 dark:border-neutral-600">
+                                    <div className="flex items-center justify-between">
+                                        <div>
+                                            <h3 className="font-bold text-neutral-800 dark:text-neutral-100">{item.name}</h3>
+                                            <p className="text-sm text-neutral-700 dark:text-neutral-300">Starting from ₹{minPrice}/hr</p>
+                                        </div>
+                                        <span className={`text-xs font-semibold px-3 py-1 rounded-full ${getStatusClasses(item.status)}`}>
+                                            {item.status.charAt(0).toUpperCase() + item.status.slice(1)}
+                                        </span>
                                     </div>
-                                    <span className={`text-xs font-semibold px-3 py-1 rounded-full ${getStatusClasses(item.status)}`}>
-                                        {item.status.charAt(0).toUpperCase() + item.status.slice(1)}
-                                    </span>
+                                    <div className="text-right mt-4 border-t border-neutral-100 dark:border-neutral-600 pt-3 flex justify-end space-x-2">
+                                        <button onClick={() => onEditItem(item)} className="bg-primary text-white font-bold py-1 px-3 rounded-lg text-sm hover:bg-primary-dark transition-colors">Edit</button>
+                                        <button onClick={() => setItemToDelete(item)} className="bg-red-600 text-white font-bold py-1 px-3 rounded-lg text-sm hover:bg-red-700 transition-colors">Delete</button>
+                                        <button onClick={() => optimizePrices(item)} className="bg-blue-600 text-white font-bold py-1 px-3 rounded-lg text-sm hover:bg-blue-700 transition-colors">Optimize Now</button>
+                                        <span className={`text-xs px-2 py-1 rounded-md ${item.autoPriceOptimization ? 'bg-green-100 text-green-700' : 'bg-neutral-100 text-neutral-600'}`}>{item.autoPriceOptimization ? 'Auto Opt: On' : 'Auto Opt: Off'}</span>
+                                    </div>
                                 </div>
-                                 <div className="text-right mt-4 border-t border-neutral-100 dark:border-neutral-600 pt-3 flex justify-end space-x-2">
-                                    <button onClick={() => onEditItem(item)} className="bg-primary text-white font-bold py-1 px-3 rounded-lg text-sm hover:bg-primary-dark transition-colors">Edit</button>
-                                    <button onClick={() => setItemToDelete(item)} className="bg-red-600 text-white font-bold py-1 px-3 rounded-lg text-sm hover:bg-red-700 transition-colors">Delete</button>
-                                    <button onClick={() => optimizePrices(item)} className="bg-blue-600 text-white font-bold py-1 px-3 rounded-lg text-sm hover:bg-blue-700 transition-colors">Optimize Now</button>
-                                    <span className={`text-xs px-2 py-1 rounded-md ${item.autoPriceOptimization ? 'bg-green-100 text-green-700' : 'bg-neutral-100 text-neutral-600'}`}>{item.autoPriceOptimization ? 'Auto Opt: On' : 'Auto Opt: Off'}</span>
-                                </div>
-                            </div>
-                             )
+                            )
                         })
                     ) : (
                         <p className="text-center text-neutral-700 dark:text-neutral-300 py-8">You haven't added any items yet.</p>
@@ -599,7 +623,7 @@ const SupplierListingsScreen: React.FC<{ onAddItem: () => void, onEditItem: (m: 
                 </div>
             </div>
             {itemToDelete && (
-                 <ConfirmationDialog
+                <ConfirmationDialog
                     title="Delete Item"
                     message={`Are you sure you want to delete "${itemToDelete.name}"?`}
                     confirmText="Delete"
@@ -613,7 +637,7 @@ const SupplierListingsScreen: React.FC<{ onAddItem: () => void, onEditItem: (m: 
 }
 
 export const SupplierKycInlineForm: React.FC<{ onSubmitted: () => void }> = ({ onSubmitted }) => {
-    const { user } = useAuth();
+    const { user, updateUser } = useAuth();
     const { showToast } = useToast();
     const [fullName, setFullName] = useState('');
     const [phone, setPhone] = useState('');
@@ -637,65 +661,9 @@ export const SupplierKycInlineForm: React.FC<{ onSubmitted: () => void }> = ({ o
             setFullName(user.name || '');
             setPhone(user.phone || '');
             setLocation((user as any).location || '');
+            setAddress((user as any).address || '');
         }
     }, [user]);
-
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!user) return;
-        setIsSubmitting(true);
-        try {
-            let docs: any[] = [];
-            const submittedAt = new Date().toISOString();
-            if (supabaseConfigured) {
-                const bucket = supabase.storage.from('kyc');
-                const uploads: { type: 'Aadhaar' | 'Photo' | 'PAN'; file: File | null }[] = [
-                    { type: 'Aadhaar', file: aadhaarFile },
-                    { type: 'Photo', file: photoFile },
-                    { type: 'PAN', file: panFile },
-                ];
-                for (const u of uploads) {
-                    if (!u.file) continue;
-                    const ext = u.file.name.split('.').pop() || 'jpg';
-                    const path = `${user.id}/${u.type}/${Date.now()}.${ext}`;
-                    const { error } = await bucket.upload(path, u.file, { upsert: true });
-                    if (!error) {
-                        const { data } = bucket.getPublicUrl(path);
-                        docs.push({ type: u.type, url: data.publicUrl, status: 'Submitted' });
-                    }
-                }
-                await supabase.from('kycsubmissions').upsert([{ userId: user.id, status: 'Pending', submittedAt, docs, geo }], { onConflict: 'userId' });
-                const aadhaarUrl = docs.find(d => d.type === 'Aadhaar')?.url
-                const photoUrl = docs.find(d => d.type === 'Photo')?.url
-                await supabase.from('users').update({
-                  aadhaarNumber,
-                  aadhaarImage: aadhaarUrl,
-                  profilePicture: photoUrl,
-                  address,
-                  location
-                }).eq('id', user.id)
-            } else {
-                docs = [
-                    aadhaarPreview ? { type: 'Aadhaar', url: aadhaarPreview, status: 'Submitted' } : null,
-                    photoPreview ? { type: 'Photo', url: photoPreview, status: 'Submitted' } : null,
-                    panPreview ? { type: 'PAN', url: panPreview, status: 'Submitted' } : null,
-                ].filter(Boolean) as any[];
-            }
-            if (typeof window !== 'undefined') {
-                try {
-                    if (!supabaseConfigured) {
-                        localStorage.setItem(`kycStatus:${user.id}`, 'Pending');
-                        localStorage.setItem(`kycDocs:${user.id}`, JSON.stringify(docs));
-                        localStorage.setItem(`kycSubmittedAt:${user.id}`, submittedAt);
-                    }
-                } catch {}
-            }
-            showToast('KYC submitted. Verification pending.', 'success');
-            onSubmitted();
-        } finally {
-            setIsSubmitting(false);
-        }
-    };
 
     const readFileAsDataUrl = (file: File): Promise<string> => new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -711,6 +679,7 @@ export const SupplierKycInlineForm: React.FC<{ onSubmitted: () => void }> = ({ o
         setAadhaarPreview(url);
         setAadhaarFile(file);
     };
+
     const onPhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
@@ -718,6 +687,7 @@ export const SupplierKycInlineForm: React.FC<{ onSubmitted: () => void }> = ({ o
         setPhotoPreview(url);
         setPhotoFile(file);
     };
+
     const onPanSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
@@ -725,6 +695,7 @@ export const SupplierKycInlineForm: React.FC<{ onSubmitted: () => void }> = ({ o
         setPanPreview(url);
         setPanFile(file);
     };
+
     const itemIcon = L.icon({
         iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
         iconSize: [25, 41],
@@ -744,9 +715,42 @@ export const SupplierKycInlineForm: React.FC<{ onSubmitted: () => void }> = ({ o
         });
     }, []);
 
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!user) return;
+        setIsSubmitting(true);
+        try {
+            showToast('Uploading KYC documents...', 'info');
+            let aadhaarUrl = '';
+            let photoUrl = '';
+            // Upload files
+            if (aadhaarFile) aadhaarUrl = await uploadImage(aadhaarFile);
+            if (photoFile) photoUrl = await uploadImage(photoFile);
+
+            // Update user
+            await updateUser({
+                ...user,
+                aadhaarNumber,
+                aadharImageUrl: aadhaarUrl || undefined,
+                personalPhotoUrl: photoUrl || undefined,
+                address,
+                location
+            });
+
+            showToast('KYC submitted. Verification pending.', 'success');
+            onSubmitted();
+        } catch (error) {
+            console.error(error);
+            showToast('Failed to submit KYC', 'error');
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
     const canSubmit = Boolean(
         aadhaarPreview && photoPreview && geo && fullName && phone && address && aadhaarNumber
     );
+
     return (
         <form className="space-y-4" onSubmit={handleSubmit}>
             <Input label="Full Name" value={fullName} onChange={e => setFullName(e.target.value)} required />
@@ -765,8 +769,8 @@ export const SupplierKycInlineForm: React.FC<{ onSubmitted: () => void }> = ({ o
                             });
                         }}>
                         <TileLayer attribution='&copy; OpenStreetMap contributors' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-                        <Marker 
-                            position={geo ? [geo.lat, geo.lng] : center} 
+                        <Marker
+                            position={geo ? [geo.lat, geo.lng] : center}
                             icon={itemIcon}
                             draggable
                             eventHandlers={{
@@ -799,7 +803,7 @@ export const SupplierKycInlineForm: React.FC<{ onSubmitted: () => void }> = ({ o
                 <input type="file" accept="image/*,application/pdf" onChange={onPanSelect} className="shadow appearance-none border border-neutral-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg w-full py-2 px-3 text-neutral-800 dark:text-white" />
                 <Input label="PAN Number (Optional)" value={panNumber} onChange={e => setPanNumber(e.target.value)} />
             </div>
-            
+
             <Button type="submit" disabled={isSubmitting || !canSubmit}>{isSubmitting ? 'Processing...' : 'Submit KYC'}</Button>
         </form>
     );
@@ -828,20 +832,16 @@ const SupplierDashboardScreen: React.FC<SupplierViewProps & { goToTab?: (name: s
         const loadReupload = async () => {
             if (!user) return;
             try {
-                const { data } = await supabase.from('kycsubmissions').select('docs').eq('userId', user.id).limit(1);
-                const docs = (data && data[0] && (data[0] as any).docs) || [];
-                const types = Array.isArray(docs) ? docs.filter((d: any) => d && d.status === 'ReuploadRequested').map((d: any) => d.type) : [];
-                setReuploadTypes(types);
-                if (typeof window !== 'undefined') {
-                    try { localStorage.setItem(`kycDocs:${user.id}`, JSON.stringify(docs)); } catch {}
+                // Fetch KYC status/docs from backend
+                const res = await fetch(`${(import.meta as any).env?.VITE_API_URL || 'http://localhost:3001/api'}/kyc/${user.id}`);
+                if (res.ok) {
+                    const kycData = await res.json();
+                    const docs = kycData.docs || [];
+                    const types = Array.isArray(docs) ? docs.filter((d: any) => d && d.status === 'ReuploadRequested').map((d: any) => d.type) : [];
+                    setReuploadTypes(types);
                 }
             } catch {
-                let cachedDocs: any[] = [];
-                if (typeof window !== 'undefined') {
-                    try { cachedDocs = JSON.parse(localStorage.getItem(`kycDocs:${user.id}`) || '[]'); } catch {}
-                }
-                const types = Array.isArray(cachedDocs) ? cachedDocs.filter((d: any) => d && d.status === 'ReuploadRequested').map((d: any) => d.type) : [];
-                setReuploadTypes(types);
+                // Silent fail or retry
             }
         };
         loadReupload();
@@ -865,7 +865,7 @@ const SupplierDashboardScreen: React.FC<SupplierViewProps & { goToTab?: (name: s
             totalReviews: relevantReviews.length,
         };
     }, [reviews, supplierItemIds]);
-    
+
     const popularItems = useMemo(() => {
         const bookingCounts = bookings.reduce((acc, booking) => {
             if (booking.itemId && supplierItemIds.includes(booking.itemId)) {
@@ -899,7 +899,7 @@ const SupplierDashboardScreen: React.FC<SupplierViewProps & { goToTab?: (name: s
             const conds = items.filter(i => supplierItemIds.includes(i.id)).map(i => i.condition)
             if (conds.length === 0) return 0.8
             const map: Record<string, number> = { New: 1, Good: 0.9, Fair: 0.75 }
-            return conds.reduce((a,c) => a + (map[c || 'Good'] || 0.9), 0) / conds.length
+            return conds.reduce((a, c) => a + (map[c || 'Good'] || 0.9), 0) / conds.length
         })()
         const score = Math.max(0, Math.min(100,
             Math.round(
@@ -927,12 +927,12 @@ const SupplierDashboardScreen: React.FC<SupplierViewProps & { goToTab?: (name: s
         const dailyRevenue = byDay[todayKey] || 0
         const last7DaysKeys = Array.from({ length: 7 }, (_, i) => { const d = new Date(); d.setDate(d.getDate() - i); return d.toISOString().split('T')[0] }).reverse()
         const weeklyTrend = last7DaysKeys.map(k => ({ date: k, amount: byDay[k] || 0 }))
-        const machineWise = Object.entries(byItem).sort((a,b) => b[1] - a[1]).slice(0, 5).map(([id, amt]) => ({ name: items.find(i => i.id === Number(id))?.name || 'Item', amount: amt }))
+        const machineWise = Object.entries(byItem).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([id, amt]) => ({ name: items.find(i => i.id === Number(id))?.name || 'Item', amount: amt }))
         return { dailyRevenue, weeklyTrend, machineWise }
     }, [bookings, supplierItemIds, items])
 
     const ProfileLink: React.FC<{ label: string, onClick: () => void, icon?: React.ReactElement }> = ({ label, onClick, icon }) => (
-         <button onClick={onClick} className="w-full text-left p-4 bg-white dark:bg-neutral-800 flex justify-between items-center hover:bg-neutral-50 dark:hover:bg-neutral-600 transition-colors">
+        <button onClick={onClick} className="w-full text-left p-4 bg-white dark:bg-neutral-800 flex justify-between items-center hover:bg-neutral-50 dark:hover:bg-neutral-600 transition-colors">
             <span className="font-semibold text-neutral-800 dark:text-neutral-100">{label}</span>
             {icon || <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-neutral-500 dark:text-neutral-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>}
         </button>
@@ -940,7 +940,7 @@ const SupplierDashboardScreen: React.FC<SupplierViewProps & { goToTab?: (name: s
 
     return (
         <div className="p-4 space-y-6 dark:text-neutral-200">
-             <div className="bg-white dark:bg-neutral-700 p-6 rounded-lg border border-neutral-200 dark:border-neutral-600 flex items-center space-x-4">
+            <div className="bg-white dark:bg-neutral-700 p-6 rounded-lg border border-neutral-200 dark:border-neutral-600 flex items-center space-x-4">
                 <div className="w-16 h-16 rounded-full bg-primary text-white flex items-center justify-center text-3xl font-bold flex-shrink-0">
                     {user?.name.charAt(0)}
                 </div>
@@ -961,29 +961,29 @@ const SupplierDashboardScreen: React.FC<SupplierViewProps & { goToTab?: (name: s
             </div>
 
             <div className="grid grid-cols-2 gap-4">
-                <StatCard 
+                <StatCard
                     title={t('totalEarnings')}
-                    value={`₹${totalEarnings.toLocaleString()}`} 
+                    value={`₹${totalEarnings.toLocaleString()}`}
                     icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v.01" /></svg>}
                 />
-                 <StatCard 
+                <StatCard
                     title={t('avgRating')}
                     value={avgRating > 0 ? `${avgRating.toFixed(1)}/5` : 'N/A'}
                     icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.783-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" /></svg>}
                 />
-                 <StatCard 
+                <StatCard
                     title="Performance Score"
                     value={`${performance.score}/100`}
                     icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 17a1 1 0 100 2h2a1 1 0 100-2h-2zM12 3l7 7-7 11-7-11 7-7z" /></svg>}
-                 />
+                />
             </div>
-            
+
             <div className="bg-white dark:bg-neutral-700 p-4 rounded-lg border border-neutral-200 dark:border-neutral-600">
                 <h3 className="text-lg font-bold text-neutral-800 dark:text-neutral-100 mb-2">{t('mostPopularItems')}</h3>
                 {popularItems.length > 0 ? (
                     <ul className="space-y-2">
                         {popularItems.map((item, index) => (
-                             <li key={index} className="flex justify-between items-center text-sm p-2 bg-neutral-50 dark:bg-neutral-600 rounded-md">
+                            <li key={index} className="flex justify-between items-center text-sm p-2 bg-neutral-50 dark:bg-neutral-600 rounded-md">
                                 <span className="font-semibold text-neutral-800 dark:text-neutral-100">{index + 1}. {item.name}</span>
                                 <span className="font-bold text-primary">{item.count} bookings</span>
                             </li>
@@ -1040,43 +1040,44 @@ const SupplierDashboardScreen: React.FC<SupplierViewProps & { goToTab?: (name: s
                     </div>
                 </div>
             </div>
-            
+
             <div className="space-y-4">
-                 <div className="bg-white dark:bg-neutral-700 rounded-lg border border-neutral-200 dark:border-neutral-600 overflow-hidden divide-y divide-neutral-200 dark:divide-neutral-600">
-                     <h3 className="p-4 text-lg font-bold text-neutral-800 dark:text-neutral-100">{t('profile')}</h3>
-                     <ProfileLink label={t('myAccount')} onClick={() => navigate({ view: 'MY_ACCOUNT' })} />
-                     <ProfileLink label={t('paymentHistory')} onClick={() => navigate({ view: 'PAYMENT_HISTORY' })} />
-                     <ProfileLink label={t('bookingHistory')} onClick={() => navigate({ view: 'BOOKING_HISTORY' })} />
-                     <ProfileLink label={t('settings')} onClick={() => navigate({ view: 'SETTINGS' })} />
-                     <ProfileLink label={t('raiseAComplaint')} onClick={() => navigate({ view: 'SUPPORT' })} />
-                     <ProfileLink label={t('privacyPolicy')} onClick={() => navigate({ view: 'POLICY' })} />
-                 </div>
+                <div className="bg-white dark:bg-neutral-700 rounded-lg border border-neutral-200 dark:border-neutral-600 overflow-hidden divide-y divide-neutral-200 dark:divide-neutral-600">
+                    <h3 className="p-4 text-lg font-bold text-neutral-800 dark:text-neutral-100">{t('profile')}</h3>
+                    <ProfileLink label={t('myAccount')} onClick={() => navigate({ view: 'MY_ACCOUNT' })} />
+                    <ProfileLink label={t('paymentHistory')} onClick={() => navigate({ view: 'PAYMENT_HISTORY' })} />
+                    <ProfileLink label={t('bookingHistory')} onClick={() => navigate({ view: 'BOOKING_HISTORY' })} />
+                    <ProfileLink label={t('settings')} onClick={() => navigate({ view: 'SETTINGS' })} />
+                    <ProfileLink label={t('raiseAComplaint')} onClick={() => navigate({ view: 'SUPPORT' })} />
+                    <ProfileLink label={t('privacyPolicy')} onClick={() => navigate({ view: 'POLICY' })} />
+                </div>
                 <Button onClick={logout} variant="secondary">{t('logout')}</Button>
             </div>
-        {showWeeklyTrend && (
-            <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
-                <div className="bg-white dark:bg-neutral-800 rounded-lg border border-neutral-200 dark:border-neutral-700 w-[90%] max-w-xl p-4">
-                    <div className="flex justify-between items-center mb-2">
-                        <h4 className="font-semibold">Weekly Revenue Trend</h4>
-                        <button onClick={() => setShowWeeklyTrend(false)} className="p-2 rounded hover:bg-neutral-100 dark:hover:bg-neutral-700">✕</button>
-                    </div>
-                    <div style={{ width: '100%', height: 300 }}>
-                        <ResponsiveContainer width="100%" height={300}>
-                            <LineChart data={finance.weeklyTrend}>
-                                <CartesianGrid strokeDasharray="3 3" />
-                                <XAxis dataKey="date" />
-                                <YAxis />
-                                <Tooltip />
-                                <Line type="monotone" dataKey="amount" stroke="#10b981" />
-                            </LineChart>
-                        </ResponsiveContainer>
+            {showWeeklyTrend && (
+                <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
+                    <div className="bg-white dark:bg-neutral-800 rounded-lg border border-neutral-200 dark:border-neutral-700 w-[90%] max-w-xl p-4">
+                        <div className="flex justify-between items-center mb-2">
+                            <h4 className="font-semibold">Weekly Revenue Trend</h4>
+                            <button onClick={() => setShowWeeklyTrend(false)} className="p-2 rounded hover:bg-neutral-100 dark:hover:bg-neutral-700">✕</button>
+                        </div>
+                        <div style={{ width: '100%', height: 300 }}>
+                            <ResponsiveContainer width="100%" height={300}>
+                                <LineChart data={finance.weeklyTrend}>
+                                    <CartesianGrid strokeDasharray="3 3" />
+                                    <XAxis dataKey="date" />
+                                    <YAxis />
+                                    <Tooltip />
+                                    <Line type="monotone" dataKey="amount" stroke="#10b981" />
+                                </LineChart>
+                            </ResponsiveContainer>
+                        </div>
                     </div>
                 </div>
-            </div>
-        )}
+            )}
         </div>
     )
 }
+
 
 const supplierNavItems: NavItemConfig[] = [
     { name: 'requests', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg> },
@@ -1103,18 +1104,13 @@ const SupplierView: React.FC<SupplierViewProps> = ({ navigate }) => {
         const loadKyc = async () => {
             if (!user) return;
             try {
-                const { data } = await supabase.from('kycsubmissions').select('status').eq('userId', user.id).limit(1);
-                const status = (data && data[0] && (data[0] as any).status) || null;
-                setKycStatus(status);
-                if (typeof window !== 'undefined' && status) {
-                    try { localStorage.setItem(`kycStatus:${user.id}`, status); } catch {}
+                const res = await fetch(`${(import.meta as any).env?.VITE_API_URL || 'http://localhost:3001/api'}/kyc/${user.id}`);
+                if (res.ok) {
+                    const kycData = await res.json();
+                    setKycStatus(kycData.status);
                 }
             } catch {
-                let cached: string | null = null;
-                if (typeof window !== 'undefined') {
-                    try { cached = localStorage.getItem(`kycStatus:${user.id}`); } catch {}
-                }
-                setKycStatus(cached || null);
+                // Silent fail
             }
         };
         loadKyc();
@@ -1146,21 +1142,21 @@ const SupplierView: React.FC<SupplierViewProps> = ({ navigate }) => {
         setItemToEdit(item);
         setView('ADD_ITEM');
     }, [hasKyc]);
-    
+
     const handleBackToDashboard = useCallback(() => {
         setView('TABS');
         setItemToEdit(null);
     }, []);
-    
+
     const renderContent = () => {
-        switch(activeTab) {
+        switch (activeTab) {
             case 'dashboard': return <SupplierDashboardScreen navigate={navigate} goToTab={setActiveTab} kycStatus={kycStatus} />;
             case 'requests': return <SupplierRequestsScreen />;
             case 'bookings': return <SupplierBookingsScreen navigate={navigate} />;
             case 'schedule': return <SupplierScheduleScreen />;
             case 'listings':
                 return <SupplierListingsScreen onAddItem={handleAddItem} onEditItem={handleEditItem} kycStatus={kycStatus} openKycForm={() => navigate({ view: 'MY_ACCOUNT' })} />;
-            default: return <SupplierDashboardScreen navigate={navigate}/>;
+            default: return <SupplierDashboardScreen navigate={navigate} />;
         }
     }
 
@@ -1173,7 +1169,7 @@ const SupplierView: React.FC<SupplierViewProps> = ({ navigate }) => {
             <Header title={t(activeTab as any)}>
                 {hasActiveBookings && (
                     <button onClick={() => navigate({ view: 'CONVERSATIONS' })} className="relative p-2 text-neutral-700 dark:text-neutral-300 hover:text-primary rounded-full hover:bg-neutral-100 dark:hover:bg-neutral-700" aria-label="Open Chats">
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
                         {unreadChatCount > 0 && (
                             <span className="absolute top-1 right-1 flex h-3 w-3">
                                 <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>

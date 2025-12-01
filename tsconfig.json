@@ -25,5 +25,11 @@
     },
     "allowImportingTsExtensions": true,
     "noEmit": true
-  }
+  },
+  "exclude": [
+    "frontend",
+    "node_modules",
+    "dist",
+    "backend/node_modules"
+  ]
 }

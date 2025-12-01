@@ -63,14 +63,14 @@ const AppContent: React.FC = () => {
                 const v = JSON.parse(saved);
                 if (v && typeof v.view === 'string') return [v];
             }
-        } catch {}
+        } catch { }
         return [{ view: 'HOME' }];
     });
 
     const navigate = useCallback((view: AppView) => {
         setViewStack(prev => {
             const next = [...prev, view];
-            try { localStorage.setItem('agrirent-current-view', JSON.stringify(view)); } catch {}
+            try { localStorage.setItem('agrirent-current-view', JSON.stringify(view)); } catch { }
             return next;
         });
     }, []);
@@ -78,33 +78,22 @@ const AppContent: React.FC = () => {
     const goBack = useCallback(() => {
         setViewStack(prev => {
             const next = prev.length > 1 ? prev.slice(0, -1) : [{ view: 'HOME' }];
-            try { localStorage.setItem('agrirent-current-view', JSON.stringify(next[next.length - 1])); } catch {}
+            try { localStorage.setItem('agrirent-current-view', JSON.stringify(next[next.length - 1])); } catch { }
             return next;
         });
     }, []);
 
     const currentView = viewStack[viewStack.length - 1];
 
-    
+
+
+
 
     if (user === undefined) {
         return <div>Loading...</div>;
     }
     if (!user) {
         return <AuthScreen />;
-    }
-
-    if (user.role === UserRole.Admin) {
-        switch (currentView.view) {
-            case 'SETTINGS':
-                return <SettingsScreen navigate={navigate} goBack={goBack} />;
-            case 'POLICY':
-                return <PolicyScreen navigate={navigate} goBack={goBack} />;
-            case 'SUPPORT':
-                return <SupportScreen navigate={navigate} goBack={goBack} />;
-            default:
-                return <AdminView navigate={navigate} />;
-        }
     }
 
 
@@ -193,16 +182,16 @@ const App: React.FC = () => {
                                                 <SettingsProvider>
                                                     <AiAssistantProvider>
                                                         <WeatherProvider>
-                                                        {/* REACT NATIVE MIGRATION NOTE:
+                                                            {/* REACT NATIVE MIGRATION NOTE:
                                                             This main container <div> would be replaced by a <SafeAreaView> or <View> component
                                                             from 'react-native' to ensure content is displayed correctly on mobile devices with notches.
                                                             Styling would be applied using the StyleSheet API. */}
-                                                        <div className="bg-gray-100 min-h-screen font-sans">
-                                                            <div className="container mx-auto max-w-lg shadow-2xl bg-white min-h-screen relative">
-                                                                <AppContent />
-                                                                <Toast />
+                                                            <div className="bg-gray-100 min-h-screen font-sans">
+                                                                <div className="container mx-auto max-w-lg shadow-2xl bg-white min-h-screen relative">
+                                                                    <AppContent />
+                                                                    <Toast />
+                                                                </div>
                                                             </div>
-                                                        </div>
                                                         </WeatherProvider>
                                                     </AiAssistantProvider>
                                                 </SettingsProvider>

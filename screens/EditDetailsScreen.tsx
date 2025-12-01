@@ -5,7 +5,7 @@ import Button from '../components/Button';
 import { useAuth } from '../context/AuthContext';
 import { User } from '../types';
 import { useToast } from '../context/ToastContext';
-import { supabase, supabaseConfigured } from '../lib/supabase';
+import { uploadImage } from '../src/lib/upload';
 
 interface EditDetailsScreenProps {
   goBack: () => void;
@@ -50,27 +50,17 @@ const EditDetailsScreen: React.FC<EditDetailsScreenProps> = ({ goBack }) => {
       e.target.value = '';
       return;
     }
-    if (supabaseConfigured && user) {
-      const path = `${user.id}/profile-${Date.now()}-${file.name}`;
-      const { error } = await supabase.storage.from('profiles').upload(path, file, { upsert: true });
-      if (!error) {
-        const { data: pub } = supabase.storage.from('profiles').getPublicUrl(path);
-        const url = pub?.publicUrl || '';
-        if (url) {
-          setProfilePicture(url);
-          showToast('Profile picture uploaded.', 'success');
-          e.target.value = '';
-          return;
-        }
-      }
-    }
+
     try {
-      const result = await toDataUrl(file);
-      setProfilePicture(result);
-      showToast('Profile picture selected.', 'success');
-    } catch {
-      showToast('Failed to read the file.', 'error');
+      showToast('Uploading...', 'info');
+      const url = await uploadImage(file);
+      setProfilePicture(url);
+      showToast('Profile picture uploaded.', 'success');
+    } catch (error) {
+      console.error(error);
+      showToast('Failed to upload image.', 'error');
     }
+    e.target.value = '';
   };
 
   const onSave = () => {

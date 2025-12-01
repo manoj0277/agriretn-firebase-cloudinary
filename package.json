@@ -10,17 +10,17 @@
   },
   "dependencies": {
     "@google/genai": "latest",
-    "@supabase/supabase-js": "^2.81.1",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
     "express": "^5.1.0",
+    "firebase": "^12.6.0",
     "leaflet": "^1.9.4",
+    "pdf-lib": "^1.17.1",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "react-leaflet": "^5.0.0",
     "recharts": "^2.10.3",
-    "xlsx": "^0.18.5",
-    "pdf-lib": "^1.17.1"
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",

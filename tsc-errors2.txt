@@ -1,0 +1,12 @@
+﻿context/WeatherContext.tsx(82,9): error TS2322: Type '"info"' is not assignable to type '"booking" | "offer" | "community" | "admin" | "coupon" | "news" | "update"'.
+screens/admin/SuppliersManagement.tsx(175,18): error TS2304: Cannot find name 'Button'.
+screens/admin/SuppliersManagement.tsx(175,103): error TS2304: Cannot find name 'Button'.
+screens/CommunityScreen.tsx(56,13): error TS2353: Object literal may only specify known properties, and 'timestamp' does not exist in type 'Omit<CommunityReply, "id" | "timestamp">'.
+screens/CommunityScreen.tsx(111,13): error TS2353: Object literal may only specify known properties, and 'timestamp' does not exist in type 'Omit<ForumPost, "id" | "timestamp" | "replies">'.
+screens/FarmerView.tsx(581,52): error TS2339: Property 'startWork' does not exist on type 'BookingContextType'.
+screens/FarmerView.tsx(655,154): error TS2339: Property 'endTime' does not exist on type 'Booking'.
+screens/ManageSupportTicketsScreen.tsx(148,38): error TS2304: Cannot find name 'sorted'.
+screens/PersonalDetailsScreen.tsx(24,30): error TS2345: Argument of type '"phone"' is not assignable to parameter of type '"community" | "admin" | "user" | "email" | "password" | "age" | "gender" | "location" | "avgRating" | "allUsers" | "map" | "delete" | "notifications" | "category" | "description" | ... 182 more ... | "awaitingPaymentFrom"'.
+screens/PersonalDetailsScreen.tsx(41,24): error TS2345: Argument of type '"personalDetails"' is not assignable to parameter of type '"community" | "admin" | "user" | "email" | "password" | "age" | "gender" | "location" | "avgRating" | "allUsers" | "map" | "delete" | "notifications" | "category" | "description" | ... 182 more ... | "awaitingPaymentFrom"'.
+screens/PersonalDetailsScreen.tsx(116,59): error TS2345: Argument of type '"back"' is not assignable to parameter of type '"community" | "admin" | "user" | "email" | "password" | "age" | "gender" | "location" | "avgRating" | "allUsers" | "map" | "delete" | "notifications" | "category" | "description" | ... 182 more ... | "awaitingPaymentFrom"'.
+screens/SupplierBookingsScreen.tsx(70,174): error TS2339: Property 'endTime' does not exist on type 'Booking'.

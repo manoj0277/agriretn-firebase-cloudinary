@@ -19,6 +19,7 @@ export interface User {
     gender?: 'Male' | 'Female' | 'Other' | 'Prefer not to say';
     location?: string;
     status: 'approved' | 'pending' | 'suspended';
+    firebaseUid?: string;
     avgRating?: number;
     blockedDates?: string[];
     locationCoords?: { lat: number; lng: number; };

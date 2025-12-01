@@ -1,0 +1,71 @@
+﻿context/WeatherContext.tsx(82,9): error TS2322: Type '"info"' is not assignable to type '"booking" | "offer" | "community" | "admin" | "coupon" | "news" | "update"'.
+frontend/src/App.tsx(11,31): error TS2307: Cannot find module './context/ToastContext' or its corresponding type declarations.
+frontend/src/App.tsx(27,19): error TS2307: Cannot find module './components/Toast' or its corresponding type declarations.
+frontend/src/context/AiAssistantContext.tsx(4,26): error TS2307: Cannot find module './ToastContext' or its corresponding type declarations.
+frontend/src/context/AuthContext.tsx(3,26): error TS2307: Cannot find module './ToastContext' or its corresponding type declarations.
+frontend/src/context/AuthContext.tsx(4,46): error TS2307: Cannot find module '../../lib/supabase' or its corresponding type declarations.
+frontend/src/context/AuthContext.tsx(45,21): error TS2339: Property 'error' does not exist on type '{}'.
+frontend/src/context/AuthContext.tsx(214,21): error TS2339: Property 'data' does not exist on type '{}'.
+frontend/src/context/AuthContext.tsx(223,21): error TS2339: Property 'data' does not exist on type '{}'.
+frontend/src/context/AuthContext.tsx(223,33): error TS2339: Property 'error' does not exist on type '{}'.
+frontend/src/context/AuthContext.tsx(230,25): error TS2339: Property 'error' does not exist on type '{}'.
+frontend/src/context/BookingContext.tsx(3,46): error TS2307: Cannot find module '../../lib/supabase' or its corresponding type declarations.
+frontend/src/context/BookingContext.tsx(4,26): error TS2307: Cannot find module './ToastContext' or its corresponding type declarations.
+frontend/src/context/ChatContext.tsx(5,26): error TS2307: Cannot find module './ToastContext' or its corresponding type declarations.
+frontend/src/context/ChatContext.tsx(6,26): error TS2307: Cannot find module '../../lib/supabase' or its corresponding type declarations.
+frontend/src/context/CommunityContext.tsx(3,26): error TS2307: Cannot find module './ToastContext' or its corresponding type declarations.
+frontend/src/context/CommunityContext.tsx(4,26): error TS2307: Cannot find module '../../lib/supabase' or its corresponding type declarations.
+frontend/src/context/ItemContext.tsx(3,26): error TS2307: Cannot find module './ToastContext' or its corresponding type declarations.
+frontend/src/context/ItemContext.tsx(4,26): error TS2307: Cannot find module '../../lib/supabase' or its corresponding type declarations.
+frontend/src/context/NotificationContext.tsx(3,26): error TS2307: Cannot find module '../../lib/supabase' or its corresponding type declarations.
+frontend/src/context/ReviewContext.tsx(3,26): error TS2307: Cannot find module './ToastContext' or its corresponding type declarations.
+frontend/src/context/ReviewContext.tsx(4,26): error TS2307: Cannot find module '../../lib/supabase' or its corresponding type declarations.
+frontend/src/context/SupportContext.tsx(3,26): error TS2307: Cannot find module './ToastContext' or its corresponding type declarations.
+frontend/src/context/SupportContext.tsx(4,46): error TS2307: Cannot find module '../../lib/supabase' or its corresponding type declarations.
+frontend/src/screens/AdminAnalyticsScreen.tsx(11,46): error TS2307: Cannot find module '../../lib/supabase' or its corresponding type declarations.
+frontend/src/screens/AdminAnalyticsScreen.tsx(67,91): error TS2362: The left-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+frontend/src/screens/AdminAnalyticsScreen.tsx(67,98): error TS2363: The right-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+frontend/src/screens/AdminAnalyticsScreen.tsx(84,74): error TS2362: The left-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+frontend/src/screens/AdminAnalyticsScreen.tsx(84,81): error TS2363: The right-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+frontend/src/screens/AdminAnalyticsScreen.tsx(87,86): error TS2362: The left-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+frontend/src/screens/AdminAnalyticsScreen.tsx(87,93): error TS2363: The right-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+frontend/src/screens/AdminAnalyticsScreen.tsx(100,64): error TS2362: The left-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+frontend/src/screens/AdminAnalyticsScreen.tsx(100,92): error TS2365: Operator '+' cannot be applied to types 'unknown' and 'unknown'.
+frontend/src/screens/AdminAnalyticsScreen.tsx(107,64): error TS2362: The left-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+frontend/src/screens/AdminAnalyticsScreen.tsx(107,71): error TS2363: The right-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+frontend/src/screens/AdminView.tsx(9,31): error TS2307: Cannot find module './ManageItemsScreen' or its corresponding type declarations.
+frontend/src/screens/AdminView.tsx(13,31): error TS2307: Cannot find module '../../screens/SupplierKycScreen' or its corresponding type declarations.
+frontend/src/screens/AiScanScreen.tsx(6,26): error TS2307: Cannot find module '../context/ToastContext' or its corresponding type declarations.
+frontend/src/screens/ChangePasswordScreen.tsx(6,26): error TS2307: Cannot find module '../context/ToastContext' or its corresponding type declarations.
+frontend/src/screens/EditDetailsScreen.tsx(7,26): error TS2307: Cannot find module '../context/ToastContext' or its corresponding type declarations.
+frontend/src/screens/EditDetailsScreen.tsx(8,46): error TS2307: Cannot find module '../../lib/supabase' or its corresponding type declarations.
+frontend/src/screens/FarmerView.tsx(19,32): error TS2307: Cannot find module '../components/ConfirmationDialog' or its corresponding type declarations.
+frontend/src/screens/FarmerView.tsx(24,26): error TS2307: Cannot find module '../context/ToastContext' or its corresponding type declarations.
+frontend/src/screens/ManageUsersScreen.tsx(3,46): error TS2307: Cannot find module '../../lib/supabase' or its corresponding type declarations.
+frontend/src/screens/ManageUsersScreen.tsx(6,26): error TS2307: Cannot find module '../context/ToastContext' or its corresponding type declarations.
+frontend/src/screens/MyAccountScreen.tsx(10,26): error TS2307: Cannot find module '../context/ToastContext' or its corresponding type declarations.
+frontend/src/screens/PaymentScreen.tsx(9,26): error TS2307: Cannot find module '../context/ToastContext' or its corresponding type declarations.
+frontend/src/screens/PersonalDetailsScreen.tsx(5,26): error TS2307: Cannot find module '../context/ToastContext' or its corresponding type declarations.
+frontend/src/screens/PersonalDetailsScreen.tsx(8,46): error TS2307: Cannot find module '../../lib/supabase' or its corresponding type declarations.
+frontend/src/screens/PersonalDetailsScreen.tsx(24,30): error TS2345: Argument of type '"phone"' is not assignable to parameter of type '"community" | "admin" | "user" | "email" | "password" | "age" | "gender" | "location" | "avgRating" | "aadhaarNumber" | "address" | "allUsers" | "map" | "delete" | "notifications" | ... 178 more ... | "fileSelected"'.
+frontend/src/screens/PersonalDetailsScreen.tsx(43,24): error TS2345: Argument of type '"personalDetails"' is not assignable to parameter of type '"community" | "admin" | "user" | "email" | "password" | "age" | "gender" | "location" | "avgRating" | "aadhaarNumber" | "address" | "allUsers" | "map" | "delete" | "notifications" | ... 178 more ... | "fileSelected"'.
+frontend/src/screens/PersonalDetailsScreen.tsx(117,59): error TS2345: Argument of type '"back"' is not assignable to parameter of type '"community" | "admin" | "user" | "email" | "password" | "age" | "gender" | "location" | "avgRating" | "aadhaarNumber" | "address" | "allUsers" | "map" | "delete" | "notifications" | ... 178 more ... | "fileSelected"'.
+frontend/src/screens/SupplierView.tsx(12,32): error TS2307: Cannot find module '../components/ConfirmationDialog' or its corresponding type declarations.
+frontend/src/screens/SupplierView.tsx(17,26): error TS2307: Cannot find module '../context/ToastContext' or its corresponding type declarations.
+frontend/src/screens/SupplierView.tsx(26,46): error TS2307: Cannot find module '../../lib/supabase' or its corresponding type declarations.
+frontend/src/screens/SupplierView.tsx(193,34): error TS2345: Argument of type 'unknown' is not assignable to parameter of type 'Blob'.
+  Type '{}' is missing the following properties from type 'Blob': size, type, arrayBuffer, bytes, and 3 more.
+frontend/src/screens/VoiceAssistantScreen.tsx(6,26): error TS2307: Cannot find module '../context/ToastContext' or its corresponding type declarations.
+frontend/src/translations.ts(198,3): error TS1117: An object literal cannot have multiple properties with the same name.
+frontend/src/utils/imageFallback.ts(3,42): error TS2503: Cannot find namespace 'React'.
+screens/admin/SuppliersManagement.tsx(175,18): error TS2304: Cannot find name 'Button'.
+screens/admin/SuppliersManagement.tsx(175,103): error TS2304: Cannot find name 'Button'.
+screens/CommunityScreen.tsx(56,13): error TS2353: Object literal may only specify known properties, and 'timestamp' does not exist in type 'Omit<CommunityReply, "id" | "timestamp">'.
+screens/CommunityScreen.tsx(111,13): error TS2353: Object literal may only specify known properties, and 'timestamp' does not exist in type 'Omit<ForumPost, "id" | "timestamp" | "replies">'.
+screens/FarmerView.tsx(581,52): error TS2339: Property 'startWork' does not exist on type 'BookingContextType'.
+screens/FarmerView.tsx(655,154): error TS2339: Property 'endTime' does not exist on type 'Booking'.
+screens/ManageSupportTicketsScreen.tsx(148,38): error TS2304: Cannot find name 'sorted'.
+screens/PersonalDetailsScreen.tsx(24,30): error TS2345: Argument of type '"phone"' is not assignable to parameter of type '"community" | "admin" | "user" | "email" | "password" | "age" | "gender" | "location" | "avgRating" | "allUsers" | "map" | "delete" | "notifications" | "category" | "description" | ... 182 more ... | "awaitingPaymentFrom"'.
+screens/PersonalDetailsScreen.tsx(41,24): error TS2345: Argument of type '"personalDetails"' is not assignable to parameter of type '"community" | "admin" | "user" | "email" | "password" | "age" | "gender" | "location" | "avgRating" | "allUsers" | "map" | "delete" | "notifications" | "category" | "description" | ... 182 more ... | "awaitingPaymentFrom"'.
+screens/PersonalDetailsScreen.tsx(116,59): error TS2345: Argument of type '"back"' is not assignable to parameter of type '"community" | "admin" | "user" | "email" | "password" | "age" | "gender" | "location" | "avgRating" | "allUsers" | "map" | "delete" | "notifications" | "category" | "description" | ... 182 more ... | "awaitingPaymentFrom"'.
+screens/SupplierBookingsScreen.tsx(70,174): error TS2339: Property 'endTime' does not exist on type 'Booking'.

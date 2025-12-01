@@ -7,7 +7,7 @@ import Input from '../components/Input';
 import Button from '../components/Button';
 import { useToast } from '../context/ToastContext';
 import { useLanguage } from '../context/LanguageContext';
-import { supabase, supabaseConfigured } from '../lib/supabase';
+
 
 interface MyAccountScreenProps {
     goBack: () => void;
@@ -49,7 +49,7 @@ const MyAccountScreen: React.FC<MyAccountScreenProps> = ({ goBack, navigate }) =
     useEffect(() => {
         if (!user) return;
         let status: string | null = null;
-        try { status = typeof window !== 'undefined' ? localStorage.getItem(`kycStatus:${user.id}`) : null } catch {}
+        try { status = typeof window !== 'undefined' ? localStorage.getItem(`kycStatus:${user.id}`) : null } catch { }
         setKycStatus(status);
     }, [user]);
 
@@ -94,9 +94,9 @@ const MyAccountScreen: React.FC<MyAccountScreenProps> = ({ goBack, navigate }) =
             <Header title={t('myAccount')} onBack={goBack} />
             <div className="p-6 space-y-6">
                 <div className="flex flex-col items-center space-y-4">
-                    <img 
-                        src={profilePicture} 
-                        alt="Profile" 
+                    <img
+                        src={profilePicture}
+                        alt="Profile"
                         className="w-24 h-24 rounded-full object-cover border-4 border-white dark:border-neutral-700 shadow-lg"
                         referrerPolicy="no-referrer"
                         crossOrigin="anonymous"
@@ -135,7 +135,7 @@ const MyAccountScreen: React.FC<MyAccountScreenProps> = ({ goBack, navigate }) =
                 )}
 
                 <div className="border-t dark:border-neutral-700 pt-6">
-                     <span className="text-primary font-semibold cursor-pointer" onClick={() => navigate({ view: 'CHANGE_PASSWORD' })}>{t('changePassword')}</span>
+                    <span className="text-primary font-semibold cursor-pointer" onClick={() => navigate({ view: 'CHANGE_PASSWORD' })}>{t('changePassword')}</span>
                 </div>
             </div>
         </div>

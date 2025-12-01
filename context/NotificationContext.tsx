@@ -1,6 +1,7 @@
 import React, { createContext, useState, useContext, ReactNode, useMemo, useCallback, useEffect } from 'react';
 import { Notification } from '../types';
-import { supabase } from '../lib/supabase';
+
+const API_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3001/api';
 
 interface NotificationContextType {
     notifications: Notification[];
@@ -16,22 +17,37 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
     useEffect(() => {
         const load = async () => {
             try {
-                const { data } = await supabase.from('notifications').select('*').order('timestamp', { ascending: false });
-                setNotifications((data || []) as Notification[]);
-            } catch {}
+                const res = await fetch(`${API_URL}/notifications`);
+                if (res.ok) {
+                    const data = await res.json();
+                    setNotifications(data);
+                }
+            } catch { }
         };
         load();
     }, []);
 
     const addNotification = useCallback(async (notificationData: Omit<Notification, 'id' | 'read' | 'timestamp'>) => {
         const newNotification: Notification = { id: Date.now(), ...notificationData, read: false, timestamp: new Date().toISOString() };
-        await supabase.from('notifications').upsert([newNotification]);
-        setNotifications(prev => [newNotification, ...prev]);
+        try {
+            await fetch(`${API_URL}/notifications`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(newNotification)
+            });
+            setNotifications(prev => [newNotification, ...prev]);
+        } catch { }
     }, []);
-    
+
     const markAsRead = useCallback(async (notificationId: number) => {
-        await supabase.from('notifications').update({ read: true }).eq('id', notificationId);
-        setNotifications(prev => prev.map(n => n.id === notificationId ? { ...n, read: true } : n));
+        try {
+            await fetch(`${API_URL}/notifications/${notificationId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ read: true })
+            });
+            setNotifications(prev => prev.map(n => n.id === notificationId ? { ...n, read: true } : n));
+        } catch { }
     }, []);
 
     const value = useMemo(() => ({ notifications, addNotification, markAsRead }), [notifications, addNotification, markAsRead]);
