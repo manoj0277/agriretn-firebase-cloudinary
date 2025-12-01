@@ -5,10 +5,10 @@ import { useAuth } from '../context/AuthContext';
 import { useItem } from '../context/ItemContext';
 import Header from '../components/Header';
 
-const BookingAdminCard: React.FC<{ 
-    booking: Booking, 
-    farmerName: string, 
-    itemName: string, 
+const BookingAdminCard: React.FC<{
+    booking: Booking,
+    farmerName: string,
+    itemName: string,
     damageReport?: DamageReport,
     onResolveDispute: (id: string) => void,
     onResolveDamage: (id: number) => void,
@@ -39,7 +39,7 @@ const BookingAdminCard: React.FC<{
                     {booking.status}
                 </span>
             </div>
-            
+
             {damageReport && (
                 <div className="mt-4 border-t border-neutral-100 dark:border-neutral-600 pt-3">
                     <p className="text-sm font-bold text-red-600">Damage Reported:</p>
@@ -49,22 +49,22 @@ const BookingAdminCard: React.FC<{
                             <button onClick={() => onResolveDamage(damageReport.id)} className="text-sm bg-green-600 text-white font-semibold py-1 px-3 rounded-md hover:bg-green-700">Resolve Claim</button>
                         </div>
                     ) : (
-                         <p className="text-sm text-green-700 font-semibold text-right mt-2">Claim Resolved</p>
+                        <p className="text-sm text-green-700 font-semibold text-right mt-2">Claim Resolved</p>
                     )}
                 </div>
             )}
 
             {(booking.disputeRaised && !booking.disputeResolved) && (
-                 <div className="text-right mt-4 border-t border-neutral-100 dark:border-neutral-600 pt-3 flex justify-end">
+                <div className="text-right mt-4 border-t border-neutral-100 dark:border-neutral-600 pt-3 flex justify-end">
                     <button onClick={() => onResolveDispute(booking.id)} className="text-sm bg-blue-600 text-white font-semibold py-1 px-3 rounded-md hover:bg-blue-700">Resolve Dispute</button>
-                 </div>
+                </div>
             )}
             {booking.disputeResolved && (
-                 <div className="text-right mt-4 border-t border-neutral-100 dark:border-neutral-600 pt-3">
+                <div className="text-right mt-4 border-t border-neutral-100 dark:border-neutral-600 pt-3">
                     <p className="text-sm text-green-700 font-semibold">Dispute Resolved</p>
-                 </div>
+                </div>
             )}
-            
+
             {booking.status === 'Completed' && booking.paymentDetails && (
                 <div className="mt-4 border-t border-neutral-100 dark:border-neutral-600 pt-3">
                     <p className="text-sm font-bold text-green-600 mb-2">Payment Breakdown:</p>
@@ -88,7 +88,7 @@ const ManageBookingsScreen: React.FC = () => {
 
     const getUserName = (id: number) => allUsers.find(u => u.id === id)?.name || 'Unknown';
     const getItemName = (id?: number) => items.find(m => m.id === id)?.name || 'N/A';
-    
+
     const filteredBookings = useMemo(() => {
         const sorted = [...bookings].reverse();
         if (filter === 'all') return sorted;
@@ -116,7 +116,7 @@ const ManageBookingsScreen: React.FC = () => {
                 {filteredBookings.map(booking => {
                     const damageReport = damageReports.find(dr => dr.bookingId === booking.id);
                     return (
-                        <BookingAdminCard 
+                        <BookingAdminCard
                             key={booking.id}
                             booking={booking}
                             farmerName={getUserName(booking.farmerId)}

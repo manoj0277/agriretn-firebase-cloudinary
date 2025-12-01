@@ -157,13 +157,21 @@ const AppContent: React.FC = () => {
             return <PaymentScreen booking={currentView.booking as Booking} goBack={goBack} navigate={navigate} fromCompletion={(currentView as any).fromCompletion} />;
         case 'HOME':
         default:
+            console.log('Rendering HOME view for user:', user);
+            console.log('User role:', user?.role);
+            console.log('Role enum values:', UserRole);
+
             if (user.role === UserRole.Farmer) {
                 return <FarmerView navigate={navigate} />;
             }
             if (user.role === UserRole.Supplier) {
                 return <SupplierView navigate={navigate} />;
             }
-            return <div>Unknown user role</div>;
+            if (user.role === UserRole.Admin) {
+                return <AdminView navigate={navigate} />;
+            }
+            console.error('Unknown user role - no match found:', user.role);
+            return <div>Unknown user role: {user.role}</div>;
     }
 };
 

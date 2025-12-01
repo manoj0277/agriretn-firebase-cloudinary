@@ -128,6 +128,15 @@ const AddItemScreen: React.FC<{ itemToEdit: Item | null, onBack: () => void }> =
         });
     }, []);
 
+    // Fixed Operator Charge Logic
+    useEffect(() => {
+        if (category === ItemCategory.Harvesters) {
+            setOperatorCharge('200');
+        } else {
+            setOperatorCharge('100');
+        }
+    }, [category]);
+
     const handleKycFileSelect = (type: 'aadhar' | 'personal') => (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
@@ -315,7 +324,16 @@ const AddItemScreen: React.FC<{ itemToEdit: Item | null, onBack: () => void }> =
         };
 
         if (itemToEdit) {
-            updateItem({ ...itemToEdit, ...itemData });
+            // When re-uploading, clear the re-upload request flag
+            const wasReuploadRequested = (itemToEdit as any).reuploadRequested;
+            updateItem({
+                ...itemToEdit,
+                ...itemData,
+                reuploadRequested: false // Clear the flag
+            });
+            if (wasReuploadRequested) {
+                showToast('Item re-uploaded successfully! Waiting for admin approval.', 'success');
+            }
         } else {
             addItem(itemData as Omit<Item, 'id'>);
         }
@@ -356,7 +374,7 @@ const AddItemScreen: React.FC<{ itemToEdit: Item | null, onBack: () => void }> =
                         </div>
                     </div>
                 )}
-                <Input label="Model Name" value={name} onChange={e => setName(e.target.value)} required />
+                <Input label="Item Name (e.g., Tractor, Rotavator, Seed Planter)" value={name} onChange={e => setName(e.target.value)} required />
                 <div>
                     <label className="block text-neutral-700 dark:text-neutral-300 text-sm font-bold mb-2">Select Item Location on Map <span className="text-red-600">*</span></label>
                     <div className="rounded overflow-hidden border border-neutral-200 dark:border-neutral-600">
@@ -408,7 +426,7 @@ const AddItemScreen: React.FC<{ itemToEdit: Item | null, onBack: () => void }> =
                 </div>
                 <div>
                     <label className="block text-neutral-700 dark:text-neutral-300 text-sm font-bold mb-2">Category</label>
-                    <select value={category} onChange={e => setCategory(e.target.value as ItemCategory)} className="shadow appearance-none border border-neutral-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg w-full py-3 px-4 text-neutral-800 dark:text-white leading-tight focus:outline-none focus:ring-2 focus:ring-primary/50">
+                    <select value={category} onChange={e => setCategory(e.target.value as ItemCategory)} className="shadow border border-neutral-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg w-full py-3 px-4 pr-10 text-neutral-800 dark:text-white leading-tight focus:outline-none focus:ring-2 focus:ring-primary/50" style={{ backgroundImage: "url('data:image/svg+xml;charset=UTF-8,%3csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27 fill=%27none%27 stroke=%27currentColor%27 stroke-width=%272%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27%3e%3cpolyline points=%276 9 12 15 18 9%27%3e%3c/polyline%3e%3c/svg%3e')", backgroundPosition: 'right 0.75rem center', backgroundRepeat: 'no-repeat', backgroundSize: '1.5em 1.5em' }}>
                         {Object.values(ItemCategory).map(t => <option key={t} value={t}>{t}</option>)}
                     </select>
                 </div>
@@ -462,7 +480,7 @@ const AddItemScreen: React.FC<{ itemToEdit: Item | null, onBack: () => void }> =
                 {isWorker && (
                     <div>
                         <label className="block text-neutral-700 dark:text-neutral-300 text-sm font-bold mb-2">Gender</label>
-                        <select value={gender} onChange={e => setGender(e.target.value as 'Male' | 'Female')} className="shadow appearance-none border border-neutral-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg w-full py-3 px-4 text-neutral-800 dark:text-white leading-tight focus:outline-none focus:ring-2 focus:ring-primary/50">
+                        <select value={gender} onChange={e => setGender(e.target.value as 'Male' | 'Female')} className="shadow border border-neutral-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg w-full py-3 px-4 pr-10 text-neutral-800 dark:text-white leading-tight focus:outline-none focus:ring-2 focus:ring-primary/50" style={{ backgroundImage: "url('data:image/svg+xml;charset=UTF-8,%3csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27 fill=%27none%27 stroke=%27currentColor%27 stroke-width=%272%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27%3e%3cpolyline points=%276 9 12 15 18 9%27%3e%3c/polyline%3e%3c/svg%3e')", backgroundPosition: 'right 0.75rem center', backgroundRepeat: 'no-repeat', backgroundSize: '1.5em 1.5em' }}>
                             <option value="Male">Male</option>
                             <option value="Female">Female</option>
                         </select>
@@ -487,7 +505,7 @@ const AddItemScreen: React.FC<{ itemToEdit: Item | null, onBack: () => void }> =
                 {(isHeavyMachinery || isEquipment) && (
                     <div>
                         <label className="block text-neutral-700 dark:text-neutral-300 text-sm font-bold mb-2">Condition</label>
-                        <select value={condition} onChange={e => setCondition(e.target.value as 'New' | 'Good' | 'Fair')} className="shadow appearance-none border border-neutral-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg w-full py-3 px-4 text-neutral-800 dark:text-white leading-tight focus:outline-none focus:ring-2 focus:ring-primary/50">
+                        <select value={condition} onChange={e => setCondition(e.target.value as 'New' | 'Good' | 'Fair')} className="shadow border border-neutral-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg w-full py-3 px-4 pr-10 text-neutral-800 dark:text-white leading-tight focus:outline-none focus:ring-2 focus:ring-primary/50" style={{ backgroundImage: "url('data:image/svg+xml;charset=UTF-8,%3csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27 fill=%27none%27 stroke=%27currentColor%27 stroke-width=%272%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27%3e%3cpolyline points=%276 9 12 15 18 9%27%3e%3c/polyline%3e%3c/svg%3e')", backgroundPosition: 'right 0.75rem center', backgroundRepeat: 'no-repeat', backgroundSize: '1.5em 1.5em' }}>
                             <option value="New">New</option>
                             <option value="Good">Good</option>
                             <option value="Fair">Fair</option>
@@ -495,11 +513,12 @@ const AddItemScreen: React.FC<{ itemToEdit: Item | null, onBack: () => void }> =
                     </div>
                 )}
                 <Input
-                    label={`Operator Charge per hour (₹) ${isHeavyMachinery ? '' : '(Optional)'}`}
+                    label={`Operator Charge per hour (₹) - Fixed Rate`}
                     type="number"
                     value={operatorCharge}
-                    onChange={e => setOperatorCharge(e.target.value)}
-                    required={isHeavyMachinery}
+                    onChange={() => { }} // Read-only
+                    disabled={true}
+                    className="bg-gray-100 dark:bg-neutral-800 cursor-not-allowed opacity-70"
                 />
                 <div className="flex items-center justify-between p-3 bg-neutral-50 dark:bg-neutral-900/40 rounded-lg border border-neutral-200 dark:border-neutral-600">
                     <div>
@@ -593,6 +612,19 @@ const SupplierListingsScreen: React.FC<{ onAddItem: () => void, onEditItem: (m: 
                     </div>
                 </div>
 
+                {/* Re-upload Alert */}
+                {myItems.some(i => (i as any).reuploadRequested) && (
+                    <div className="mb-4 p-4 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-lg">
+                        <div className="flex items-center gap-2 mb-2">
+                            <svg className="w-6 h-6 text-orange-600 dark:text-orange-400" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                            </svg>
+                            <h3 className="font-semibold text-orange-800 dark:text-orange-200">Action Required - Re-upload Item</h3>
+                        </div>
+                        <p className="text-sm text-orange-700 dark:text-orange-300">Admin has requested you to re-upload some items. Please check below and update the required items.</p>
+                    </div>
+                )}
+
                 <div className="space-y-3">
                     {myItems.length > 0 ? (
                         [...myItems].reverse().map(item => {
@@ -603,13 +635,20 @@ const SupplierListingsScreen: React.FC<{ onAddItem: () => void, onEditItem: (m: 
                                         <div>
                                             <h3 className="font-bold text-neutral-800 dark:text-neutral-100">{item.name}</h3>
                                             <p className="text-sm text-neutral-700 dark:text-neutral-300">Starting from ₹{minPrice}/hr</p>
+                                            {(item as any).reuploadRequested && (
+                                                <span className="text-xs bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-200 px-2 py-1 rounded-full mt-1 inline-block animate-pulse">
+                                                    🔄 Re-upload Requested
+                                                </span>
+                                            )}
                                         </div>
                                         <span className={`text-xs font-semibold px-3 py-1 rounded-full ${getStatusClasses(item.status)}`}>
                                             {item.status.charAt(0).toUpperCase() + item.status.slice(1)}
                                         </span>
                                     </div>
                                     <div className="text-right mt-4 border-t border-neutral-100 dark:border-neutral-600 pt-3 flex justify-end space-x-2">
-                                        <button onClick={() => onEditItem(item)} className="bg-primary text-white font-bold py-1 px-3 rounded-lg text-sm hover:bg-primary-dark transition-colors">Edit</button>
+                                        <button onClick={() => onEditItem(item)} className="bg-primary text-white font-bold py-1 px-3 rounded-lg text-sm hover:bg-primary-dark transition-colors">
+                                            {(item.status === 'rejected' || (item as any).reuploadRequested) ? 'Re-upload Item' : 'Edit'}
+                                        </button>
                                         <button onClick={() => setItemToDelete(item)} className="bg-red-600 text-white font-bold py-1 px-3 rounded-lg text-sm hover:bg-red-700 transition-colors">Delete</button>
                                         <button onClick={() => optimizePrices(item)} className="bg-blue-600 text-white font-bold py-1 px-3 rounded-lg text-sm hover:bg-blue-700 transition-colors">Optimize Now</button>
                                         <span className={`text-xs px-2 py-1 rounded-md ${item.autoPriceOptimization ? 'bg-green-100 text-green-700' : 'bg-neutral-100 text-neutral-600'}`}>{item.autoPriceOptimization ? 'Auto Opt: On' : 'Auto Opt: Off'}</span>
@@ -705,6 +744,9 @@ export const SupplierKycInlineForm: React.FC<{ onSubmitted: () => void }> = ({ o
         shadowSize: [41, 41]
     });
 
+    const [kycStatus, setKycStatus] = useState<string | null>(null);
+    const [kycDocs, setKycDocs] = useState<any[]>([]);
+
     useEffect(() => {
         if (!('geolocation' in navigator)) return;
         navigator.geolocation.getCurrentPosition(pos => {
@@ -715,6 +757,53 @@ export const SupplierKycInlineForm: React.FC<{ onSubmitted: () => void }> = ({ o
         });
     }, []);
 
+    // Fetch existing KYC data
+    useEffect(() => {
+        if (!user) return;
+        const fetchKyc = async () => {
+            try {
+                const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3001/api';
+                const res = await fetch(`${apiUrl}/kyc/${user.id}`);
+                if (res.ok) {
+                    const data = await res.json();
+                    setKycStatus(data.status);
+                    setKycDocs(data.docs || []);
+
+                    // Pre-fill form
+                    if (data.fullName) setFullName(data.fullName);
+                    if (data.phone) setPhone(data.phone);
+                    if (data.address) setAddress(data.address);
+
+                    // Pre-fill documents
+                    const aadhaar = data.docs?.find((d: any) => d.type === 'Aadhaar');
+                    if (aadhaar) {
+                        setAadhaarPreview(aadhaar.url);
+                        setAadhaarNumber(aadhaar.number || '');
+                    }
+
+                    const photo = data.docs?.find((d: any) => d.type === 'PersonalPhoto');
+                    if (photo) {
+                        setPhotoPreview(photo.url);
+                    }
+
+                    const pan = data.docs?.find((d: any) => d.type === 'PAN');
+                    if (pan) {
+                        setPanPreview(pan.url);
+                        setPanNumber(pan.number || '');
+                    }
+                }
+            } catch (error) {
+                console.error('Error fetching KYC:', error);
+            }
+        };
+        fetchKyc();
+    }, [user]);
+
+    const getDocStatus = (type: string) => {
+        const doc = kycDocs.find(d => d.type === type);
+        return doc?.status;
+    };
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!user) return;
@@ -723,25 +812,70 @@ export const SupplierKycInlineForm: React.FC<{ onSubmitted: () => void }> = ({ o
             showToast('Uploading KYC documents...', 'info');
             let aadhaarUrl = '';
             let photoUrl = '';
-            // Upload files
-            if (aadhaarFile) aadhaarUrl = await uploadImage(aadhaarFile);
-            if (photoFile) photoUrl = await uploadImage(photoFile);
+            let panUrl = '';
 
-            // Update user
-            await updateUser({
-                ...user,
-                aadhaarNumber,
-                aadharImageUrl: aadhaarUrl || undefined,
-                personalPhotoUrl: photoUrl || undefined,
+            // Upload images to Cloudinary or use existing
+            if (aadhaarFile) {
+                console.log('Uploading Aadhaar image...');
+                aadhaarUrl = await uploadImage(aadhaarFile);
+            } else if (aadhaarPreview && !aadhaarPreview.startsWith('data:')) {
+                aadhaarUrl = aadhaarPreview; // Use existing URL
+            }
+
+            if (photoFile) {
+                console.log('Uploading personal photo...');
+                photoUrl = await uploadImage(photoFile);
+            } else if (photoPreview && !photoPreview.startsWith('data:')) {
+                photoUrl = photoPreview;
+            }
+
+            if (panFile) {
+                console.log('Uploading PAN image...');
+                panUrl = await uploadImage(panFile);
+            } else if (panPreview && !panPreview.startsWith('data:')) {
+                panUrl = panPreview;
+            }
+
+            // Submit KYC data to backend
+            const kycPayload = {
+                userId: user.id,
+                fullName,
+                phone,
                 address,
-                location
+                location,
+                aadhaarNumber,
+                aadhaarUrl,
+                photoUrl,
+                panNumber: panNumber || undefined,
+                panUrl: panUrl || undefined
+            };
+
+            console.log('Submitting KYC data:', kycPayload);
+            const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3001/api';
+            const response = await fetch(`${apiUrl}/kyc`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(kycPayload)
             });
 
-            showToast('KYC submitted. Verification pending.', 'success');
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.message || 'Failed to submit KYC');
+            }
+
+            const result = await response.json();
+            console.log('KYC submission successful:', result);
+
+            // Update user with phone if changed
+            if (phone !== user.phone) {
+                await updateUser({ ...user, phone });
+            }
+
+            showToast('KYC submitted successfully. Verification pending.', 'success');
             onSubmitted();
-        } catch (error) {
-            console.error(error);
-            showToast('Failed to submit KYC', 'error');
+        } catch (error: any) {
+            console.error('KYC submission error:', error);
+            showToast(error.message || 'Failed to submit KYC. Please try again.', 'error');
         } finally {
             setIsSubmitting(false);
         }
@@ -751,8 +885,36 @@ export const SupplierKycInlineForm: React.FC<{ onSubmitted: () => void }> = ({ o
         aadhaarPreview && photoPreview && geo && fullName && phone && address && aadhaarNumber
     );
 
+
+    const renderStatusBadge = (type: string) => {
+        const status = getDocStatus(type);
+        if (!status) return null;
+
+        if (status === 'Approved') {
+            return <span className="ml-2 text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded-full">Verified</span>;
+        }
+        if (status === 'ReuploadRequested') {
+            return <span className="ml-2 text-xs bg-orange-100 text-orange-800 px-2 py-0.5 rounded-full animate-pulse">Re-upload Required</span>;
+        }
+        if (status === 'Rejected') {
+            return <span className="ml-2 text-xs bg-red-100 text-red-800 px-2 py-0.5 rounded-full">Rejected</span>;
+        }
+        return <span className="ml-2 text-xs bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded-full">Pending</span>;
+    };
+
     return (
         <form className="space-y-4" onSubmit={handleSubmit}>
+            {kycStatus === 'Approved' && (
+                <div className="mb-4 p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+                    <div className="flex items-center gap-2 mb-2">
+                        <svg className="w-6 h-6 text-green-600 dark:text-green-400" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                        </svg>
+                        <h3 className="font-semibold text-green-800 dark:text-green-200">KYC Verified Successfully! ✓</h3>
+                    </div>
+                    <p className="text-sm text-green-700 dark:text-green-300">Your KYC has been approved by our admin team. You can now add and list items.</p>
+                </div>
+            )}
             <Input label="Full Name" value={fullName} onChange={e => setFullName(e.target.value)} required />
             <Input label="Phone" value={phone} onChange={e => setPhone(e.target.value)} required />
             <Input label="Address" value={address} onChange={e => setAddress(e.target.value)} required />
@@ -787,24 +949,39 @@ export const SupplierKycInlineForm: React.FC<{ onSubmitted: () => void }> = ({ o
                 {geo && <p className="text-xs text-neutral-600 dark:text-neutral-400">Selected: {geo.lat.toFixed(5)}, {geo.lng.toFixed(5)}</p>}
             </div>
             <div>
-                <label className="block text-neutral-700 dark:text-neutral-300 text-sm font-bold mb-2">Aadhaar Image <span className="text-red-600">*</span></label>
+                <label className="block text-neutral-700 dark:text-neutral-300 text-sm font-bold mb-2">
+                    Aadhaar Image <span className="text-red-600">*</span>
+                    {renderStatusBadge('Aadhaar')}
+                </label>
                 {aadhaarPreview && <img src={aadhaarPreview} alt="Aadhaar" className="h-24 w-32 object-cover rounded-md mb-2" />}
-                <input type="file" accept="image/*" capture="environment" required onChange={onAadhaarSelect} className="shadow appearance-none border border-neutral-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg w-full py-2 px-3 text-neutral-800 dark:text-white" />
+                <input type="file" accept="image/*" capture="environment" onChange={onAadhaarSelect} className="shadow appearance-none border border-neutral-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg w-full py-2 px-3 text-neutral-800 dark:text-white" />
             </div>
             <Input label="Aadhaar Number" value={aadhaarNumber} onChange={e => setAadhaarNumber(e.target.value)} required />
             <div>
-                <label className="block text-neutral-700 dark:text-neutral-300 text-sm font-bold mb-2">Live Photo <span className="text-red-600">*</span></label>
+                <label className="block text-neutral-700 dark:text-neutral-300 text-sm font-bold mb-2">
+                    Live Photo <span className="text-red-600">*</span>
+                    {renderStatusBadge('PersonalPhoto')}
+                </label>
                 {photoPreview && <img src={photoPreview} alt="Live" className="h-24 w-24 object-cover rounded-full mb-2" />}
-                <input type="file" accept="image/*" capture="user" required onChange={onPhotoSelect} className="shadow appearance-none border border-neutral-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg w-full py-2 px-3 text-neutral-800 dark:text-white" />
+                <input type="file" accept="image/*" capture="user" onChange={onPhotoSelect} className="shadow appearance-none border border-neutral-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg w-full py-2 px-3 text-neutral-800 dark:text-white" />
             </div>
             <div>
-                <label className="block text-neutral-700 dark:text-neutral-300 text-sm font-bold mb-2">PAN (Optional)</label>
+                <label className="block text-neutral-700 dark:text-neutral-300 text-sm font-bold mb-2">
+                    PAN (Optional)
+                    {renderStatusBadge('PAN')}
+                </label>
                 {panPreview && <img src={panPreview} alt="PAN" className="h-24 w-32 object-cover rounded-md mb-2" />}
                 <input type="file" accept="image/*,application/pdf" onChange={onPanSelect} className="shadow appearance-none border border-neutral-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg w-full py-2 px-3 text-neutral-800 dark:text-white" />
                 <Input label="PAN Number (Optional)" value={panNumber} onChange={e => setPanNumber(e.target.value)} />
             </div>
 
-            <Button type="submit" disabled={isSubmitting || !canSubmit}>{isSubmitting ? 'Processing...' : 'Submit KYC'}</Button>
+            <Button
+                type="submit"
+                disabled={isSubmitting || !canSubmit || kycStatus === 'Approved'}
+                className={kycStatus === 'Approved' ? 'blur-[2px] opacity-50 cursor-not-allowed' : ''}
+            >
+                {isSubmitting ? 'Processing...' : kycStatus === 'Approved' ? 'KYC Already Approved' : 'Submit KYC'}
+            </Button>
         </form>
     );
 };
@@ -947,7 +1124,7 @@ const SupplierDashboardScreen: React.FC<SupplierViewProps & { goToTab?: (name: s
                 <div>
                     <h2 className="text-xl font-bold text-neutral-800 dark:text-neutral-100">{t('welcome')}, {user?.name}!</h2>
                     <p className="text-neutral-700 dark:text-neutral-300 text-sm">{user?.email}</p>
-                    {user?.status === 'pending' && <p className="text-yellow-700 mt-2 text-xs p-2 bg-yellow-100 rounded-md">Your account is pending admin approval.</p>}
+
                     {kycStatus && (kycStatus === 'Submitted' || kycStatus === 'Pending') && (
                         <p className="text-yellow-700 mt-2 text-xs p-2 bg-yellow-100 rounded-md">KYC submitted. Verification pending.</p>
                     )}

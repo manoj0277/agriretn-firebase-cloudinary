@@ -52,10 +52,10 @@ const BookingFormScreen: React.FC<BookingFormScreenProps> = ({ navigate, goBack,
     const [allowMultipleSuppliers, setAllowMultipleSuppliers] = useState(true);
     const [preferredModel, setPreferredModel] = useState('any');
     const [workPurpose, setWorkPurpose] = useState<WorkPurpose>(item?.purposes[0]?.name || initialWorkPurpose || WORK_PURPOSES[0]);
-    
+
     const [operatorRequired, setOperatorRequired] = useState(false);
     // Payment selection removed; handled after work completion
-    
+
     const isDirectRequest = !!item;
     const [isBroadcastOverride, setIsBroadcastOverride] = useState(false);
 
@@ -88,7 +88,7 @@ const BookingFormScreen: React.FC<BookingFormScreenProps> = ({ navigate, goBack,
         if (!supplier || !date) return false;
         return supplier.blockedDates?.includes(date) ?? false;
     }, [supplier, date]);
-    
+
     const handleWorkPurposeChange = (newPurpose: WorkPurpose) => {
         setWorkPurpose(newPurpose);
         if (isDirectRequest && item) {
@@ -100,7 +100,7 @@ const BookingFormScreen: React.FC<BookingFormScreenProps> = ({ navigate, goBack,
     const isQuantityApplicable = useMemo(() => itemCategory === ItemCategory.Workers, [itemCategory]);
     const isOperatorApplicable = useMemo(() => ![ItemCategory.Workers, ItemCategory.Drivers, ItemCategory.Borewell, ItemCategory.Harvesters, ItemCategory.Drones, ItemCategory.JCB].includes(itemCategory), [itemCategory]);
     const isModelApplicable = useMemo(() => [ItemCategory.Tractors, ItemCategory.Harvesters, ItemCategory.JCB, ItemCategory.Borewell, ItemCategory.Drones].includes(itemCategory) && !isDirectRequest, [isDirectRequest, itemCategory]);
-    
+
     const availableModels = useMemo(() => {
         if (!isModelApplicable) return [];
         const modelsFromSuppliers = new Set(items.filter(i => i.category === itemCategory && i.model && i.status === 'approved').map(i => i.model!));
@@ -122,7 +122,7 @@ const BookingFormScreen: React.FC<BookingFormScreenProps> = ({ navigate, goBack,
         return isNaN(n) || n <= 0 ? 0 : n;
     }, [estimatedDurationInput]);
     const billableHours = useMemo(() => Math.max(1, durationInHours), [durationInHours]);
-    
+
     const distanceCharge = useMemo(() => {
         if (!isDirectRequest || !item || !item.locationCoords || !user || !user.locationCoords) return 0;
 
@@ -130,7 +130,7 @@ const BookingFormScreen: React.FC<BookingFormScreenProps> = ({ navigate, goBack,
         let serviceRadius = 3; // default 3km
         if (item.category === ItemCategory.Borewell) serviceRadius = 15;
         if (item.category === ItemCategory.Harvesters) serviceRadius = 10;
-        
+
         if (distance > serviceRadius) {
             const extraDistance = distance - serviceRadius;
             return Math.round(extraDistance * 10); // ₹10 per km
@@ -140,58 +140,58 @@ const BookingFormScreen: React.FC<BookingFormScreenProps> = ({ navigate, goBack,
 
     const applicableItems = useMemo(() => {
         return isDirectRequest && !isBroadcastOverride
-            ? [item] 
-            : items.filter(i => 
-                i.category === itemCategory && 
-                i.status === 'approved' && 
+            ? [item]
+            : items.filter(i =>
+                i.category === itemCategory &&
+                i.status === 'approved' &&
                 i.available &&
                 i.purposes.some(p => p.name === workPurpose)
-              );
+            );
     }, [items, itemCategory, isDirectRequest, item, workPurpose, isBroadcastOverride]);
-    
+
     const priceEstimates = useMemo(() => {
         if (applicableItems.length === 0 || durationInHours <= 0) {
-            return { 
-                machine: { min: 0, max: 0 }, 
-                operator: { min: 0, max: 0 }, 
+            return {
+                machine: { min: 0, max: 0 },
+                operator: { min: 0, max: 0 },
                 platformFee: { min: 0, max: 0 },
                 travelCharges: { min: 0, max: 0 },
                 additionalCharges: { min: 0, max: 0 },
-                total: { min: 0, max: 0 } 
+                total: { min: 0, max: 0 }
             };
         }
-    
+
         const numQuantity = isQuantityApplicable ? parseInt(quantity) : 1;
-    
+
         const machinePrices = applicableItems.map(i => (i.purposes.find(p => p.name === workPurpose)?.price || 0) * numQuantity * billableHours);
         const operatorPrices = operatorRequired ? applicableItems.map(i => (i.operatorCharge || 0) * billableHours) : [0];
-    
+
         const machineMin = Math.min(...machinePrices);
         const machineMax = Math.max(...machinePrices);
         const operatorMin = Math.min(...operatorPrices);
         const operatorMax = Math.max(...operatorPrices);
-        
+
         // Platform fee: 0% of (machine + operator) cost
         const platformFeeMin = 0;
         const platformFeeMax = 0;
-        
+
         // Travel charges (already calculated as distanceCharge)
         const travelMin = distanceCharge;
         const travelMax = distanceCharge;
-        
+
         // Additional charges (default 0, can be extended for special services)
         const additionalMin = 0;
         const additionalMax = 0;
-    
+
         return {
             machine: { min: machineMin, max: machineMax },
             operator: { min: operatorMin, max: operatorMax },
             platformFee: { min: platformFeeMin, max: platformFeeMax },
             travelCharges: { min: travelMin, max: travelMax },
             additionalCharges: { min: additionalMin, max: additionalMax },
-            total: { 
-                min: machineMin + operatorMin + platformFeeMin + travelMin + additionalMin, 
-                max: machineMax + operatorMax + platformFeeMax + travelMax + additionalMax 
+            total: {
+                min: machineMin + operatorMin + platformFeeMin + travelMin + additionalMin,
+                max: machineMax + operatorMax + platformFeeMax + travelMax + additionalMax
             }
         };
     }, [applicableItems, durationInHours, operatorRequired, isQuantityApplicable, quantity, workPurpose, distanceCharge]);
@@ -205,15 +205,22 @@ const BookingFormScreen: React.FC<BookingFormScreenProps> = ({ navigate, goBack,
             alert('Please fill all required fields, select an available date, and enter a valid duration.');
             return;
         }
-        
+
         if (user) {
             const isFinalBroadcast = !isDirectRequest || isBroadcastOverride;
+
+            if (!isFinalBroadcast && (!item?.id || !item?.ownerId)) {
+                console.error("Critical Error: Direct request missing item ID or Owner ID");
+                alert("System Error: Item data is incomplete. Please contact support.");
+                return;
+            }
+
             const estimatedPrice = priceEstimates.total.max;
-            
+
             const bookingDetails: Omit<Booking, 'id' | 'advanceAmount' | 'advancePaymentId'> = {
                 farmerId: user.id,
                 itemCategory: itemCategory,
-                itemId: isFinalBroadcast ? undefined : item!.id,
+                itemId: item?.id, // Always preserve item ID if available
                 supplierId: isFinalBroadcast ? undefined : item!.ownerId,
                 date,
                 startTime,
@@ -251,7 +258,7 @@ const BookingFormScreen: React.FC<BookingFormScreenProps> = ({ navigate, goBack,
 
 
     const formatRange = (min: number, max: number) => min === max ? `₹${min.toLocaleString()}` : `₹${min.toLocaleString()} - ₹${max.toLocaleString()}`;
-    
+
     return (
         <div className="dark:text-neutral-200">
             <Header title={isDirectRequest ? t('confirmYourBooking') : t('createBookingRequest')} onBack={goBack} />
@@ -259,20 +266,20 @@ const BookingFormScreen: React.FC<BookingFormScreenProps> = ({ navigate, goBack,
                 <form className="space-y-4" onSubmit={handleSubmit}>
                     <div>
                         <label className="block text-gray-700 dark:text-neutral-300 text-sm font-bold mb-2">{t('serviceCategory')}</label>
-                          <select 
-                              value={itemCategory} 
-                            onChange={e => setItemCategory(e.target.value as ItemCategory)} 
-                            required 
+                        <select
+                            value={itemCategory}
+                            onChange={e => setItemCategory(e.target.value as ItemCategory)}
+                            required
                             disabled={isDirectRequest}
                             className="shadow appearance-none border border-neutral-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg w-full py-3 px-4 text-neutral-800 dark:text-white leading-tight focus:outline-none focus:ring-2 focus:ring-primary/50 disabled:bg-neutral-100 dark:disabled:bg-gray-800 disabled:text-gray-400"
                         >
                             {Object.values(ItemCategory).map(cat => <option key={cat} value={cat}>{cat}</option>)}
                         </select>
-                        {isDirectRequest && item && <p className="text-xs text-neutral-500 mt-1">Requesting: <strong>{item.name}</strong> from <strong>{allUsers.find(u=>u.id === item.ownerId)?.name}</strong></p>}
+                        {isDirectRequest && item && <p className="text-xs text-neutral-500 mt-1">Requesting: <strong>{item.name}</strong> from <strong>{allUsers.find(u => u.id === item.ownerId)?.name}</strong></p>}
                     </div>
 
                     {isModelApplicable && (
-                         <div>
+                        <div>
                             <label htmlFor="preferred-model" className="block text-gray-700 dark:text-neutral-300 text-sm font-bold mb-2">{t('preferredModel') || 'Preferred Model (Optional)'}</label>
                             <select id="preferred-model" value={preferredModel} onChange={e => setPreferredModel(e.target.value)} className="shadow appearance-none border border-neutral-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg w-full py-3 px-4 text-neutral-800 dark:text-white leading-tight focus:outline-none focus:ring-2 focus:ring-primary/50">
                                 <option value="any">Any Model / No Preference</option>
@@ -320,7 +327,7 @@ const BookingFormScreen: React.FC<BookingFormScreenProps> = ({ navigate, goBack,
                         </div>
                     )}
                     <Input label={t('fieldLocation')} value={location} onChange={e => setLocation(e.target.value)} placeholder={t('enterFarmAddress') || 'Enter your farm address'} required />
-                    
+
                     <div>
                         <label className="block text-gray-700 dark:text-neutral-300 text-sm font-bold mb-2">{t('workPurpose')}</label>
                         <select id="work-purpose" value={workPurpose} onChange={e => handleWorkPurposeChange(e.target.value as WorkPurpose)} required className="shadow appearance-none border border-neutral-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg w-full py-3 px-4 text-neutral-800 dark:text-white leading-tight focus:outline-none focus:ring-2 focus:ring-primary/50">
@@ -342,14 +349,14 @@ const BookingFormScreen: React.FC<BookingFormScreenProps> = ({ navigate, goBack,
                     </div>
 
                     {isOperatorApplicable && (
-                         <div className="border-t pt-4 dark:border-neutral-700">
+                        <div className="border-t pt-4 dark:border-neutral-700">
                             <label className="flex items-center space-x-3 cursor-pointer">
                                 <input type="checkbox" checked={operatorRequired} onChange={(e) => setOperatorRequired(e.target.checked)} className="h-5 w-5 rounded border-gray-300 text-primary focus:ring-primary" />
                                 <span className="text-neutral-700 dark:text-neutral-200 font-semibold">{t('operatorRequired')}</span>
                             </label>
                         </div>
                     )}
-                    
+
                     {/* Payment selection removed; payment occurs after work completion */}
 
                     <div className="border-t pt-4 space-y-2 dark:border-neutral-700">
@@ -385,7 +392,7 @@ const BookingFormScreen: React.FC<BookingFormScreenProps> = ({ navigate, goBack,
                                     )}
                                     <div className="border-t pt-2 mt-2 border-neutral-200 dark:border-neutral-600"></div>
                                 </div>
-                                
+
                                 <div className="flex justify-between text-lg font-bold text-neutral-800 dark:text-neutral-100">
                                     <span>{t('estTotalPrice')}</span>
                                     <span>{formatRange(priceEstimates.total.min, priceEstimates.total.max)}</span>
@@ -402,11 +409,11 @@ const BookingFormScreen: React.FC<BookingFormScreenProps> = ({ navigate, goBack,
                     </div>
 
                     <div className="pt-4 space-y-3">
-                         <p className="text-xs text-center text-gray-500">
+                        <p className="text-xs text-center text-gray-500">
                             {isDirectRequest && !isBroadcastOverride
                                 ? "Your request will be sent directly to this item's supplier for confirmation."
                                 : "Your request will be sent to all available suppliers. The first to accept will confirm the booking."}
-                         </p>
+                        </p>
                         <Button type="submit" disabled={isLoading || durationInHours <= 0 || applicableItems.length === 0 || isDateBlocked}>
                             {isLoading ? 'Processing...' : (isDirectRequest ? t('confirmBooking') || 'Confirm Booking' : t('createBookingRequest') || 'Create Booking Request')}
                         </Button>

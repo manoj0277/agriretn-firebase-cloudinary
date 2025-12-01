@@ -6,7 +6,7 @@ import Input from '../components/Input';
 import { useAuth } from '../context/AuthContext';
 import { UserRole } from '../types';
 import { useLanguage } from '../context/LanguageContext';
- 
+
 
 const AuthScreen: React.FC = () => {
     const [isLogin, setIsLogin] = useState(true);
@@ -20,7 +20,7 @@ const AuthScreen: React.FC = () => {
     const [showLoginPassword, setShowLoginPassword] = useState(false);
     const [loginAsRole, setLoginAsRole] = useState<UserRole>(UserRole.Farmer);
 
-    
+
 
     // Signup State
     const [name, setName] = useState('');
@@ -70,8 +70,8 @@ const AuthScreen: React.FC = () => {
         }
     };
 
-    
-    
+
+
     const EyeOpenIcon = () => (
         <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -177,7 +177,7 @@ const AuthScreen: React.FC = () => {
                         </form>
                     )}
                 </div>
-                
+
             </div>
         </div>
     );

@@ -33,31 +33,80 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             if (firebaseUser) {
                 // User is signed in, fetch profile from backend (Firestore)
                 try {
-                    // Use the new profile endpoint to fetch specific user
-                    const response = await fetch(`${API_URL}/users/profile?email=${encodeURIComponent(firebaseUser.email || '')}`);
+                    console.log('Firebase user authenticated:', firebaseUser.email);
+                    console.log('Fetching user profile from backend...');
+
+                    // Add timeout to prevent indefinite hang
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+
+                    const response = await fetch(`${API_URL}/users/profile?email=${encodeURIComponent(firebaseUser.email || '')}`, {
+                        signal: controller.signal
+                    });
+
+                    clearTimeout(timeoutId);
+
                     if (response.ok) {
                         const foundUser = await response.json();
+                        console.log('User profile loaded successfully:', foundUser.name, 'Role:', foundUser.role);
+                        console.log('Full user object:', foundUser);
+
+                        // Validate role matches what user attempted to log in as
+                        const attemptedRole = sessionStorage.getItem('attemptedRole');
+                        console.log('Attempted role:', attemptedRole);
+                        console.log('Actual user role:', foundUser.role);
+                        console.log('Role comparison:', {
+                            attempted: attemptedRole,
+                            actual: foundUser.role,
+                            match: foundUser.role === attemptedRole
+                        });
+
+                        // Allow Admin to login regardless of selected role (internal verification)
+                        if (foundUser.role === 'Admin') {
+                            console.log('User is Admin, bypassing role match check.');
+                        }
+                        else if (attemptedRole && foundUser.role !== attemptedRole) {
+                            console.error(`Role mismatch: User is ${foundUser.role} but tried to log in as ${attemptedRole}`);
+                            showToast(`Invalid credentials. This account is registered as ${foundUser.role}.`, 'error');
+                            sessionStorage.removeItem('attemptedRole');
+                            await signOut(auth);
+                            setUser(null);
+                            return;
+                        }
+                        sessionStorage.removeItem('attemptedRole');
+
+                        console.log('Setting user state with:', foundUser);
                         setUser(foundUser);
                     } else {
+                        console.error('Backend returned non-OK status:', response.status);
+                        const errorText = await response.text();
+                        console.error('Error response:', errorText);
+
                         // User exists in Auth but not in DB? Might be a new signup that hasn't synced yet.
                         console.warn('User in Auth but not in DB yet or fetch failed');
-                        // Force logout to prevent infinite loading
+                        showToast('Failed to load user profile. Please try again.', 'error');
                         setUser(null);
                         await signOut(auth);
                     }
-                } catch (error) {
-                    console.error('Failed to fetch user profile', error);
+                } catch (error: any) {
+                    if (error.name === 'AbortError') {
+                        console.error('Profile fetch timed out - backend might be slow or unresponsive');
+                        showToast('Connection timeout. Please check if backend server is running and try again.', 'error');
+                    } else {
+                        console.error('Failed to fetch user profile:', error);
+                        showToast('Failed to load user profile. Please ensure backend is running.', 'error');
+                    }
                     // If backend is down or user missing, force logout to prevent infinite loading
                     setUser(null);
                     await signOut(auth);
                 }
             } else {
+                console.log('No Firebase user, setting user to null');
                 setUser(null);
-                localStorage.removeItem('agrirent_user');
             }
         });
         return () => unsubscribe();
-    }, []);
+    }, [showToast]);
 
     // Load all users
     useEffect(() => {
@@ -77,18 +126,21 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     const login = async (identifier: string, password: string, role: UserRole): Promise<boolean> => {
         try {
+            console.log('Login attempt with identifier:', identifier, 'role:', role);
             let emailToUse = identifier;
 
             // Check if identifier is a phone number (digits only, length > 6)
             const isPhone = /^\d{7,}$/.test(identifier.replace(/\D/g, ''));
 
             if (isPhone) {
+                console.log('Identifier is phone number, fetching email...');
                 // Fetch email associated with this phone
                 const response = await fetch(`${API_URL}/users/phone?phone=${encodeURIComponent(identifier)}`);
                 if (response.ok) {
                     const user = await response.json();
                     if (user && user.email) {
                         emailToUse = user.email;
+                        console.log('Found email for phone:', emailToUse);
                     } else {
                         throw new Error('Phone number not linked to an email.');
                     }
@@ -97,11 +149,17 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 }
             }
 
+            console.log('Attempting Firebase sign in with email:', emailToUse);
+
+            // Store the attempted role to validate after profile is loaded
+            sessionStorage.setItem('attemptedRole', role);
+
             await signInWithEmailAndPassword(auth, emailToUse, password);
-            // onAuthStateChanged will handle setting the user
+            console.log('Firebase sign in successful, waiting for onAuthStateChanged...');
+            // onAuthStateChanged will handle setting the user and validating role
             return true;
         } catch (error: any) {
-            console.error(error);
+            console.error('Login error:', error);
             showToast(error.message || 'Login failed', 'error');
             return false;
         }

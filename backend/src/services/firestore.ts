@@ -32,8 +32,15 @@ const getById = async <T>(collection: string, id: string | number): Promise<T | 
 };
 
 const create = async <T>(collection: string, data: T & { id: string | number }): Promise<T> => {
-    await db.collection(collection).doc(String(data.id)).set(data);
-    return data;
+    console.log(`[Firestore] Creating doc in ${collection}:`, data.id);
+    try {
+        await db.collection(collection).doc(String(data.id)).set(data);
+        console.log(`[Firestore] Doc created successfully:`, data.id);
+        return data;
+    } catch (error) {
+        console.error(`[Firestore Error] Failed to create doc in ${collection}:`, error);
+        throw error;
+    }
 };
 
 const update = async <T>(collection: string, id: string | number, data: Partial<T>): Promise<T | null> => {
@@ -123,7 +130,8 @@ export const NotificationService = {
     },
     create: (data: Notification) => create<Notification>(COLLECTIONS.NOTIFICATIONS, data),
     update: (id: number, data: Partial<Notification>) => update<Notification>(COLLECTIONS.NOTIFICATIONS, id, data),
-    markAsRead: (id: number) => update<Notification>(COLLECTIONS.NOTIFICATIONS, id, { read: true })
+    markAsRead: (id: number) => update<Notification>(COLLECTIONS.NOTIFICATIONS, id, { read: true }),
+    delete: (id: number) => remove(COLLECTIONS.NOTIFICATIONS, id)
 };
 
 export const ChatService = {

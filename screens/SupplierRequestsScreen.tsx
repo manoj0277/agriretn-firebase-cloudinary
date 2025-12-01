@@ -10,6 +10,7 @@ import Button from '../components/Button';
 import Input from '../components/Input';
 import { useReview } from '../context/ReviewContext';
 import StarRating from '../components/StarRating';
+import { useNotification } from '../context/NotificationContext';
 
 const AcceptJobModal: React.FC<{
     booking: Booking;
@@ -25,7 +26,7 @@ const AcceptJobModal: React.FC<{
     });
     const [quantityToProvide, setQuantityToProvide] = useState(booking.quantity?.toString() || '1');
     const selectedItem = useMemo(() => availableItems.find(i => i.id === selectedItemId), [selectedItemId, availableItems]);
-    
+
     const machineCategories = [ItemCategory.Tractors, ItemCategory.Harvesters, ItemCategory.JCB, ItemCategory.Borewell];
     const isMachineWithOperator = machineCategories.includes(booking.itemCategory) && booking.operatorRequired;
     const isPendingConfirmation = booking.status === 'Pending Confirmation';
@@ -38,7 +39,7 @@ const AcceptJobModal: React.FC<{
             onConfirm(selectedItemId, options);
         }
     };
-    
+
     const maxQuantity = useMemo(() => {
         if (!booking.quantity || !selectedItem) return 0;
         return Math.min(booking.quantity, selectedItem.quantityAvailable || 0);
@@ -59,7 +60,7 @@ const AcceptJobModal: React.FC<{
             <div className="bg-white dark:bg-neutral-800 rounded-lg shadow-xl w-full max-w-md p-6">
                 <h2 className="text-xl font-bold mb-2 text-neutral-800 dark:text-neutral-100">Accept Job Request</h2>
                 <p className="text-sm text-neutral-600 dark:text-neutral-300 mb-4">Select an item to fulfill this booking request.</p>
-                
+
                 <div className="bg-neutral-50 dark:bg-neutral-700 p-3 rounded-lg mb-4 text-sm">
                     <div className="space-y-1 text-neutral-700 dark:text-neutral-300">
                         <p><strong className="font-semibold text-neutral-800 dark:text-neutral-100">Category:</strong> {booking.itemCategory}</p>
@@ -99,7 +100,7 @@ const AcceptJobModal: React.FC<{
                         </div>
                     )}
                 </div>
-                
+
                 {booking.allowMultipleSuppliers && booking.quantity && selectedItem && (
                     <div className="mt-4 border-t dark:border-neutral-600 pt-4">
                         <Input
@@ -118,8 +119,8 @@ const AcceptJobModal: React.FC<{
                     <Button variant="secondary" onClick={onClose}>Cancel</Button>
                     {isMachineWithOperator ? (
                         <>
-                           <Button onClick={() => handleConfirm(false)} disabled={!selectedItemId || availableItems.length === 0}>Find Separate Operator</Button>
-                           <Button onClick={() => handleConfirm(true)} disabled={!selectedItemId || availableItems.length === 0}>I will Operate</Button>
+                            <Button onClick={() => handleConfirm(false)} disabled={!selectedItemId || availableItems.length === 0}>Find Separate Operator</Button>
+                            <Button onClick={() => handleConfirm(true)} disabled={!selectedItemId || availableItems.length === 0}>I will Operate</Button>
                         </>
                     ) : (
                         <Button onClick={() => handleConfirm()} disabled={!selectedItemId || availableItems.length === 0 || isQuantityInvalid}>Confirm & Accept</Button>
@@ -135,63 +136,110 @@ export const SupplierRequestsScreen: React.FC = () => {
     const { user, allUsers } = useAuth();
     const { bookings, acceptBookingRequest, rejectBooking } = useBooking();
     const { items } = useItem();
+    const { addNotification } = useNotification();
     const [bookingToAccept, setBookingToAccept] = useState<Booking | null>(null);
+    const [conflictWarning, setConflictWarning] = useState<{ show: boolean; conflictingBookings: Booking[]; itemId: number; options?: any } | null>(null);
 
     const supplierItems = useMemo(() => items.filter(i => i.ownerId === user?.id), [items, user]);
 
     const availableRequests = useMemo(() => {
         if (!user) return [];
-        const isDriver = supplierItems.some(i => i.category === ItemCategory.Drivers);
-        const blockedDatesSet = new Set(user.blockedDates || []);
+        const supplierItems = items.filter(i => i.ownerId === user.id && i.status === 'approved');
 
         return bookings.filter(b => {
-            // Direct request for this supplier. Always show.
+            // Direct requests for this supplier
             if (b.status === 'Pending Confirmation' && b.supplierId === user.id) return true;
-            
-            // Check if supplier is on holiday for the booking date. If so, hide request.
-            if (blockedDatesSet.has(b.date)) {
-                return false;
-            }
-            
-            // Operator requests if this supplier is a driver (and not the machine owner).
-            if (b.status === 'Awaiting Operator' && isDriver && b.supplierId !== user.id) return true;
-            
+
             // Broadcast requests for everyone else.
             if (b.status === 'Searching' && !b.supplierId) {
-                const hasMatchingItem = supplierItems.some(item => 
-                    item.category === b.itemCategory && 
+                // If specific item was requested (even if converted to broadcast), show to owner
+                if (b.itemId) {
+                    const requestedItem = items.find(i => i.id === b.itemId);
+                    if (requestedItem?.ownerId === user.id) return true;
+                }
+
+                const hasMatchingItem = supplierItems.some(item =>
+                    item.category === b.itemCategory &&
                     item.purposes.some(p => p.name === b.workPurpose)
                 );
                 return hasMatchingItem;
             }
+
             return false;
         });
-    }, [bookings, supplierItems, user]);
-    
+    }, [bookings, user, items]);
+
     const getFarmerName = (farmerId: number) => allUsers.find(u => u.id === farmerId)?.name || 'Unknown Farmer';
     const getMachineNameForOpRequest = (itemId?: number) => items.find(i => i.id === itemId)?.name || 'a machine';
 
     const handleAcceptClick = (booking: Booking) => setBookingToAccept(booking);
-    
+
     const handleConfirmAccept = (itemId: number, options?: { operateSelf?: boolean, quantityToProvide?: number }) => {
         if (bookingToAccept && user) {
-            acceptBookingRequest(bookingToAccept.id, user.id, itemId, options);
+            // Check for time conflicts with existing bookings
+            const conflicts = bookings.filter(b => {
+                // Only check confirmed/active bookings for this supplier
+                if (b.supplierId !== user.id || ['Cancelled', 'Expired', 'Completed'].includes(b.status)) return false;
+
+                // Check if dates match
+                if (b.date !== bookingToAccept.date) return false;
+
+                // Parse times
+                const [newStartH, newStartM] = bookingToAccept.startTime.split(':').map(Number);
+                const newStart = newStartH * 60 + newStartM;
+                const newEnd = newStart + (bookingToAccept.estimatedDuration || 1) * 60;
+
+                const [existingStartH, existingStartM] = b.startTime.split(':').map(Number);
+                const existingStart = existingStartH * 60 + existingStartM;
+                const existingEnd = existingStart + (b.estimatedDuration || 1) * 60;
+
+                // Check for overlap
+                return (newStart < existingEnd && newEnd > existingStart);
+            });
+
+            if (conflicts.length > 0) {
+                // Show warning modal
+                setConflictWarning({ show: true, conflictingBookings: conflicts, itemId, options });
+            } else {
+                acceptBookingRequest(bookingToAccept.id, user.id, itemId, options);
+                setBookingToAccept(null);
+            }
         }
-        setBookingToAccept(null);
+    };
+
+    const handleConfirmWithConflict = () => {
+        if (bookingToAccept && user && conflictWarning) {
+            acceptBookingRequest(bookingToAccept.id, user.id, conflictWarning.itemId, conflictWarning.options);
+
+            // Notify admin
+            const conflictDetails = conflictWarning.conflictingBookings.map(b => {
+                const item = items.find(i => i.id === b.itemId);
+                return `${item?.name || 'Item'} at ${b.startTime} on ${b.date}`;
+            }).join(', ');
+
+            addNotification({
+                userId: 0,
+                message: `Supplier ${user.name} (ID: ${user.id}) accepted overlapping bookings. Existing: ${conflictDetails}. New: ${bookingToAccept.startTime} on ${bookingToAccept.date}. Please contact them.`,
+                type: 'admin'
+            });
+
+            setBookingToAccept(null);
+            setConflictWarning(null);
+        }
     };
 
     const itemsForBooking = useMemo(() => {
         if (!bookingToAccept) return [];
-        
+
         if (bookingToAccept.status === 'Pending Confirmation' || bookingToAccept.itemId) {
             const specificItem = supplierItems.find(item => item.id === bookingToAccept.itemId);
             return specificItem && specificItem.available ? [specificItem] : [];
         }
-        
+
         const categoryForRequest = bookingToAccept.status === 'Awaiting Operator' ? ItemCategory.Drivers : bookingToAccept.itemCategory;
 
-        return supplierItems.filter(item => 
-            item.category === categoryForRequest && 
+        return supplierItems.filter(item =>
+            item.category === categoryForRequest &&
             item.available &&
             (!bookingToAccept.workPurpose || item.purposes.some(p => p.name === bookingToAccept.workPurpose))
         );
@@ -204,7 +252,7 @@ export const SupplierRequestsScreen: React.FC = () => {
                     [...availableRequests].reverse().map(booking => {
                         const isOperatorRequest = booking.status === 'Awaiting Operator';
                         const isPendingConfirmation = booking.status === 'Pending Confirmation';
-                        
+
                         const itemForBooking = items.find(i => i.id === booking.itemId);
 
                         const title = isPendingConfirmation
@@ -237,7 +285,7 @@ export const SupplierRequestsScreen: React.FC = () => {
                                     {booking.additionalInstructions && <p className="p-2 bg-neutral-50 dark:bg-neutral-600 rounded-md mt-1"><strong>Instructions:</strong> <em>{booking.additionalInstructions}</em></p>}
                                 </div>
                                 <div className="mt-4 border-t dark:border-neutral-600 pt-3 flex justify-end space-x-2">
-                                     {isPendingConfirmation && (
+                                    {isPendingConfirmation && (
                                         <Button variant="secondary" className="w-auto px-6 bg-red-600/10 text-red-700 hover:bg-red-600/20" onClick={() => rejectBooking(booking.id)}>
                                             Reject
                                         </Button>
@@ -257,12 +305,45 @@ export const SupplierRequestsScreen: React.FC = () => {
             </div>
 
             {bookingToAccept && (
-                <AcceptJobModal 
+                <AcceptJobModal
                     booking={bookingToAccept}
                     availableItems={itemsForBooking}
                     onClose={() => setBookingToAccept(null)}
                     onConfirm={handleConfirmAccept}
                 />
+            )}
+
+            {conflictWarning && conflictWarning.show && (
+                <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-4">
+                    <div className="bg-white dark:bg-neutral-800 rounded-lg shadow-xl w-full max-w-md p-6">
+                        <h2 className="text-xl font-bold mb-4 text-red-600 dark:text-red-400">⚠️ Booking Conflict Warning</h2>
+                        <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700 rounded-lg p-4 mb-4">
+                            <p className="text-sm text-neutral-800 dark:text-neutral-200 mb-3">
+                                You already have the following booking(s) at this time:
+                            </p>
+                            {conflictWarning.conflictingBookings.map(b => {
+                                const item = items.find(i => i.id === b.itemId);
+                                return (
+                                    <div key={b.id} className="bg-white dark:bg-neutral-700 p-2 rounded mb-2 text-xs">
+                                        <p className="font-semibold text-neutral-800 dark:text-neutral-100">{item?.name || 'Equipment'}</p>
+                                        <p className="text-neutral-600 dark:text-neutral-300">📅 {b.date} at {b.startTime}</p>
+                                        <p className="text-neutral-600 dark:text-neutral-300">⏱️ Duration: {b.estimatedDuration || 1} hour(s)</p>
+                                    </div>
+                                );
+                            })}
+                            <p className="text-sm font-semibold text-neutral-800 dark:text-neutral-200 mt-3">
+                                Do you still want to confirm this booking?
+                            </p>
+                            <p className="text-xs text-neutral-600 dark:text-neutral-400 mt-2">
+                                Note: Admin will be notified to contact you about managing both bookings.
+                            </p>
+                        </div>
+                        <div className="flex justify-end space-x-2">
+                            <Button variant="secondary" onClick={() => { setConflictWarning(null); setBookingToAccept(null); }}>Cancel</Button>
+                            <Button onClick={handleConfirmWithConflict} className="!w-auto !px-4 !py-2 bg-yellow-600 hover:bg-yellow-700">Confirm Anyway</Button>
+                        </div>
+                    </div>
+                </div>
             )}
         </div>
     );

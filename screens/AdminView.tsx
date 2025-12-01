@@ -1,5 +1,4 @@
 
-
 import React, { useState, useMemo } from 'react';
 import { AppView } from '../types';
 import Header from '../components/Header';
@@ -12,6 +11,8 @@ import ManageSupportTicketsScreen from './ManageSupportTicketsScreen';
 import AdminAnalyticsScreen from './AdminAnalyticsScreen';
 import FraudDetectionScreen from './FraudDetectionScreen';
 import SupplierKycScreen from './SupplierKycScreen';
+import AdminItemApprovalScreen from './AdminItemApprovalScreen';
+import NotificationManagerScreen from './NotificationManagerScreen';
 import NotificationBell from '../components/NotificationBell';
 import { useAuth } from '../context/AuthContext';
 import Button from '../components/Button';
@@ -73,6 +74,14 @@ const AdminView: React.FC<AdminViewProps> = ({ navigate }) => {
                     <span className="font-semibold text-neutral-700 dark:text-neutral-200">Supplier KYC</span>
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-neutral-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
                 </button>
+                <button onClick={() => setActiveTab('items')} className="w-full text-left p-4 hover:bg-neutral-50 dark:hover:bg-neutral-700/50 transition-colors flex justify-between items-center">
+                    <span className="font-semibold text-neutral-700 dark:text-neutral-200">Item Approvals</span>
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-neutral-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                </button>
+                <button onClick={() => setActiveTab('notification-manager')} className="w-full text-left p-4 hover:bg-neutral-50 dark:hover:bg-neutral-700/50 transition-colors flex justify-between items-center">
+                    <span className="font-semibold text-neutral-700 dark:text-neutral-200">📢 Notification Manager</span>
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-neutral-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                </button>
                 <button onClick={() => navigate({ view: 'SETTINGS' })} className="w-full text-left p-4 hover:bg-neutral-50 dark:hover:bg-neutral-700/50 transition-colors flex justify-between items-center">
                     <span className="font-semibold text-neutral-700 dark:text-neutral-200">{t('settings')}</span>
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-neutral-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
@@ -85,11 +94,13 @@ const AdminView: React.FC<AdminViewProps> = ({ navigate }) => {
     const renderContent = () => {
         switch (activeTab) {
             case 'dashboard':
-                return <AdminOverviewDashboard />;
+                return <AdminOverviewDashboard setActiveTab={setActiveTab as any} />;
             case 'farmers':
                 return <FarmersManagement />;
             case 'suppliers':
                 return <SuppliersManagement />;
+            case 'items':
+                return <AdminItemApprovalScreen />;
             case 'bookings':
                 return <ManageBookingsScreen />;
             case 'support':
@@ -100,10 +111,12 @@ const AdminView: React.FC<AdminViewProps> = ({ navigate }) => {
                 return <FraudDetectionScreen />;
             case 'kyc':
                 return <SupplierKycScreen />;
+            case 'notification-manager':
+                return <NotificationManagerScreen onBack={() => setActiveTab('more')} />;
             case 'more':
                 return <MoreScreen />;
             default:
-                return <AdminOverviewDashboard />;
+                return <AdminOverviewDashboard setActiveTab={setActiveTab as any} />;
         }
     };
 

@@ -25,6 +25,15 @@ export interface User {
     avgRating?: number;
     blockedDates?: string[];
     locationCoords?: { lat: number; lng: number; };
+    // Notification-related fields
+    district?: string; // Derived from GPS coordinates
+    notificationPreferences?: {
+        sms: boolean;
+        push: boolean;
+        email: boolean;
+    };
+    deviceTokens?: string[]; // For push notifications
+    signupDate?: string; // ISO timestamp for targeting new users
 }
 
 export enum ItemCategory {
@@ -170,6 +179,10 @@ export interface DamageReport {
     timestamp: string;
 }
 
+export type NotificationCategory = 'weather' | 'location' | 'price' | 'booking' | 'promotional' | 'performance' | 'system';
+export type NotificationPriority = 'low' | 'medium' | 'high' | 'urgent';
+export type NotificationChannel = 'app' | 'push';
+
 export interface Notification {
     id: number;
     userId: number; // 0 for broadcast
@@ -177,6 +190,15 @@ export interface Notification {
     type: 'booking' | 'offer' | 'community' | 'admin' | 'coupon' | 'news' | 'update';
     read: boolean;
     timestamp: string;
+    // Enhanced fields for smart notifications
+    seenAt?: string; // Timestamp when notification was marked as seen
+    expiresAt?: string; // Auto-calculated: seenAt + 24 hours
+    district?: string; // Target district for location-based notifications
+    category?: NotificationCategory; // Smart categorization
+    priority?: NotificationPriority; // Notification importance level
+    scheduledFor?: string; // For scheduled notifications
+    sentVia?: NotificationChannel[]; // Delivery channels used
+    metadata?: Record<string, any>; // Additional data (weather info, booking ID, etc.)
 }
 
 export interface SupportReply {

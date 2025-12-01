@@ -9,7 +9,7 @@ import Input from '../components/Input';
 import { ForumPost, CommunityReply } from '../types';
 import { useLanguage } from '../context/LanguageContext';
 
-const PostCard: React.FC<{post: ForumPost, onClick: () => void}> = ({ post, onClick }) => {
+const PostCard: React.FC<{ post: ForumPost, onClick: () => void }> = ({ post, onClick }) => {
     const { allUsers } = useAuth();
     const author = allUsers.find(u => u.id === post.authorId);
     const { t } = useLanguage();
@@ -24,7 +24,7 @@ const PostCard: React.FC<{post: ForumPost, onClick: () => void}> = ({ post, onCl
     );
 }
 
-const ReplyCard: React.FC<{reply: CommunityReply}> = ({ reply }) => {
+const ReplyCard: React.FC<{ reply: CommunityReply }> = ({ reply }) => {
     const { allUsers } = useAuth();
     const author = allUsers.find(u => u.id === reply.authorId);
     return (
@@ -52,8 +52,7 @@ const PostDetailView: React.FC<{ post: ForumPost, onBack: () => void }> = ({ pos
 
         addReply(post.id, {
             authorId: user.id,
-            content: newReply,
-            timestamp: 'Just now'
+            content: newReply
         });
         setNewReply('');
     };
@@ -62,7 +61,7 @@ const PostDetailView: React.FC<{ post: ForumPost, onBack: () => void }> = ({ pos
         <div className="flex flex-col h-full">
             <Header title={post.title} onBack={onBack} />
             <div className="flex-grow overflow-y-auto p-4 space-y-4">
-                 <div className="bg-white dark:bg-neutral-700 p-4 rounded-lg border border-neutral-200 dark:border-neutral-600">
+                <div className="bg-white dark:bg-neutral-700 p-4 rounded-lg border border-neutral-200 dark:border-neutral-600">
                     <div className="text-xs text-neutral-500 dark:text-neutral-400 mb-2">
                         Posted by {author?.name || 'Anonymous'} on {post.timestamp}
                     </div>
@@ -76,7 +75,7 @@ const PostDetailView: React.FC<{ post: ForumPost, onBack: () => void }> = ({ pos
                     ))}
                 </div>
             </div>
-             <div className="p-4 bg-white dark:bg-neutral-800 border-t dark:border-neutral-700">
+            <div className="p-4 bg-white dark:bg-neutral-800 border-t dark:border-neutral-700">
                 <form onSubmit={handleReplySubmit} className="flex space-x-2">
                     <input
                         type="text"
@@ -85,7 +84,7 @@ const PostDetailView: React.FC<{ post: ForumPost, onBack: () => void }> = ({ pos
                         placeholder={t('writeAReply')}
                         className="flex-grow p-3 border border-neutral-200 dark:border-neutral-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/50 bg-white dark:bg-neutral-700 text-neutral-800 dark:text-white"
                     />
-                    <Button type="submit" className="w-auto px-6">{t('reply')}</Button>
+                    <Button type="submit" className="!w-auto !px-3 !py-1 !text-xs">{t('reply')}</Button>
                 </form>
             </div>
         </div>
@@ -107,8 +106,7 @@ const CommunityScreen: React.FC<{ goBack?: () => void }> = ({ goBack }) => {
         addPost({
             authorId: user.id,
             title,
-            content,
-            timestamp: 'Just now'
+            content
         });
         setTitle('');
         setContent('');
@@ -125,19 +123,19 @@ const CommunityScreen: React.FC<{ goBack?: () => void }> = ({ goBack }) => {
             <div className="p-4">
                 <div className="flex justify-between items-center mb-4">
                     <h2 className="text-xl font-bold text-neutral-800 dark:text-neutral-100">{t('discussions')}</h2>
-                    <Button onClick={() => setShowForm(!showForm)} className="w-auto px-4 py-2 text-sm">{showForm ? t('cancel') : `+ ${t('newPost')}`}</Button>
+                    <Button onClick={() => setShowForm(!showForm)} className="!w-auto !px-3 !py-1 !text-xs">{showForm ? t('cancel') : `+ ${t('newPost')}`}</Button>
                 </div>
-                
+
                 {showForm && (
                     <div className="bg-white dark:bg-neutral-700 p-4 rounded-lg border border-neutral-200 dark:border-neutral-600 mb-4">
                         <form onSubmit={handleSubmit} className="space-y-4">
                             <h3 className="text-lg font-bold text-neutral-800 dark:text-neutral-100">{t('createANewPost')}</h3>
                             <Input label={t('title')} value={title} onChange={e => setTitle(e.target.value)} required />
                             <div>
-                               <label className="block text-gray-700 dark:text-neutral-300 text-sm font-bold mb-2">{t('content')}</label>
-                               <textarea value={content} onChange={e => setContent(e.target.value)} rows={4} required className="shadow appearance-none border border-neutral-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg w-full py-3 px-4 text-neutral-800 dark:text-white placeholder-gray-400 leading-tight focus:outline-none focus:ring-2 focus:ring-primary/50" />
+                                <label className="block text-gray-700 dark:text-neutral-300 text-sm font-bold mb-2">{t('content')}</label>
+                                <textarea value={content} onChange={e => setContent(e.target.value)} rows={4} required className="shadow appearance-none border border-neutral-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg w-full py-3 px-4 text-neutral-800 dark:text-white placeholder-gray-400 leading-tight focus:outline-none focus:ring-2 focus:ring-primary/50" />
                             </div>
-                            <Button type="submit">{t('post')}</Button>
+                            <Button type="submit" className="!w-auto !px-3 !py-1 !text-xs">{t('post')}</Button>
                         </form>
                     </div>
                 )}

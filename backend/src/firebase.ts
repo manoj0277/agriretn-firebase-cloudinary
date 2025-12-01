@@ -43,3 +43,5 @@ export const db = databaseId ? getFirestore(admin.app(), databaseId) : getFirest
 
 export const auth = admin.auth();
 export const storage = admin.storage();
+export const messaging = admin.messaging;
+

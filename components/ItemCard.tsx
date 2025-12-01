@@ -26,10 +26,49 @@ const CategoryIcon: React.FC<{ category: ItemCategory }> = ({ category }) => {
 };
 
 
+import { useBooking } from '../context/BookingContext';
+
+// ... (existing imports)
+
 const ItemCard: React.FC<ItemCardProps> = ({ item, onClick, compact = false }) => {
     const minPrice = item.purposes.length > 0 ? Math.min(...item.purposes.map(p => p.price)) : 0;
     const { ruralMode } = useSettings();
+    const { bookings } = useBooking();
     const imgSrc = ruralMode ? "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 800 450'%3E%3Crect width='800' height='450' fill='%23e5e7eb'/%3E%3Ctext x='400' y='225' font-size='24' text-anchor='middle' dominant-baseline='middle' fill='%236b7280' font-family='Arial'%3ELow%20Data%20Mode%3C/text%3E%3C/svg%3E" : item.images[0];
+
+    const isBookedNow = React.useMemo(() => {
+        const now = new Date();
+        const todayStr = now.toISOString().split('T')[0];
+
+        return bookings.some(b => {
+            if (b.itemId !== item.id || b.status === 'Cancelled' || b.status === 'Expired' || b.status === 'Completed') return false;
+
+            // Check date
+            if (b.date !== todayStr) return false;
+
+            // Check time window: Start - 1hr to End + 1hr
+            const [startH, startM] = b.startTime.split(':').map(Number);
+            const startTime = new Date(now);
+            startTime.setHours(startH, startM, 0, 0);
+
+            // Calculate end time
+            const endTime = new Date(startTime);
+            if (b.estimatedDuration) {
+                endTime.setHours(endTime.getHours() + b.estimatedDuration);
+            } else {
+                // Fallback if no duration (shouldn't happen often based on types)
+                endTime.setHours(endTime.getHours() + 1);
+            }
+
+            const windowStart = new Date(startTime);
+            windowStart.setHours(windowStart.getHours() - 1);
+
+            const windowEnd = new Date(endTime);
+            windowEnd.setHours(windowEnd.getHours() + 1);
+
+            return now >= windowStart && now <= windowEnd;
+        });
+    }, [bookings, item.id]);
 
     return (
         <div
@@ -38,9 +77,9 @@ const ItemCard: React.FC<ItemCardProps> = ({ item, onClick, compact = false }) =
         >
             <div>
                 <div className={`w-full ${compact ? 'aspect-[4/3]' : 'aspect-video'} bg-neutral-100 dark:bg-neutral-600`}>
-                    <img 
-                        src={imgSrc} 
-                        alt={item.name} 
+                    <img
+                        src={imgSrc}
+                        alt={item.name}
                         className={`w-full h-full object-cover ${compact ? 'brightness-100' : ''}`}
                         referrerPolicy="no-referrer"
                         crossOrigin="anonymous"
@@ -57,8 +96,8 @@ const ItemCard: React.FC<ItemCardProps> = ({ item, onClick, compact = false }) =
                             <CategoryIcon category={item.category} />
                             <span className="ml-1">{item.category}</span>
                         </div>
-                         <span className={`px-2 py-0.5 ${compact ? 'text-[10px]' : 'text-xs'} font-semibold rounded-full ${item.available ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                            {item.available ? 'Available' : 'Booked'}
+                        <span className={`px-2 py-0.5 ${compact ? 'text-[10px]' : 'text-xs'} font-semibold rounded-full ${!isBookedNow ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                            {!isBookedNow ? 'Available' : 'Booked'}
                         </span>
                     </div>
                     <h3 className={`font-bold ${compact ? 'text-sm' : 'text-md'} text-neutral-800 dark:text-neutral-100 leading-tight truncate mb-2`}>{item.name}</h3>

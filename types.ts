@@ -26,6 +26,15 @@ export interface User {
     personalPhotoUrl?: string;
     aadhaarNumber?: string;
     address?: string;
+    // Notification-related fields
+    district?: string;
+    notificationPreferences?: {
+        sms: boolean;
+        push: boolean;
+        email: boolean;
+    };
+    deviceTokens?: string[];
+    signupDate?: string;
 }
 
 export enum ItemCategory {
@@ -197,6 +206,10 @@ export interface DamageReport {
     timestamp: string;
 }
 
+export type NotificationCategory = 'weather' | 'location' | 'price' | 'booking' | 'promotional' | 'performance' | 'system';
+export type NotificationPriority = 'low' | 'medium' | 'high' | 'urgent';
+export type NotificationChannel = 'app' | 'push';
+
 export interface Notification {
     id: number;
     userId: number; // 0 for broadcast
@@ -204,6 +217,15 @@ export interface Notification {
     type: 'booking' | 'offer' | 'community' | 'admin' | 'coupon' | 'news' | 'update';
     read: boolean;
     timestamp: string;
+    // Enhanced fields for smart notifications
+    seenAt?: string;
+    expiresAt?: string;
+    district?: string;
+    category?: NotificationCategory;
+    priority?: NotificationPriority;
+    scheduledFor?: string;
+    sentVia?: NotificationChannel[];
+    metadata?: Record<string, any>;
 }
 
 export interface SupportReply {

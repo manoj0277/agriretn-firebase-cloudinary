@@ -169,6 +169,7 @@ export const BookingProvider: React.FC<{ children: ReactNode }> = ({ children })
                 }
             }
         }
+        setBookings(prev => prev.map(b => b.id === bookingId ? { ...b, status: 'Searching', isRebroadcast: true, supplierId: undefined, itemId: undefined } : b));
     };
 
     const cancelBooking = (bookingId: string) => {
@@ -199,6 +200,7 @@ export const BookingProvider: React.FC<{ children: ReactNode }> = ({ children })
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ status: 'Cancelled' })
         });
+        setBookings(prev => prev.map(b => b.id === bookingId ? { ...b, status: 'Cancelled' } : b));
         showToast('Booking has been cancelled.', 'warning');
     };
 
@@ -421,6 +423,7 @@ export const BookingProvider: React.FC<{ children: ReactNode }> = ({ children })
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ status: 'Arrived', otpCode: otp, otpVerified: false })
         });
+        setBookings(prev => prev.map(b => b.id === bookingId ? { ...b, status: 'Arrived', otpCode: otp, otpVerified: false } : b));
         showToast('Status updated to Arrived.', 'success');
         addNotification({ userId: booking.farmerId, message: `Your service has arrived. Share this OTP with the supplier to start work: ${otp}`, type: 'booking' });
     };
@@ -441,6 +444,7 @@ export const BookingProvider: React.FC<{ children: ReactNode }> = ({ children })
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ status: 'In Process', otpVerified: true, workStartTime: new Date().toISOString() })
         });
+        setBookings(prev => prev.map(b => b.id === bookingId ? { ...b, status: 'In Process', otpVerified: true, workStartTime: new Date().toISOString() } : b));
         showToast('OTP verified. Work has now started.', 'success');
         addNotification({ userId: booking.farmerId, message: `Supplier started work for booking #${bookingId.substring(0, 5)}.`, type: 'booking' });
         if (booking.supplierId) {
@@ -483,6 +487,7 @@ export const BookingProvider: React.FC<{ children: ReactNode }> = ({ children })
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ status: 'Pending Payment', finalPrice: finalPrice, farmerPaymentAmount: finalPrice, supplierPaymentAmount: supplierPaymentAmount, adminCommission: adminCommission, paymentDetails: paymentDetails })
             });
+            setBookings(prev => prev.map(b => b.id === bookingId ? { ...b, status: 'Pending Payment', finalPrice: finalPrice, paymentDetails: paymentDetails } : b));
             showToast('Work marked as completed! Please proceed to final payment.', 'success');
             if (booking.supplierId) {
                 addNotification({ userId: booking.supplierId, message: `The farmer has marked booking #${bookingId.substring(0, 5)} as complete. Awaiting final payment of ₹${finalPrice}.`, type: 'booking' });
@@ -517,6 +522,7 @@ export const BookingProvider: React.FC<{ children: ReactNode }> = ({ children })
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ status: 'Completed', finalPaymentId: method === 'Cash' ? `cash_${Date.now()}` : `final_pay_${Date.now()}`, paymentMethod: method, farmerPaymentAmount: finalPrice, supplierPaymentAmount: supplierPaymentAmount, adminCommission: adminCommission, paymentDetails: paymentDetails })
         });
+        setBookings(prev => prev.map(b => b.id === bookingId ? { ...b, status: 'Completed', paymentDetails: paymentDetails } : b));
         showToast(method === 'Cash' ? 'Cash payment recorded! Booking completed.' : 'Final payment successful! Your booking is complete.', 'success');
         if (booking.supplierId) {
             addNotification({ userId: booking.supplierId, message: `${method === 'Cash' ? 'Cash' : 'Online'} payment received for booking #${bookingId.substring(0, 5)}. Supplier payout: ₹${supplierPaymentAmount}.`, type: 'booking' });
@@ -530,7 +536,7 @@ export const BookingProvider: React.FC<{ children: ReactNode }> = ({ children })
         }
     };
 
-    const value = useMemo(() => ({ bookings, damageReports, addBooking, cancelBooking, rejectBooking, raiseDispute, resolveDispute, reportDamage, resolveDamageClaim, acceptBookingRequest, markAsArrived, verifyOtpAndStartWork, completeBooking, makeFinalPayment }), [bookings, damageReports]);
+    const value = useMemo(() => ({ bookings, damageReports, addBooking, cancelBooking, rejectBooking, raiseDispute, resolveDispute, reportDamage, resolveDamageClaim, acceptBookingRequest, markAsArrived, verifyOtpAndStartWork, completeBooking, makeFinalPayment }), [bookings, damageReports, items, updateItem, showToast, addNotification]);
 
     return (
         <BookingContext.Provider value={value}>
