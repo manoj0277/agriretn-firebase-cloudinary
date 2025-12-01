@@ -70,6 +70,7 @@ export const UserService = {
             return null;
         }
     },
+
     create: (user: User) => create<User>(COLLECTIONS.USERS, user),
     update: (id: number, data: Partial<User>) => update<User>(COLLECTIONS.USERS, id, data),
     delete: (id: number) => remove(COLLECTIONS.USERS, id),

@@ -33,6 +33,17 @@ app.get('/api/users/profile', async (req: Request, res: Response) => {
     } catch (e) { res.status(500).json({ error: (e as Error).message }); }
 });
 
+app.get('/api/users/phone', async (req: Request, res: Response) => {
+    try {
+        const { phone } = req.query;
+        if (!phone) return res.status(400).json({ message: 'Phone is required' });
+
+        const user = await UserService.getByPhone(phone as string);
+        if (user) res.json(user);
+        else res.status(404).json({ message: 'User not found' });
+    } catch (e) { res.status(500).json({ error: (e as Error).message }); }
+});
+
 app.get('/api/users', async (req: Request, res: Response) => {
     try {
         const users = await UserService.getAll();

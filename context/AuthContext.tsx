@@ -75,9 +75,29 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         loadUsers();
     }, [user]);
 
-    const login = async (email: string, password: string, role: UserRole): Promise<boolean> => {
+    const login = async (identifier: string, password: string, role: UserRole): Promise<boolean> => {
         try {
-            await signInWithEmailAndPassword(auth, email, password);
+            let emailToUse = identifier;
+
+            // Check if identifier is a phone number (digits only, length > 6)
+            const isPhone = /^\d{7,}$/.test(identifier.replace(/\D/g, ''));
+
+            if (isPhone) {
+                // Fetch email associated with this phone
+                const response = await fetch(`${API_URL}/users/phone?phone=${encodeURIComponent(identifier)}`);
+                if (response.ok) {
+                    const user = await response.json();
+                    if (user && user.email) {
+                        emailToUse = user.email;
+                    } else {
+                        throw new Error('Phone number not linked to an email.');
+                    }
+                } else {
+                    throw new Error('Phone number not registered.');
+                }
+            }
+
+            await signInWithEmailAndPassword(auth, emailToUse, password);
             // onAuthStateChanged will handle setting the user
             return true;
         } catch (error: any) {
