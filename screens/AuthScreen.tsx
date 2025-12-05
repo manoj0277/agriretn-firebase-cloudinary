@@ -18,7 +18,7 @@ const AuthScreen: React.FC = () => {
     const [loginEmail, setLoginEmail] = useState('');
     const [loginPassword, setLoginPassword] = useState('');
     const [showLoginPassword, setShowLoginPassword] = useState(false);
-    const [loginAsRole, setLoginAsRole] = useState<UserRole>(UserRole.Farmer);
+
 
 
 
@@ -38,7 +38,7 @@ const AuthScreen: React.FC = () => {
             setError('Please enter your credentials.');
             return;
         }
-        const ok = await login(loginEmail, loginPassword, loginAsRole);
+        const ok = await login(loginEmail, loginPassword);
         if (!ok) {
             setError('Invalid credentials or account issue.');
         }
@@ -58,7 +58,7 @@ const AuthScreen: React.FC = () => {
             setError('Network issue. Please retry.');
         }, 15000);
         try {
-            const ok = await signup({ name, email, password, phone, role: signupAsRole });
+            const ok = await signup({ name, email, password, phone, role: signupAsRole, userStatus: 'approved' });
             if (!ok) {
                 setError('Email or phone already exists. Please login.');
                 setIsLogin(true);
@@ -122,26 +122,8 @@ const AuthScreen: React.FC = () => {
                                     </button>
                                 </div>
                             </div>
-                            <div>
-                                <label className="block text-gray-700 dark:text-neutral-300 text-sm font-bold mb-2">{t('loginAs')}</label>
-                                <div className="flex bg-gray-100 dark:bg-neutral-700 rounded-lg p-1 text-sm">
-                                    <button
-                                        type="button"
-                                        onClick={() => setLoginAsRole(UserRole.Farmer)}
-                                        className={`flex-1 py-1 font-semibold text-center transition-colors duration-300 rounded-md ${loginAsRole === UserRole.Farmer ? 'bg-blue-600 text-white shadow' : 'text-gray-500 dark:text-neutral-300'}`}
-                                    >
-                                        {t('farmer')}
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => setLoginAsRole(UserRole.Supplier)}
-                                        className={`flex-1 py-1 font-semibold text-center transition-colors duration-300 rounded-md ${loginAsRole === UserRole.Supplier ? 'bg-blue-600 text-white shadow' : 'text-gray-500 dark:text-neutral-300'}`}
-                                    >
-                                        {t('supplier')}
-                                    </button>
-                                </div>
-                            </div>
-                            <Button type="submit">{t('login')}</Button>
+
+                            <Button type="submit" className="w-full">{t('login')}</Button>
                         </form>
                     ) : (
                         <form onSubmit={handleSignup} className="space-y-4">
@@ -156,7 +138,7 @@ const AuthScreen: React.FC = () => {
                             </div>
                             <div>
                                 <label className="block text-gray-700 dark:text-neutral-300 text-sm font-bold mb-2">{t('signupAs')}</label>
-                                <div className="flex bg-gray-100 dark:bg-neutral-700 rounded-lg p-1 text-sm">
+                                <div className="flex bg-gray-100 dark:bg-neutral-700 rounded-lg p-1 text-sm space-x-1">
                                     <button
                                         type="button"
                                         onClick={() => setSignupAsRole(UserRole.Farmer)}
@@ -171,9 +153,16 @@ const AuthScreen: React.FC = () => {
                                     >
                                         {t('supplier')}
                                     </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setSignupAsRole(UserRole.Agent)}
+                                        className={`flex-1 py-1 font-semibold text-center transition-colors duration-300 rounded-md ${signupAsRole === UserRole.Agent ? 'bg-blue-600 text-white shadow' : 'text-gray-500 dark:text-neutral-300'}`}
+                                    >
+                                        Agent
+                                    </button>
                                 </div>
                             </div>
-                            <Button type="submit" disabled={isSubmitting}>{isSubmitting ? t('processing') : t('createAccount')}</Button>
+                            <Button type="submit" className="w-full" disabled={isSubmitting}>{isSubmitting ? t('processing') : t('createAccount')}</Button>
                         </form>
                     )}
                 </div>

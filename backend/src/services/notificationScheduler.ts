@@ -1,7 +1,7 @@
 // Notification Scheduler Service
 // Handles auto-deletion of expired notifications and scheduled notification delivery
 
-import { NotificationService } from './firestore';
+import { NotificationService, BroadcastService } from './firestore';
 
 /**
  * Delete notifications that have expired (24 hours after being seen)
@@ -30,6 +30,38 @@ export async function deleteExpiredNotifications(): Promise<number> {
         return deletedCount;
     } catch (error) {
         console.error('[Scheduler] Error deleting expired notifications:', error);
+        return 0;
+    }
+}
+
+/**
+ * Delete broadcasts that have expired (FREE alternative to Firestore TTL)
+ * This runs in your backend scheduler - no billing required!
+ */
+export async function deleteExpiredBroadcasts(): Promise<number> {
+    try {
+        const allBroadcasts = await BroadcastService.getAll();
+        const now = new Date();
+        let deletedCount = 0;
+
+        for (const broadcast of allBroadcasts) {
+            if (broadcast.expiresAt) {
+                const expiryDate = new Date(broadcast.expiresAt);
+                if (expiryDate <= now) {
+                    await BroadcastService.delete(String(broadcast.id));
+                    deletedCount++;
+                    console.log(`[Scheduler] Deleted expired broadcast ${broadcast.id}`);
+                }
+            }
+        }
+
+        if (deletedCount > 0) {
+            console.log(`[Scheduler] Broadcast cleanup complete: ${deletedCount} broadcasts deleted`);
+        }
+
+        return deletedCount;
+    } catch (error) {
+        console.error('[Scheduler] Error deleting expired broadcasts:', error);
         return 0;
     }
 }
@@ -79,13 +111,16 @@ export function startNotificationScheduler(): void {
 
     // Run immediately on start
     deleteExpiredNotifications();
+    deleteExpiredBroadcasts();  // FREE TTL alternative
     processScheduledNotifications();
 
     // Run every hour (3600000 ms)
     setInterval(async () => {
         await deleteExpiredNotifications();
+        await deleteExpiredBroadcasts();  // FREE TTL alternative
         await processScheduledNotifications();
     }, 3600000); // 1 hour
 
     console.log('[Scheduler] Notification scheduler started (runs every hour)');
 }
+

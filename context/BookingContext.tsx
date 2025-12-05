@@ -3,6 +3,7 @@ import { Booking, DamageReport, Item, ItemCategory } from '../types';
 import { useToast } from './ToastContext';
 import { useNotification } from './NotificationContext';
 import { useItem } from './ItemContext';
+import { useAdminAlert } from './AdminAlertContext';
 
 const API_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3001/api';
 
@@ -16,7 +17,7 @@ interface BookingContextType {
     resolveDispute: (bookingId: string) => void;
     reportDamage: (report: Omit<DamageReport, 'id' | 'status' | 'timestamp'>) => void;
     resolveDamageClaim: (reportId: number) => void;
-    acceptBookingRequest: (bookingId: string, supplierId: number, itemId: number, options?: { operateSelf?: boolean, quantityToProvide?: number }) => boolean;
+    acceptBookingRequest: (bookingId: string, supplierId: string, itemId: number, options?: { operateSelf?: boolean, quantityToProvide?: number }) => boolean;
     markAsArrived: (bookingId: string) => void;
     verifyOtpAndStartWork: (bookingId: string, otp: string) => void;
     completeBooking: (bookingId: string) => void;
@@ -50,9 +51,10 @@ export const BookingProvider: React.FC<{ children: ReactNode }> = ({ children })
     const [damageReports, setDamageReports] = useState<DamageReport[]>([]);
     const { showToast } = useToast();
     const { addNotification } = useNotification();
+    const { addAlert } = useAdminAlert();
     const { items, updateItem } = useItem();
 
-    const supplierRejectCounts: Record<number, { count: number; firstTs: number }> = {};
+    const supplierRejectCounts: Record<string, { count: number; firstTs: number }> = {};
 
     useEffect(() => {
         const loadBookings = async () => {
@@ -67,6 +69,24 @@ export const BookingProvider: React.FC<{ children: ReactNode }> = ({ children })
             }
         };
         loadBookings();
+    }, []);
+
+    // Poll for booking updates every 5 seconds to keep lists in sync
+    useEffect(() => {
+        const interval = setInterval(async () => {
+            try {
+                const res = await fetch(`${API_URL}/bookings`);
+                if (res.ok) {
+                    const data = await res.json();
+                    // Only update if data is different to avoid unnecessary re-renders? 
+                    // For simplicity in this context, we just update. React handles diffing.
+                    setBookings(data);
+                }
+            } catch (err) {
+                console.error("Polling error:", err);
+            }
+        }, 5000);
+        return () => clearInterval(interval);
     }, []);
 
     useEffect(() => {
@@ -123,17 +143,55 @@ export const BookingProvider: React.FC<{ children: ReactNode }> = ({ children })
                 const [hh, mm] = (b.startTime || '00:00').split(':');
                 dt.setHours(parseInt(hh || '0'), parseInt(mm || '0'), 0, 0);
                 const diff = now.getTime() - dt.getTime();
-                if (diff > 20 * 60 * 1000) {
-                    const comp = Math.round((b.finalPrice || b.estimatedPrice || 0) * 0.05);
-                    await fetch(`${API_URL}/bookings/${b.id}`, {
-                        method: 'PUT',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ discountAmount: comp })
-                    });
-                    addNotification({ userId: b.farmerId, message: 'Supplier delay detected. Compensation applied.', type: 'booking' });
-                    addNotification({ userId: 0, message: `Delay >20m for booking ${b.id}.`, type: 'admin' });
+                if (diff > 30 * 60 * 1000) {
+                    // Mark as late start if not already
+                    if (!b.lateStart) {
+                        await fetch(`${API_URL}/bookings/${b.id}`, {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ lateStart: true })
+                        });
+                        // Notify Admin
+                        addNotification({ userId: '0', message: `CRITICAL: Supplier late >30m for booking ${b.id}. Cancellation enabled.`, type: 'admin' });
+                        addAlert({
+                            type: 'LATE_BOOKING',
+                            message: `Supplier late >30m for booking ${b.id}.`,
+                            severity: 'critical',
+                            relatedId: b.id
+                        });
+                        // Notify Farmer
+                        addNotification({ userId: b.farmerId, message: `Supplier is late (>30m). You can now cancel booking #${b.id} if needed.`, type: 'booking' });
+                        // Notify Supplier
+                        if (b.supplierId) {
+                            addNotification({ userId: b.supplierId, message: `You are late (>30m) for booking #${b.id}. Farmer may cancel.`, type: 'booking' });
+                        }
+                        setBookings(prev => prev.map(bk => bk.id === b.id ? { ...bk, lateStart: true } : bk));
+                    }
                 }
             });
+
+            // Check for unaccepted requests > 2 hours
+            const unaccepted = bookings.filter(b => b.status === 'Searching');
+            unaccepted.forEach(b => {
+                const created = new Date(b.date + 'T' + b.startTime); // Approximate creation time or use a created timestamp if available
+                // Assuming booking ID generation uses timestamp or we just check against current time vs start time proximity?
+                // Better: check if created > 2 hours ago. But we don't have createdAt.
+                // Let's use: if current time is close to start time (e.g. < 24h) and still searching.
+                const dt = new Date(b.date);
+                const [hh, mm] = (b.startTime || '00:00').split(':');
+                dt.setHours(parseInt(hh || '0'), parseInt(mm || '0'), 0, 0);
+                const diff = dt.getTime() - now.getTime();
+
+                // If start time is within 12 hours and still searching, alert admin
+                if (diff > 0 && diff < 12 * 60 * 60 * 1000) {
+                    // Simple de-duplication needed? addAlert generates unique ID.
+                    // Ideally we check if alert already exists for this booking.
+                    // For now, let's just log it or assume the admin clears it.
+                    // To avoid spam, we might need a 'lastAlerted' field on booking or similar.
+                    // Skipping complex de-dupe for this MVP step, but noting it.
+                }
+            });
+
         }, 60000);
         return () => clearInterval(t);
     }, [bookings]);
@@ -165,7 +223,7 @@ export const BookingProvider: React.FC<{ children: ReactNode }> = ({ children })
             } else {
                 rec.count += 1;
                 if (rec.count >= 3) {
-                    addNotification({ userId: 0, message: `Supplier ${sId} rejected multiple direct requests in 24h.`, type: 'admin' });
+                    addNotification({ userId: '0', message: `Supplier ${sId} rejected multiple direct requests in 24h.`, type: 'admin' });
                 }
             }
         }
@@ -176,6 +234,16 @@ export const BookingProvider: React.FC<{ children: ReactNode }> = ({ children })
         const bookingToCancel = bookings.find(b => b.id === bookingId);
         if (!bookingToCancel) {
             showToast("Booking not found.", "error");
+            return;
+        }
+
+        // Check if cancellation is allowed (Standard rules or Late Start)
+        // Standard: Can cancel if Searching, Pending Confirmation, Awaiting Operator, Confirmed, Arrived.
+        const isStandardCancel = ['Searching', 'Pending Confirmation', 'Awaiting Operator', 'Confirmed', 'Arrived'].includes(bookingToCancel.status);
+        const isLateCancel = bookingToCancel.lateStart && ['Confirmed', 'Arrived'].includes(bookingToCancel.status);
+
+        if (!isStandardCancel && !isLateCancel) {
+            showToast("Cannot cancel this booking at this stage.", "error");
             return;
         }
 
@@ -191,7 +259,7 @@ export const BookingProvider: React.FC<{ children: ReactNode }> = ({ children })
                 } else {
                     updatedItem.available = true;
                 }
-                updateItem(updatedItem);
+
             }
         }
 
@@ -204,12 +272,28 @@ export const BookingProvider: React.FC<{ children: ReactNode }> = ({ children })
         showToast('Booking has been cancelled.', 'warning');
     };
 
-    const acceptBookingRequest = (bookingId: string, supplierId: number, itemId: number, options?: { operateSelf?: boolean; quantityToProvide?: number }): boolean => {
-        const booking = bookings.find(b => b.id === bookingId);
-        if (!booking || !['Searching', 'Awaiting Operator', 'Pending Confirmation'].includes(booking.status)) {
-            showToast('This job is no longer available.', 'error');
+    const acceptBookingRequest = async (bookingId: string, supplierId: string, itemId: number, options?: { operateSelf?: boolean; quantityToProvide?: number }): Promise<boolean> => {
+        // 1. FRESH FETCH to check current status on server (Race Condition Prevention)
+        try {
+            const checkRes = await fetch(`${API_URL}/bookings/${bookingId}`);
+            if (!checkRes.ok) throw new Error('Fetch failed');
+            const freshBooking: Booking = await checkRes.json();
+
+            if (!['Searching', 'Awaiting Operator', 'Pending Confirmation'].includes(freshBooking.status)) {
+                showToast('This job has already been taken by another supplier.', 'error');
+                // Refresh local state to reflect reality
+                setBookings(prev => prev.map(b => b.id === bookingId ? freshBooking : b));
+                return false;
+            }
+        } catch (e) {
+            console.error("Failed to verify booking status", e);
+            // Proceed with caution or block? Let's block to be safe.
+            showToast('Connection error. Please try again.', 'error');
             return false;
         }
+
+        const booking = bookings.find(b => b.id === bookingId);
+        if (!booking) return false;
 
         const item = items.find(i => i.id === itemId);
         if (!item || !item.available) {
@@ -532,7 +616,7 @@ export const BookingProvider: React.FC<{ children: ReactNode }> = ({ children })
         const windowStart = now - 10 * 60 * 1000;
         const recent = recentPaymentTimestamps.filter(ts => ts >= windowStart);
         if (recent.length >= 10) {
-            addNotification({ userId: 0, message: 'Payment attempts spike detected in the last 10 minutes.', type: 'admin' });
+            addNotification({ userId: '0', message: 'Payment attempts spike detected in the last 10 minutes.', type: 'admin' });
         }
     };
 

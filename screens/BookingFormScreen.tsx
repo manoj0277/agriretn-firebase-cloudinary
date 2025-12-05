@@ -9,6 +9,17 @@ import { useBooking } from '../context/BookingContext';
 import { useAuth } from '../context/AuthContext';
 import { useItem } from '../context/ItemContext';
 import { useLanguage } from '../context/LanguageContext';
+import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet';
+import 'leaflet/dist/leaflet.css';
+import L from 'leaflet';
+
+// Fix for default marker icon
+delete (L.Icon.Default.prototype as any)._getIconUrl;
+L.Icon.Default.mergeOptions({
+    iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
+    iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
+    shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+});
 
 interface BookingFormScreenProps {
     navigate: (view: AppView) => void;
@@ -38,13 +49,18 @@ const haversineDistance = (coords1: { lat: number, lng: number }, coords2: { lat
 
 const BookingFormScreen: React.FC<BookingFormScreenProps> = ({ navigate, goBack, category, quantity: initialQuantity, item, workPurpose: initialWorkPurpose }) => {
     const { user, allUsers } = useAuth();
-    const { addBooking } = useBooking();
+    const { addBooking, bookings } = useBooking();
     const { items } = useItem();
     const { t } = useLanguage();
     const [date, setDate] = useState('');
     const [startTime, setStartTime] = useState('');
     const [estimatedDurationInput, setEstimatedDurationInput] = useState('1');
     const [location, setLocation] = useState('');
+    const [locationCoords, setLocationCoords] = useState<{ lat: number; lng: number } | undefined>(undefined);
+    const [searchSuggestions, setSearchSuggestions] = useState<Array<{ display_name: string; lat: string; lon: string }>>([]);
+    const [showSuggestions, setShowSuggestions] = useState(false);
+    const [showLocationModal, setShowLocationModal] = useState(false);
+    const [isLocating, setIsLocating] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const [additionalInstructions, setAdditionalInstructions] = useState('');
     const [itemCategory, setItemCategory] = useState<ItemCategory>(item?.category || category || ItemCategory.Tractors);
@@ -199,6 +215,128 @@ const BookingFormScreen: React.FC<BookingFormScreenProps> = ({ navigate, goBack,
     const getTodayString = () => new Date().toISOString().split('T')[0];
     const minDate = getTodayString();
 
+    // Reverse geocoding function using Nominatim
+    const reverseGeocode = async (lat: number, lng: number): Promise<string> => {
+        try {
+            const response = await fetch(
+                `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=14&addressdetails=1`,
+                {
+                    headers: {
+                        'Accept-Language': 'en',
+                    }
+                }
+            );
+            if (response.ok) {
+                const data = await response.json();
+                const address = data.address;
+                // Build a readable address from village/suburb/city
+                const parts = [
+                    address.village || address.suburb || address.neighbourhood,
+                    address.city || address.town || address.county,
+                    address.state_district || address.state
+                ].filter(Boolean);
+                return parts.join(', ') || data.display_name || `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+            }
+        } catch (error) {
+            console.error('Reverse geocoding failed:', error);
+        }
+        return `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+    };
+
+    // Forward geocoding function to search for places
+    const searchLocation = async (query: string) => {
+        if (query.length < 3) {
+            setSearchSuggestions([]);
+            return;
+        }
+        try {
+            const response = await fetch(
+                `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&countrycodes=in&limit=5`,
+                { headers: { 'Accept-Language': 'en' } }
+            );
+            if (response.ok) {
+                const data = await response.json();
+                setSearchSuggestions(data);
+                setShowSuggestions(true);
+            }
+        } catch (error) {
+            console.error('Location search failed:', error);
+        }
+    };
+
+    const selectSuggestion = (suggestion: { display_name: string; lat: string; lon: string }) => {
+        const lat = parseFloat(suggestion.lat);
+        const lng = parseFloat(suggestion.lon);
+        setLocationCoords({ lat, lng });
+        // Extract shorter name from display_name
+        const parts = suggestion.display_name.split(', ');
+        const shortName = parts.slice(0, 3).join(', ');
+        setLocation(shortName);
+        setSearchSuggestions([]);
+        setShowSuggestions(false);
+    };
+
+    const handleUseCurrentLocation = () => {
+        if (!navigator.geolocation) {
+            alert('Geolocation is not supported by your browser');
+            return;
+        }
+
+        // Show the location permission modal first
+        setShowLocationModal(true);
+    };
+
+    const requestLocation = () => {
+        setShowLocationModal(false);
+        setIsLocating(true);
+
+        navigator.geolocation.getCurrentPosition(
+            async (position) => {
+                const { latitude, longitude } = position.coords;
+                setLocationCoords({ lat: latitude, lng: longitude });
+                const address = await reverseGeocode(latitude, longitude);
+                setLocation(address);
+                setIsLocating(false);
+            },
+            (error) => {
+                setIsLocating(false);
+                if (error.code === error.PERMISSION_DENIED) {
+                    alert('Location permission denied. Please enable location access in your device settings and try again.');
+                } else if (error.code === error.POSITION_UNAVAILABLE) {
+                    alert('Unable to determine your location. Please ensure GPS is enabled or enter location manually.');
+                } else if (error.code === error.TIMEOUT) {
+                    alert('Location request timed out. Please try again.');
+                } else {
+                    alert('Unable to retrieve your location');
+                }
+                console.error(error);
+            },
+            {
+                enableHighAccuracy: true,
+                timeout: 15000,
+                maximumAge: 0
+            }
+        );
+    };
+
+    const LocationMarker = () => {
+        const map = useMapEvents({
+            async click(e) {
+                setLocationCoords(e.latlng);
+                const address = await reverseGeocode(e.latlng.lat, e.latlng.lng);
+                setLocation(address);
+            },
+        });
+
+        useEffect(() => {
+            if (locationCoords) {
+                map.flyTo(locationCoords, map.getZoom());
+            }
+        }, [locationCoords, map]);
+
+        return locationCoords ? <Marker position={locationCoords} /> : null;
+    };
+
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         if (!date || !startTime || !location || !itemCategory || !workPurpose || durationInHours <= 0 || isDateBlocked) {
@@ -207,6 +345,20 @@ const BookingFormScreen: React.FC<BookingFormScreenProps> = ({ navigate, goBack,
         }
 
         if (user) {
+            // Check for existing unconfirmed bookings for the same equipment (only for direct requests)
+            if (isDirectRequest && item && !isBroadcastOverride) {
+                const existingUnconfirmedBooking = bookings.find(b =>
+                    b.farmerId === user.id &&
+                    b.itemId === item.id &&
+                    ['Searching', 'Pending Confirmation', 'Awaiting Operator'].includes(b.status)
+                );
+
+                if (existingUnconfirmedBooking) {
+                    alert(`You already have a pending booking for this equipment (${item.name}). Please wait for confirmation before booking again.\n\nBooking ID: ${existingUnconfirmedBooking.id}\nStatus: ${existingUnconfirmedBooking.status}`);
+                    return;
+                }
+            }
+
             const isFinalBroadcast = !isDirectRequest || isBroadcastOverride;
 
             if (!isFinalBroadcast && (!item?.id || !item?.ownerId)) {
@@ -225,6 +377,7 @@ const BookingFormScreen: React.FC<BookingFormScreenProps> = ({ navigate, goBack,
                 date,
                 startTime,
                 location,
+                locationCoords,
                 status: isFinalBroadcast ? 'Searching' : 'Pending Confirmation',
                 additionalInstructions,
                 workPurpose,
@@ -326,7 +479,69 @@ const BookingFormScreen: React.FC<BookingFormScreenProps> = ({ navigate, goBack,
                             {t('minimumBillingNote') || 'Note: Minimum billing is 1 hour. Pricing will be calculated for 1 hour.'}
                         </div>
                     )}
-                    <Input label={t('fieldLocation')} value={location} onChange={e => setLocation(e.target.value)} placeholder={t('enterFarmAddress') || 'Enter your farm address'} required />
+
+
+                    <div className="space-y-2">
+                        <div className="relative">
+                            <label className="block text-gray-700 dark:text-neutral-300 text-sm font-bold mb-2">{t('fieldLocation')} *</label>
+                            <div className="relative">
+                                <input
+                                    type="text"
+                                    value={location}
+                                    onChange={(e) => {
+                                        setLocation(e.target.value);
+                                        searchLocation(e.target.value);
+                                    }}
+                                    onFocus={() => searchSuggestions.length > 0 && setShowSuggestions(true)}
+                                    placeholder={t('enterFarmAddress') || 'Search village/town name...'}
+                                    required
+                                    className="shadow appearance-none border border-neutral-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg w-full py-3 px-4 pr-12 text-neutral-800 dark:text-white leading-tight focus:outline-none focus:ring-2 focus:ring-primary/50"
+                                />
+                                <button
+                                    type="button"
+                                    onClick={handleUseCurrentLocation}
+                                    className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-primary hover:text-primary-dark"
+                                    title="Use Current Location"
+                                >
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                                    </svg>
+                                </button>
+                            </div>
+
+                            {/* Search Suggestions Dropdown */}
+                            {showSuggestions && searchSuggestions.length > 0 && (
+                                <div className="absolute z-50 w-full mt-1 bg-white dark:bg-gray-700 border border-neutral-300 dark:border-gray-600 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                                    {searchSuggestions.map((suggestion, index) => (
+                                        <button
+                                            key={index}
+                                            type="button"
+                                            onClick={() => selectSuggestion(suggestion)}
+                                            className="w-full text-left px-4 py-2 text-sm hover:bg-primary/10 dark:hover:bg-primary/20 text-neutral-800 dark:text-white border-b border-neutral-100 dark:border-gray-600 last:border-0"
+                                        >
+                                            📍 {suggestion.display_name}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="h-64 w-full rounded-lg overflow-hidden border border-neutral-300 dark:border-gray-600 z-0">
+                            <MapContainer
+                                center={locationCoords || { lat: 17.3850, lng: 78.4867 }}
+                                zoom={13}
+                                style={{ height: '100%', width: '100%' }}
+                            >
+                                <TileLayer
+                                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                                />
+                                <LocationMarker />
+                            </MapContainer>
+                        </div>
+                        <p className="text-xs text-neutral-500">Tap on the map to pin exact location.</p>
+                    </div>
 
                     <div>
                         <label className="block text-gray-700 dark:text-neutral-300 text-sm font-bold mb-2">{t('workPurpose')}</label>
@@ -421,6 +636,56 @@ const BookingFormScreen: React.FC<BookingFormScreenProps> = ({ navigate, goBack,
                 </form>
             </div>
             {/* Payment modal removed */}
+
+            {/* Location Permission Modal */}
+            {showLocationModal && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4" style={{ zIndex: 9999 }}>
+                    <div className="bg-white dark:bg-neutral-800 rounded-2xl p-6 max-w-sm w-full shadow-xl">
+                        <div className="text-center">
+                            <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                                </svg>
+                            </div>
+                            <h3 className="text-lg font-bold text-neutral-800 dark:text-white mb-2">
+                                Select Your Location
+                            </h3>
+                            <p className="text-sm text-neutral-600 dark:text-neutral-300 mb-4">
+                                Choose how you want to set your field location:
+                            </p>
+                            <div className="space-y-3">
+                                <button
+                                    onClick={requestLocation}
+                                    className="w-full py-3 bg-primary text-white rounded-lg font-semibold hover:bg-primary-dark transition-colors"
+                                >
+                                    📍 Use GPS Location
+                                </button>
+                                <button
+                                    onClick={() => setShowLocationModal(false)}
+                                    className="w-full py-3 bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-200 rounded-lg font-semibold hover:bg-blue-200 dark:hover:bg-blue-800 transition-colors"
+                                >
+                                    🔍 Search Village Name
+                                </button>
+                                <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-2">
+                                    💡 Tip: Type your village name in the field or tap on the map to pin exact location
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Location Loading Indicator */}
+            {isLocating && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center" style={{ zIndex: 9999 }}>
+                    <div className="bg-white dark:bg-neutral-800 rounded-2xl p-6 text-center shadow-xl">
+                        <div className="animate-spin w-10 h-10 border-4 border-primary border-t-transparent rounded-full mx-auto mb-4"></div>
+                        <p className="text-neutral-700 dark:text-neutral-200 font-medium">Detecting your location...</p>
+                        <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-1">Please wait</p>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

@@ -1,4 +1,5 @@
 import { db } from '../firebase';
+export { db }; // Export db for use in index.ts
 import { User, Item, Booking, Review, ChatMessage, ForumPost, SupportTicket, DamageReport, Notification } from '../types';
 
 const COLLECTIONS = {
@@ -10,6 +11,12 @@ const COLLECTIONS = {
     POSTS: 'posts',
     TICKETS: 'tickets',
     NOTIFICATIONS: 'notifications',
+    NOTIFICATIONS_USER: 'notifications_user',
+    NOTIFICATIONS_ADMIN: 'notifications_admin',
+    NOTIFICATIONS_WEATHER: 'notifications_weather',
+    NOTIFICATIONS_BOOKING: 'notifications_booking',
+    NOTIFICATIONS_SYSTEM: 'notifications_system',
+    NOTIFICATIONS_PROMOTIONAL: 'notifications_promotional',
     DAMAGE_REPORTS: 'damage_reports'
 };
 
@@ -56,7 +63,7 @@ const remove = async (collection: string, id: string | number): Promise<void> =>
 
 export const UserService = {
     getAll: () => getAll<User>(COLLECTIONS.USERS),
-    getById: (id: number) => getById<User>(COLLECTIONS.USERS, id),
+    getById: (id: number | string) => getById<User>(COLLECTIONS.USERS, id),
     getByEmail: async (email: string): Promise<User | null> => {
         try {
             const snapshot = await db.collection(COLLECTIONS.USERS).where('email', '==', email).limit(1).get();
@@ -77,10 +84,27 @@ export const UserService = {
             return null;
         }
     },
+    getByFirebaseUid: async (firebaseUid: string): Promise<User | null> => {
+        try {
+            // First try direct document access using firebaseUid as document ID
+            const doc = await db.collection(COLLECTIONS.USERS).doc(firebaseUid).get();
+            if (doc.exists) {
+                return { id: doc.id, ...doc.data() } as unknown as User;
+            }
+
+            // Fallback: query by firebaseUid field (for old users with timestamp IDs)
+            const snapshot = await db.collection(COLLECTIONS.USERS).where('firebaseUid', '==', firebaseUid).limit(1).get();
+            if (snapshot.empty) return null;
+            return { id: snapshot.docs[0].id, ...snapshot.docs[0].data() } as unknown as User;
+        } catch (error) {
+            console.error('Error in getByFirebaseUid:', error);
+            return null;
+        }
+    },
 
     create: (user: User) => create<User>(COLLECTIONS.USERS, user),
-    update: (id: number, data: Partial<User>) => update<User>(COLLECTIONS.USERS, id, data),
-    delete: (id: number) => remove(COLLECTIONS.USERS, id),
+    update: (id: number | string, data: Partial<User>) => update<User>(COLLECTIONS.USERS, id, data),
+    delete: (id: number | string) => remove(COLLECTIONS.USERS, id),
 };
 
 export const ItemService = {
@@ -122,16 +146,102 @@ export const KYCService = {
     delete: (id: string) => remove('kycsubmissions', id)
 };
 
+// Helper to get collection name by category
+const getNotificationCollection = (category?: string): string => {
+    const categoryMap: Record<string, string> = {
+        'user': COLLECTIONS.NOTIFICATIONS_USER,
+        'admin': COLLECTIONS.NOTIFICATIONS_ADMIN,
+        'weather': COLLECTIONS.NOTIFICATIONS_WEATHER,
+        'booking': COLLECTIONS.NOTIFICATIONS_BOOKING,
+        'system': COLLECTIONS.NOTIFICATIONS_SYSTEM,
+        'promotional': COLLECTIONS.NOTIFICATIONS_PROMOTIONAL
+    };
+    return category && categoryMap[category] || COLLECTIONS.NOTIFICATIONS;
+};
+
 export const NotificationService = {
     getAll: () => getAll<Notification>(COLLECTIONS.NOTIFICATIONS),
+    getAllByCategory: (category: string) => getAll<Notification>(getNotificationCollection(category)),
     getForUser: async (userId: number) => {
         const snapshot = await db.collection(COLLECTIONS.NOTIFICATIONS).where('userId', '==', userId).get();
         return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as unknown as Notification));
     },
-    create: (data: Notification) => create<Notification>(COLLECTIONS.NOTIFICATIONS, data),
+    create: (data: Notification) => {
+        const collection = getNotificationCollection(data.category);
+        return create<Notification>(collection, data);
+    },
     update: (id: number, data: Partial<Notification>) => update<Notification>(COLLECTIONS.NOTIFICATIONS, id, data),
     markAsRead: (id: number) => update<Notification>(COLLECTIONS.NOTIFICATIONS, id, { read: true }),
     delete: (id: number) => remove(COLLECTIONS.NOTIFICATIONS, id)
+};
+
+// Personal notifications stored in user subcollection (optimized storage)
+export const UserNotificationService = {
+    getForUser: async (userId: string): Promise<Notification[]> => {
+        try {
+            const snapshot = await db.collection(COLLECTIONS.USERS).doc(userId)
+                .collection('notifications').orderBy('timestamp', 'desc').limit(50).get();
+            return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as unknown as Notification));
+        } catch (error) {
+            console.error(`[Firestore] Error fetching user notifications for ${userId}:`, error);
+            return [];
+        }
+    },
+    create: async (userId: string, data: Notification): Promise<Notification> => {
+        console.log(`[Firestore] Creating personal notification for user ${userId}:`, data.id);
+        await db.collection(COLLECTIONS.USERS).doc(userId)
+            .collection('notifications').doc(String(data.id)).set(data);
+        return data;
+    },
+    markAsRead: async (userId: string, notificationId: string): Promise<void> => {
+        await db.collection(COLLECTIONS.USERS).doc(userId)
+            .collection('notifications').doc(notificationId).update({ read: true });
+    },
+    delete: async (userId: string, notificationId: string): Promise<void> => {
+        await db.collection(COLLECTIONS.USERS).doc(userId)
+            .collection('notifications').doc(notificationId).delete();
+    },
+    deleteAll: async (userId: string): Promise<void> => {
+        const snapshot = await db.collection(COLLECTIONS.USERS).doc(userId)
+            .collection('notifications').get();
+        const batch = db.batch();
+        snapshot.docs.forEach(doc => batch.delete(doc.ref));
+        await batch.commit();
+    }
+};
+
+// Broadcast notifications (1 doc per event, filtered by district client-side)
+export const BroadcastService = {
+    getAll: async (): Promise<Notification[]> => {
+        try {
+            const snapshot = await db.collection('broadcasts')
+                .orderBy('timestamp', 'desc').limit(50).get();
+            return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as unknown as Notification));
+        } catch (error) {
+            console.error('[Firestore] Error fetching broadcasts:', error);
+            return [];
+        }
+    },
+    getForDistrict: async (district: string): Promise<Notification[]> => {
+        try {
+            // Get broadcasts for specific district OR global broadcasts (district = 'all')
+            const snapshot = await db.collection('broadcasts')
+                .where('district', 'in', [district, 'all'])
+                .orderBy('timestamp', 'desc').limit(20).get();
+            return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as unknown as Notification));
+        } catch (error) {
+            console.error(`[Firestore] Error fetching broadcasts for district ${district}:`, error);
+            return [];
+        }
+    },
+    create: async (data: Notification & { district: string }): Promise<Notification> => {
+        console.log(`[Firestore] Creating broadcast for district ${data.district}:`, data.id);
+        await db.collection('broadcasts').doc(String(data.id)).set(data);
+        return data;
+    },
+    delete: async (id: string): Promise<void> => {
+        await db.collection('broadcasts').doc(id).delete();
+    }
 };
 
 export const ChatService = {

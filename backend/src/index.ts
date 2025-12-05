@@ -18,7 +18,12 @@ function getCategorySubject(category?: string): string {
     return subjects[category as keyof typeof subjects] || '🌾 AgriRent Notification';
 }
 import path from 'path';
-import { UserService, ItemService, BookingService, PostService, KYCService, NotificationService, ChatService, ReviewService, SupportService, DamageReportService } from './services/firestore';
+import {
+    UserService, ItemService, BookingService, PostService, KYCService, NotificationService, ChatService, ReviewService, SupportService, DamageReportService,
+    UserNotificationService, BroadcastService,
+    db
+} from './services/firestore';
+import { sendWelcomeNotification, sendKYCStatusNotification } from './services/smartNotifications';
 import { User, UserRole, Item, ChatMessage, ForumPost, Booking, Notification } from './types';
 import cloudinary from './cloudinary';
 import { auth as firebaseAuth } from './firebase';
@@ -36,6 +41,192 @@ app.use(express.json({ limit: '50mb' })); // Increased limit for image uploads
 app.get('/', (req: Request, res: Response) => {
     res.send('Backend server is running with Firebase & Cloudinary!');
 });
+
+// --- Upload endpoint ---
+app.post('/api/upload', async (req: Request, res: Response) => {
+    try {
+        const { base64Image } = req.body;
+        if (!base64Image) {
+            return res.status(400).json({ error: 'No image provided' });
+        }
+
+        const result = await cloudinary.uploader.upload(base64Image, {
+            folder: 'agrirent',
+        });
+
+        res.json({ url: result.secure_url });
+    } catch (error) {
+        console.error('Upload error:', error);
+        res.status(500).json({ error: (error as Error).message });
+    }
+});
+
+// --- BOOKING TIMEOUT & TRUSTED SUPPLIER ENDPOINTS ---
+import { checkBookingTimeouts, checkExpiredBookings, getSearchDurationHours } from './services/bookingTimeout';
+
+// Toggle trusted supplier status
+app.post('/api/admin/suppliers/:id/toggle-trusted', async (req: Request, res: Response) => {
+    try {
+        const supplierId = parseInt(req.params.id);
+        const user = await UserService.getById(supplierId);
+
+        if (!user || user.role !== UserRole.Supplier) {
+            return res.status(404).json({ message: 'Supplier not found' });
+        }
+
+        const updated = await UserService.update(supplierId, {
+            isTrustedSupplier: !user.isTrustedSupplier
+        });
+
+        console.log(`Supplier ${supplierId} trusted status toggled to:`, updated?.isTrustedSupplier);
+        res.json(updated);
+    } catch (e) {
+        console.error('Error toggling trusted supplier:', e);
+        res.status(500).json({ error: (e as Error).message });
+    }
+});
+
+// Get all trusted suppliers
+app.get('/api/admin/trusted-suppliers', async (req: Request, res: Response) => {
+    try {
+        const allUsers = await UserService.getAll();
+        const trustedSuppliers = allUsers.filter(u =>
+            u.role === UserRole.Supplier && u.isTrustedSupplier
+        );
+        console.log(`Found ${trustedSuppliers.length} trusted suppliers`);
+        res.json(trustedSuppliers);
+    } catch (e) {
+        res.status(500).json({ error: (e as Error).message });
+    }
+});
+
+// Manually allot booking to supplier
+app.post('/api/admin/bookings/:bookingId/allot/:supplierId', async (req: Request, res: Response) => {
+    try {
+        const { bookingId, supplierId } = req.params;
+        const { adminId } = req.body;
+
+        const booking = await BookingService.getById(bookingId);
+        const supplier = await UserService.getById(parseInt(supplierId));
+
+        if (!booking || !supplier) {
+            return res.status(404).json({ message: 'Booking or supplier not found' });
+        }
+
+        // Get supplier's item in the required category
+        const items = await ItemService.getAll();
+        const supplierItem = items.find(i =>
+            i.ownerId === supplier.id &&
+            i.category === booking.itemCategory &&
+            i.status === 'approved'
+        );
+
+        const updated = await BookingService.update(bookingId, {
+            status: 'Pending Confirmation',
+            supplierId: supplier.id,
+            itemId: supplierItem?.id,
+            manuallyAllottedBy: adminId
+        });
+
+        // Send notification to supplier
+        await NotificationService.create({
+            id: Date.now(),
+            userId: supplier.id,
+            message: `Admin has assigned a ${booking.itemCategory} booking to you (${booking.location} on ${booking.date}). Please confirm.`,
+            type: 'booking',
+            category: 'booking',
+            priority: 'high',
+            read: false,
+            timestamp: new Date().toISOString()
+        });
+
+        // Send notification to farmer
+        await NotificationService.create({
+            id: Date.now() + 1,
+            userId: booking.farmerId,
+            message: `Good news! Admin has found a supplier for your ${booking.itemCategory} booking. Waiting for supplier confirmation.`,
+            type: 'booking',
+            category: 'booking',
+            priority: 'medium',
+            read: false,
+            timestamp: new Date().toISOString()
+        });
+
+        console.log(`Booking ${bookingId} manually allotted to supplier ${supplierId} by admin ${adminId}`);
+        res.json(updated);
+    } catch (e) {
+        console.error('Error allotting booking:', e);
+        res.status(500).json({ error: (e as Error).message });
+    }
+});
+
+// Expand search radius for a booking
+app.post('/api/bookings/:id/expand-radius', async (req: Request, res: Response) => {
+    try {
+        const bookingId = req.params.id;
+        const { newRadius } = req.body;
+
+        const booking = await BookingService.getById(bookingId);
+        if (!booking) {
+            return res.status(404).json({ message: 'Booking not found' });
+        }
+
+        const originalRadius = booking.searchRadiusExpanded ? booking.expandedSearchRadius : 50; // Assume default 50km
+
+        const updated = await BookingService.update(bookingId, {
+            searchRadiusExpanded: true,
+            originalSearchRadius: originalRadius,
+            expandedSearchRadius: newRadius
+        });
+
+        console.log(`Booking ${bookingId} search radius expanded to ${newRadius} km`);
+        res.json(updated);
+    } catch (e) {
+        console.error('Error expanding search radius:', e);
+        res.status(500).json({ error: (e as Error).message });
+    }
+});
+
+// Get search duration for a booking
+app.get('/api/bookings/:id/search-duration', async (req: Request, res: Response) => {
+    try {
+        const bookingId = req.params.id;
+        const booking = await BookingService.getById(bookingId);
+
+        if (!booking) {
+            return res.status(404).json({ message: 'Booking not found' });
+        }
+
+        const hours = getSearchDurationHours(booking);
+        res.json({ hours, exceededThreshold: hours >= 6 });
+    } catch (e) {
+        res.status(500).json({ error: (e as Error).message });
+    }
+});
+
+// Run timeout checker on startup
+checkBookingTimeouts();
+checkExpiredBookings();
+
+// Schedule timeout checker to run every hour
+setInterval(async () => {
+    try {
+        console.log('[Scheduler] Running hourly booking timeout check...');
+        await checkBookingTimeouts();
+    } catch (error) {
+        console.error('[Scheduler] Error in timeout checker:', error);
+    }
+}, 60 * 60 * 1000); // Every hour
+
+// Schedule expiry checker to run every 30 minutes
+setInterval(async () => {
+    try {
+        console.log('[Scheduler] Running booking expiry check...');
+        await checkExpiredBookings();
+    } catch (error) {
+        console.error('[Scheduler] Error in expiry checker:', error);
+    }
+}, 30 * 60 * 1000); // Every 30 minutes
 
 // --- DATA ENDPOINTS ---
 app.get('/api/users/profile', async (req: Request, res: Response) => {
@@ -58,6 +249,16 @@ app.get('/api/users/phone', async (req: Request, res: Response) => {
         if (user) res.json(user);
         else res.status(404).json({ message: 'User not found' });
     } catch (e) { res.status(500).json({ error: (e as Error).message }); }
+});
+
+// Get Google Sheets URL from environment
+app.get('/api/config/google-sheets-url', (req: Request, res: Response) => {
+    const url = process.env.GOOGLE_SHEETS_BULK_BOOKING_URL;
+    if (url) {
+        res.json({ url });
+    } else {
+        res.status(404).json({ message: 'Google Sheets URL not configured in backend' });
+    }
 });
 
 app.get('/api/users', async (req: Request, res: Response) => {
@@ -124,12 +325,12 @@ app.post('/api/auth/signup', async (req: Request, res: Response) => {
 
         // 2. Create in Firestore
         const newUser: User = {
-            id: Date.now(), // Internal ID
+            id: uid, // Use firebaseUid as document ID for easy access
             firebaseUid: uid,
             email,
             phone,
             ...rest,
-            status: rest.role === UserRole.Supplier ? 'pending' : 'approved',
+            userStatus: 'approved', // Auto-approve all roles (Farmer, Supplier, Agent) as per user request
             signupDate: new Date().toISOString(), // Track signup date for targeting new users
         };
 
@@ -152,6 +353,9 @@ app.post('/api/auth/signup', async (req: Request, res: Response) => {
 
         await UserService.create(newUser);
 
+        // Send welcome notification
+        sendWelcomeNotification(newUser.id).catch(err => console.error('Error sending welcome notification:', err));
+
         const { password: _, ...userToReturn } = newUser;
         res.status(201).json(userToReturn);
     } catch (error: any) {
@@ -163,7 +367,24 @@ app.post('/api/auth/signup', async (req: Request, res: Response) => {
     }
 });
 
+
+
 // --- USERS ---
+app.get('/api/users/profile/:uid', async (req: Request, res: Response) => {
+    try {
+        const { uid } = req.params;
+        const user = await UserService.getByFirebaseUid(uid);
+        if (user) {
+            res.json(user);
+        } else {
+            res.status(404).json({ message: 'User not found' });
+        }
+    } catch (e) {
+        console.error('Error fetching user profile:', e);
+        res.status(500).json({ error: (e as Error).message });
+    }
+});
+
 app.put('/api/users/:id', async (req: Request, res: Response) => {
     try {
         const userId = parseInt(req.params.id);
@@ -415,13 +636,20 @@ app.post('/api/admin/kyc/:id/verify', async (req: Request, res: Response) => {
 
         await KYCService.update(kycId, updateData);
 
-        // If approved, also update user status
+        // If approved, also update user KYC status
         if (status === 'Approved') {
-            await UserService.update(kyc.userId, { status: 'approved' });
-            console.log(`User ${kyc.userId} approved via KYC verification`);
+            await UserService.update(kyc.userId, { kycStatus: 'approved' });
+            console.log(`User ${kyc.userId} KYC approved by admin`);
+        } else if (status === 'Rejected') {
+            await UserService.update(kyc.userId, { kycStatus: 'rejected' });
         }
 
         console.log(`KYC ${kycId} ${status.toLowerCase()} by admin`);
+
+        // Send automatic notification to user
+        sendKYCStatusNotification(kyc.userId, status, rejectionReason)
+            .catch(err => console.error('Error sending KYC notification:', err));
+
         res.json({ message: `KYC ${status.toLowerCase()} successfully` });
     } catch (e) {
         console.error('Error verifying KYC:', e);
@@ -443,6 +671,31 @@ app.get('/api/notifications/:userId', async (req: Request, res: Response) => {
         const notifications = await NotificationService.getForUser(userId);
         res.json(notifications);
     } catch (e) { res.status(500).json({ error: (e as Error).message }); }
+});
+
+// Get MERGED notifications (personal + broadcasts) - OPTIMIZED STORAGE
+app.get('/api/notifications/merged/:userId', async (req: Request, res: Response) => {
+    try {
+        const userId = req.params.userId;
+        const user = await UserService.getById(userId);
+
+        // Get personal notifications from user subcollection
+        const personal = await UserNotificationService.getForUser(userId);
+
+        // Get broadcasts for user's district (or all if no district)
+        const broadcasts = user?.district
+            ? await BroadcastService.getForDistrict(user.district)
+            : await BroadcastService.getAll();
+
+        // Merge and sort by timestamp (newest first)
+        const merged = [...personal, ...broadcasts]
+            .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+        res.json(merged);
+    } catch (e) {
+        console.error('[Notifications] Error fetching merged notifications:', e);
+        res.status(500).json({ error: (e as Error).message });
+    }
 });
 
 app.post('/api/notifications', async (req: Request, res: Response) => {
@@ -472,6 +725,90 @@ app.put('/api/notifications/:id/seen', async (req: Request, res: Response) => {
         const updated = await NotificationService.update(id, { seenAt, expiresAt });
         if (updated) res.json(updated);
         else res.status(404).json({ message: 'Notification not found' });
+    } catch (e) { res.status(500).json({ error: (e as Error).message }); }
+});
+
+// Remove user from notification's showTo subcollection (hide notification for user)
+app.delete('/api/notifications/:id/show-to/:userId', async (req: Request, res: Response) => {
+    try {
+        const notificationId = req.params.id;
+        const userId = req.params.userId;
+
+        // Remove user from the notification's 'showTo' subcollection
+        await db.collection('notifications').doc(notificationId)
+            .collection('showTo').doc(userId).delete();
+
+        res.json({ message: 'Notification hidden for user' });
+    } catch (e) { res.status(500).json({ error: (e as Error).message }); }
+});
+
+// Check if notification should be shown to a user
+app.get('/api/notifications/:id/show-to/:userId', async (req: Request, res: Response) => {
+    try {
+        const notificationId = req.params.id;
+        const userId = req.params.userId;
+
+        const doc = await db.collection('notifications').doc(notificationId)
+            .collection('showTo').doc(userId).get();
+
+        res.json({ shouldShow: doc.exists });
+    } catch (e) { res.status(500).json({ error: (e as Error).message }); }
+});
+
+// Get all notifications by category
+app.get('/api/notifications/category/:category', async (req: Request, res: Response) => {
+    try {
+        const category = req.params.category;
+        const notifications = await NotificationService.getAllByCategory(category);
+        res.json(notifications);
+    } catch (e) { res.status(500).json({ error: (e as Error).message }); }
+});
+
+// Get all notifications that should be shown to a specific user
+app.get('/api/notifications/for-user/:userId', async (req: Request, res: Response) => {
+    try {
+        const userId = req.params.userId;
+        const allNotifications = await NotificationService.getAll();
+
+        // Check each notification to see if it should be shown to this user
+        const notificationsWithStatus = await Promise.all(
+            allNotifications.map(async (notification) => {
+                // Check if user is in showTo subcollection
+                const showToDoc = await db.collection('notifications').doc(String(notification.id))
+                    .collection('showTo').doc(userId).get();
+                return {
+                    ...notification,
+                    shouldShow: showToDoc.exists
+                };
+            })
+        );
+
+        // Filter to only notifications that should be shown
+        const visibleNotifications = notificationsWithStatus.filter(n => n.shouldShow);
+        res.json(visibleNotifications);
+    } catch (e) { res.status(500).json({ error: (e as Error).message }); }
+});
+
+app.delete('/api/notifications/:id', async (req: Request, res: Response) => {
+    try {
+        const id = parseInt(req.params.id);
+        await NotificationService.delete(id);
+        res.json({ message: 'Notification deleted successfully' });
+    } catch (e) { res.status(500).json({ error: (e as Error).message }); }
+});
+
+// Delete all notifications for a user
+app.delete('/api/notifications/user/:userId', async (req: Request, res: Response) => {
+    try {
+        const userId = parseInt(req.params.userId);
+        const notifications = await NotificationService.getForUser(userId);
+
+        // Delete each notification
+        for (const notification of notifications) {
+            await NotificationService.delete(notification.id);
+        }
+
+        res.json({ message: 'All notifications deleted successfully', count: notifications.length });
     } catch (e) { res.status(500).json({ error: (e as Error).message }); }
 });
 
@@ -584,8 +921,13 @@ app.post('/api/admin/notifications/send', async (req: Request, res: Response) =>
 
             // Send push notification if enabled
             if (channels?.includes('push') && user.deviceTokens && user.deviceTokens.length > 0 && user.notificationPreferences?.push !== false) {
-                const { sendPush } = await import('./services/push');
-                await sendPush(user.deviceTokens, 'AgriRent', message);
+                try {
+                    const { sendPush } = await import('./services/push');
+                    await sendPush(user.deviceTokens, 'AgriRent', message);
+                } catch (pushError) {
+                    console.error(`Failed to send push to user ${user.id}:`, pushError);
+                    // Continue to next user, don't fail the request
+                }
             }
         }
 
@@ -674,7 +1016,64 @@ app.get('/api/admin/notifications/stats', async (req: Request, res: Response) =>
     }
 });
 
-// Geocoding endpoint
+// Create a broadcast notification (storage-optimized: 1 doc per district)
+app.post('/api/admin/broadcasts', async (req: Request, res: Response) => {
+    try {
+        const { message, category, priority, district, expiresAt } = req.body;
+
+        if (!message) {
+            return res.status(400).json({ message: 'Message is required' });
+        }
+
+        const notification = {
+            id: Date.now(),
+            userId: '0', // '0' indicates broadcast
+            district: district || 'all',
+            message,
+            type: 'admin' as const,
+            category: category || 'system',
+            priority: priority || 'medium',
+            read: false,
+            timestamp: new Date().toISOString(),
+            expiresAt: expiresAt || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // Default: 7 days
+            sentVia: ['app']
+        };
+
+        await BroadcastService.create(notification as any);
+        console.log(`[Admin] Broadcast created for district: ${district || 'all'}`);
+
+        res.status(201).json({
+            message: 'Broadcast notification created',
+            notification
+        });
+    } catch (e) {
+        console.error('[Admin Broadcasts] Error:', e);
+        res.status(500).json({ error: (e as Error).message });
+    }
+});
+
+// Get all broadcasts (for admin)
+app.get('/api/admin/broadcasts', async (req: Request, res: Response) => {
+    try {
+        const broadcasts = await BroadcastService.getAll();
+        res.json(broadcasts);
+    } catch (e) {
+        res.status(500).json({ error: (e as Error).message });
+    }
+});
+
+// Delete a broadcast
+app.delete('/api/admin/broadcasts/:id', async (req: Request, res: Response) => {
+    try {
+        const id = req.params.id;
+        await BroadcastService.delete(id);
+        res.json({ message: 'Broadcast deleted' });
+    } catch (e) {
+        res.status(500).json({ error: (e as Error).message });
+    }
+});
+
+// Geocoding endpoint - returns both district AND mandal for accurate targeting
 app.get('/api/geocoding/district', async (req: Request, res: Response) => {
     try {
         const { lat, lng } = req.query;
@@ -683,10 +1082,16 @@ app.get('/api/geocoding/district', async (req: Request, res: Response) => {
             return res.status(400).json({ message: 'Latitude and longitude are required' });
         }
 
-        const { getDistrictFromCoords } = await import('./services/geocoding');
-        const district = await getDistrictFromCoords(parseFloat(lat as string), parseFloat(lng as string));
+        const { getLocationFromCoords } = await import('./services/geocoding');
+        const location = await getLocationFromCoords(parseFloat(lat as string), parseFloat(lng as string));
 
-        res.json({ district });
+        // Return full location info including mandal
+        res.json({
+            district: location.district,
+            mandal: location.mandal,
+            village: location.village,
+            state: location.state
+        });
     } catch (e) {
         res.status(500).json({ error: (e as Error).message });
     }
@@ -788,7 +1193,7 @@ app.put('/api/damage-reports/:id', async (req: Request, res: Response) => {
 app.post('/api/admin/users/:id/approve', async (req: Request, res: Response) => {
     try {
         const userId = parseInt(req.params.id);
-        await UserService.update(userId, { status: 'approved' });
+        await UserService.update(userId, { userStatus: 'approved' });
         res.json({ message: 'User approved' });
     } catch (e) { res.status(500).json({ error: (e as Error).message }); }
 });
@@ -796,7 +1201,7 @@ app.post('/api/admin/users/:id/approve', async (req: Request, res: Response) => 
 app.post('/api/admin/users/:id/suspend', async (req: Request, res: Response) => {
     try {
         const userId = parseInt(req.params.id);
-        await UserService.update(userId, { status: 'suspended' });
+        await UserService.update(userId, { userStatus: 'suspended' });
         res.json({ message: 'User suspended' });
     } catch (e) { res.status(500).json({ error: (e as Error).message }); }
 });
@@ -804,7 +1209,7 @@ app.post('/api/admin/users/:id/suspend', async (req: Request, res: Response) => 
 app.post('/api/admin/users/:id/reactivate', async (req: Request, res: Response) => {
     try {
         const userId = parseInt(req.params.id);
-        await UserService.update(userId, { status: 'approved' });
+        await UserService.update(userId, { userStatus: 'approved' });
         res.json({ message: 'User reactivated' });
     } catch (e) { res.status(500).json({ error: (e as Error).message }); }
 });
@@ -935,6 +1340,86 @@ app.post('/api/admin/items/:id/request-reupload', async (req: Request, res: Resp
     } catch (e) {
         console.error('Error requesting re-upload:', e);
         res.status(500).json({ error: (e as Error).message });
+    }
+});
+
+// --- AGENT BULK BOOKING FROM GOOGLE SHEETS ---
+app.post('/api/agent/bulk-bookings/process', async (req: Request, res: Response) => {
+    try {
+        const { sheetsUrl, agentId, agentName } = req.body;
+
+        if (!sheetsUrl) return res.status(400).json({ error: 'Google Sheets URL is required' });
+        if (!agentId) return res.status(400).json({ error: 'Agent ID is required' });
+
+        console.log(`[Bulk Booking] Agent ${agentName} starting bulk booking process`);
+
+        const fetch = (await import('node-fetch')).default;
+        const response = await fetch(sheetsUrl);
+
+        if (!response.ok) throw new Error(`Failed to fetch from Google Sheets: ${response.statusText}`);
+
+        const rows = (await response.json()) as any[];
+        console.log(`[Bulk Booking] Fetched ${rows.length} PENDING rows`);
+
+        const results: any[] = [];
+        const updates: any[] = [];
+
+        for (const row of rows) {
+            try {
+                const mobileRegex = /^[6-9]\d{9}$/;
+                if (!row.Customer_Mobile || !mobileRegex.test(row.Customer_Mobile)) {
+                    throw new Error(`Invalid mobile: ${row.Customer_Mobile}`);
+                }
+
+                const bookingId = `BK-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+                const bookingData = {
+                    id: bookingId,
+                    farmerId: agentId, // Use agent's ID so booking appears in their view
+                    status: 'Searching' as const,
+                    itemCategory: row.Equipment_SKU as any,
+                    date: row.Rental_Date,
+                    startTime: '09:00',
+                    estimatedDuration: row.Rental_Duration_Hours,
+                    location: row.Delivery_Pincode,
+                    additionalInstructions: `Bulk booking from ${row.Booking_Source}. Customer: ${row.Customer_Mobile}`,
+                    bookedByAgentId: agentId,
+                    isAgentBooking: true
+                };
+
+                await BookingService.create(bookingData);
+
+                results.push({ success: true, rowNumber: row.rowNumber, bookingId });
+                updates.push({ rowNumber: row.rowNumber, status: 'PROCESSED', bookingId });
+
+            } catch (error: any) {
+                results.push({ success: false, rowNumber: row.rowNumber, error: error.message });
+                updates.push({ rowNumber: row.rowNumber, status: 'FAILED', bookingId: `Error: ${error.message}` });
+            }
+        }
+
+        try {
+            await fetch(sheetsUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ updates })
+            });
+        } catch (updateError) {
+            console.warn('[Bulk Booking] Error updating Google Sheets:', updateError);
+        }
+
+        const successfulCount = results.filter(r => r.success).length;
+        const failedCount = results.filter(r => !r.success).length;
+
+        res.json({
+            success: true,
+            message: `Processed ${results.length} bookings`,
+            results: { total: results.length, successful: successfulCount, failed: failedCount, details: results }
+        });
+
+    } catch (error: any) {
+        console.error('[Bulk Booking] Fatal error:', error);
+        res.status(500).json({ error: 'Failed to process bulk bookings', details: error.message });
     }
 });
 

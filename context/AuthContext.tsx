@@ -10,7 +10,7 @@ const API_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3001
 interface AuthContextType {
     user: User | null | undefined;
     allUsers: User[];
-    login: (email: string, password: string, role: UserRole) => Promise<boolean>;
+    login: (email: string, password: string, role?: UserRole) => Promise<boolean>;
     logout: () => void;
     signup: (details: Omit<User, 'id' | 'status'>) => Promise<boolean>;
     approveSupplier: (userId: number) => void;
@@ -51,30 +51,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                         console.log('User profile loaded successfully:', foundUser.name, 'Role:', foundUser.role);
                         console.log('Full user object:', foundUser);
 
-                        // Validate role matches what user attempted to log in as
-                        const attemptedRole = sessionStorage.getItem('attemptedRole');
-                        console.log('Attempted role:', attemptedRole);
-                        console.log('Actual user role:', foundUser.role);
-                        console.log('Role comparison:', {
-                            attempted: attemptedRole,
-                            actual: foundUser.role,
-                            match: foundUser.role === attemptedRole
-                        });
-
-                        // Allow Admin to login regardless of selected role (internal verification)
-                        if (foundUser.role === 'Admin') {
-                            console.log('User is Admin, bypassing role match check.');
-                        }
-                        else if (attemptedRole && foundUser.role !== attemptedRole) {
-                            console.error(`Role mismatch: User is ${foundUser.role} but tried to log in as ${attemptedRole}`);
-                            showToast(`Invalid credentials. This account is registered as ${foundUser.role}.`, 'error');
-                            sessionStorage.removeItem('attemptedRole');
-                            await signOut(auth);
-                            setUser(null);
-                            return;
-                        }
-                        sessionStorage.removeItem('attemptedRole');
-
+                        // Auto-detect and use the actual role from Firebase/Firestore
+                        // No need to validate against selected role - just log them in with their actual role
                         console.log('Setting user state with:', foundUser);
                         setUser(foundUser);
                     } else {
@@ -84,7 +62,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
                         // User exists in Auth but not in DB? Might be a new signup that hasn't synced yet.
                         console.warn('User in Auth but not in DB yet or fetch failed');
-                        showToast('Failed to load user profile. Please try again.', 'error');
+                        // Don't show error toast here - could be a new signup still syncing
                         setUser(null);
                         await signOut(auth);
                     }
@@ -92,13 +70,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                     if (error.name === 'AbortError') {
                         console.error('Profile fetch timed out - backend might be slow or unresponsive');
                         showToast('Connection timeout. Please check if backend server is running and try again.', 'error');
+                        setUser(null);
+                        await signOut(auth);
                     } else {
                         console.error('Failed to fetch user profile:', error);
-                        showToast('Failed to load user profile. Please ensure backend is running.', 'error');
+                        // Don't show error for network errors during normal login flow
+                        setUser(null);
+                        await signOut(auth);
                     }
-                    // If backend is down or user missing, force logout to prevent infinite loading
-                    setUser(null);
-                    await signOut(auth);
                 }
             } else {
                 console.log('No Firebase user, setting user to null');
@@ -124,7 +103,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         loadUsers();
     }, [user]);
 
-    const login = async (identifier: string, password: string, role: UserRole): Promise<boolean> => {
+
+    const login = async (identifier: string, password: string, role?: UserRole): Promise<boolean> => {
         try {
             console.log('Login attempt with identifier:', identifier, 'role:', role);
             let emailToUse = identifier;
@@ -142,17 +122,21 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                         emailToUse = user.email;
                         console.log('Found email for phone:', emailToUse);
                     } else {
-                        throw new Error('Phone number not linked to an email.');
+                        showToast('Phone number not registered. Please create an account.', 'error');
+                        return false;
                     }
                 } else {
-                    throw new Error('Phone number not registered.');
+                    showToast('Phone number not registered. Please create an account.', 'error');
+                    return false;
                 }
             }
 
             console.log('Attempting Firebase sign in with email:', emailToUse);
 
             // Store the attempted role to validate after profile is loaded
-            sessionStorage.setItem('attemptedRole', role);
+            if (role) {
+                sessionStorage.setItem('attemptedRole', role);
+            }
 
             await signInWithEmailAndPassword(auth, emailToUse, password);
             console.log('Firebase sign in successful, waiting for onAuthStateChanged...');
@@ -160,22 +144,62 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             return true;
         } catch (error: any) {
             console.error('Login error:', error);
-            showToast(error.message || 'Login failed', 'error');
+
+            // Provide specific error messages based on Firebase error codes
+            sessionStorage.removeItem('attemptedRole'); // Clear attempted role on error
+
+            if (error.code === 'auth/invalid-email') {
+                showToast('Invalid email format. Please check and try again.', 'error');
+            } else if (error.code === 'auth/user-not-found') {
+                showToast('Account not found. Please create an account first.', 'error');
+            } else if (error.code === 'auth/wrong-password') {
+                showToast('Invalid password. Please try again.', 'error');
+            } else if (error.code === 'auth/invalid-credential') {
+                // This error can mean either wrong email or wrong password
+                // Check if email format is valid to give better message
+                const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                if (!emailRegex.test(identifier) && !/^\d{7,}$/.test(identifier.replace(/\D/g, ''))) {
+                    showToast('Invalid email or phone number format.', 'error');
+                } else {
+                    showToast('Invalid email/phone or password. Please check your credentials.', 'error');
+                }
+            } else if (error.code === 'auth/user-disabled') {
+                showToast('This account has been suspended. Please contact support.', 'error');
+            } else if (error.code === 'auth/too-many-requests') {
+                showToast('Too many failed login attempts. Please try again later.', 'error');
+            } else if (error.code === 'auth/network-request-failed') {
+                showToast('Network error. Please check your internet connection.', 'error');
+            } else if (error.message === 'Phone number not registered.') {
+                // Already handled above, but keep for completeness
+                showToast('Phone number not registered. Please create an account.', 'error');
+            } else {
+                // Generic fallback
+                showToast(error.message || 'Login failed. Please try again.', 'error');
+            }
+
             return false;
         }
     };
 
     const logout = async () => {
         try {
+            // Clear user state immediately for instant UI update
+            setUser(null);
+            // Clear any stored session data
+            sessionStorage.removeItem('attemptedRole');
+            localStorage.removeItem('agrirent-current-view');
+            // Sign out from Firebase
             await signOut(auth);
             showToast('Logged out successfully', 'success');
         } catch (error) {
             console.error(error);
+            // Still clear user state even if sign out fails
+            setUser(null);
             showToast('Logout failed', 'error');
         }
     };
 
-    const signup = async (details: Omit<User, 'id' | 'status'>): Promise<boolean> => {
+    const signup = async (details: Omit<User, 'id' | 'userStatus'>): Promise<boolean> => {
         try {
             // 1. Create User in Firebase Auth
             const userCredential = await createUserWithEmailAndPassword(auth, details.email, details.password || '');
@@ -206,7 +230,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             const newUser = await response.json();
             setUser(newUser); // Optimistic update, though onAuthStateChanged will also fire
 
-            if (newUser.status === 'pending') {
+            if (newUser.userStatus === 'pending') {
                 showToast('Account created! Your supplier account is now pending admin approval.', 'success');
             } else {
                 showToast('Account created successfully!', 'success');

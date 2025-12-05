@@ -91,11 +91,11 @@ const FarmerMapScreen: React.FC<FarmerMapScreenProps> = ({ items, navigate, user
 
     return (
         <div className="relative w-full h-full bg-neutral-200">
-            <MapContainer 
+            <MapContainer
                 center={center}
-                zoom={12} 
-                scrollWheelZoom={true} 
-                style={{ height: '100%', width: '100%', minHeight: '320px' }}
+                zoom={12}
+                scrollWheelZoom={true}
+                style={{ height: '100%', width: '100%' }}
                 onClick={() => setSelectedItem(null)}
             >
                 <ChangeView center={center} zoom={selectedItem ? 14 : 12} />
@@ -111,7 +111,7 @@ const FarmerMapScreen: React.FC<FarmerMapScreenProps> = ({ items, navigate, user
                     <Circle key={idx} center={[h.lat, h.lng]} radius={500}
                         pathOptions={{ color: 'red', fillColor: 'red', fillOpacity: Math.min(0.1 + h.count * 0.05, 0.4) }} />
                 ))}
-                
+
                 {items.map(item => {
                     if (!item.locationCoords) return null;
                     return (
@@ -133,7 +133,7 @@ const FarmerMapScreen: React.FC<FarmerMapScreenProps> = ({ items, navigate, user
             {selectedItem && (
                 <div className="absolute bottom-4 left-1/2 -translate-x-1/2 w-[90%] max-w-sm z-[1000]">
                     <div className="relative">
-                         <button onClick={() => setSelectedItem(null)} className="absolute -top-2 -right-2 z-10 bg-white dark:bg-neutral-600 rounded-full p-1 shadow-md text-neutral-600 dark:text-neutral-200 hover:text-red-500 dark:hover:text-red-400">
+                        <button onClick={() => setSelectedItem(null)} className="absolute -top-2 -right-2 z-10 bg-white dark:bg-neutral-600 rounded-full p-1 shadow-md text-neutral-600 dark:text-neutral-200 hover:text-red-500 dark:hover:text-red-400">
                             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                         </button>
                         <ItemCard item={selectedItem} onClick={() => navigate({ view: 'ITEM_DETAIL', item: selectedItem })} />

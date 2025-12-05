@@ -29,6 +29,10 @@ const NotificationManagerScreen: React.FC<NotificationManagerProps> = ({ onBack 
     const [notificationHistory, setNotificationHistory] = useState<any[]>([]);
     const [stats, setStats] = useState<any>(null);
     const [sending, setSending] = useState(false);
+    // NEW: Broadcast mode for storage-optimized district notifications
+    const [useBroadcast, setUseBroadcast] = useState(false);
+    const [broadcastDistrict, setBroadcastDistrict] = useState<string>('all');
+    const [broadcastExpiresInDays, setBroadcastExpiresInDays] = useState(7);
 
     // Fetch notification stats
     useEffect(() => {
@@ -92,27 +96,52 @@ const NotificationManagerScreen: React.FC<NotificationManagerProps> = ({ onBack 
 
         setSending(true);
         try {
-            const res = await fetch(`${API_URL}/admin/notifications/send`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    message,
-                    category,
-                    priority,
-                    targetAudience,
-                    channels,
-                    scheduledFor: scheduledFor || undefined
-                })
-            });
+            // NEW: Use broadcast endpoint for storage-optimized district notifications
+            if (useBroadcast) {
+                const expiresAt = new Date(Date.now() + broadcastExpiresInDays * 24 * 60 * 60 * 1000).toISOString();
+                const res = await fetch(`${API_URL}/admin/broadcasts`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        message,
+                        category,
+                        priority,
+                        district: broadcastDistrict,
+                        expiresAt
+                    })
+                });
 
-            if (res.ok) {
-                const data = await res.json();
-                alert(`✅ Notification sent to ${data.recipientCount} users!`);
-                setMessage('');
-                setScheduledFor('');
-                fetchStats();
+                if (res.ok) {
+                    alert(`✅ Broadcast sent to district: ${broadcastDistrict === 'all' ? 'All Districts' : broadcastDistrict}`);
+                    setMessage('');
+                    fetchStats();
+                } else {
+                    alert('❌ Failed to send broadcast');
+                }
             } else {
-                alert('❌ Failed to send notification');
+                // Original per-user notification logic
+                const res = await fetch(`${API_URL}/admin/notifications/send`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        message,
+                        category,
+                        priority,
+                        targetAudience,
+                        channels,
+                        scheduledFor: scheduledFor || undefined
+                    })
+                });
+
+                if (res.ok) {
+                    const data = await res.json();
+                    alert(`✅ Notification sent to ${data.recipientCount} users!`);
+                    setMessage('');
+                    setScheduledFor('');
+                    fetchStats();
+                } else {
+                    alert('❌ Failed to send notification');
+                }
             }
         } catch (error) {
             console.error('Error sending notification:', error);
@@ -233,93 +262,138 @@ const NotificationManagerScreen: React.FC<NotificationManagerProps> = ({ onBack 
                     </div>
                 </div>
 
-                {/* Target Audience */}
-                <div className="mb-4">
-                    <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">Target Audience</label>
+                {/* Broadcast Mode Toggle - Storage Optimized */}
+                <div className="mb-4 p-3 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+                    <label className="flex items-center mb-2">
+                        <input
+                            type="checkbox"
+                            checked={useBroadcast}
+                            onChange={(e) => setUseBroadcast(e.target.checked)}
+                            className="mr-2 w-4 h-4"
+                        />
+                        <span className="text-sm font-semibold text-blue-800 dark:text-blue-300">📡 Broadcast Mode (Storage Optimized)</span>
+                    </label>
+                    <p className="text-xs text-blue-600 dark:text-blue-400 mb-2">1 notification per district instead of per user. Ideal for weather, system alerts.</p>
 
-                    <div className="space-y-2">
-                        <label className="flex items-center">
-                            <input
-                                type="checkbox"
-                                checked={targetAudience.allUsers}
-                                onChange={(e) => setTargetAudience({ ...targetAudience, allUsers: e.target.checked })}
-                                className="mr-2"
-                            />
-                            <span className="text-sm">All Users</span>
-                        </label>
-
-                        {!targetAudience.allUsers && (
-                            <>
-                                <div>
-                                    <label className="block text-sm mb-1">Districts</label>
-                                    <select
-                                        multiple
-                                        value={targetAudience.districts}
-                                        onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setTargetAudience({ ...targetAudience, districts: Array.from(e.target.selectedOptions, option => option.value) })}
-                                        className="w-full px-3 py-2 border border-neutral-300 dark:border-neutral-600 rounded-md bg-white dark:bg-neutral-900"
-                                        size={4}
-                                    >
-                                        {allDistricts.map(district => (
-                                            <option key={district} value={district}>{district}</option>
-                                        ))}
-                                    </select>
-                                </div>
-
-                                <div>
-                                    <label className="block text-sm mb-1">User Roles</label>
-                                    <div className="flex gap-3">
-                                        <label className="flex items-center">
-                                            <input
-                                                type="checkbox"
-                                                checked={targetAudience.roles.includes('Farmer')}
-                                                onChange={(e) => {
-                                                    const roles = e.target.checked
-                                                        ? [...targetAudience.roles, 'Farmer']
-                                                        : targetAudience.roles.filter(r => r !== 'Farmer');
-                                                    setTargetAudience({ ...targetAudience, roles });
-                                                }}
-                                                className="mr-1"
-                                            />
-                                            <span className="text-sm">Farmers</span>
-                                        </label>
-                                        <label className="flex items-center">
-                                            <input
-                                                type="checkbox"
-                                                checked={targetAudience.roles.includes('Supplier')}
-                                                onChange={(e) => {
-                                                    const roles = e.target.checked
-                                                        ? [...targetAudience.roles, 'Supplier']
-                                                        : targetAudience.roles.filter(r => r !== 'Supplier');
-                                                    setTargetAudience({ ...targetAudience, roles });
-                                                }}
-                                                className="mr-1"
-                                            />
-                                            <span className="text-sm">Suppliers</span>
-                                        </label>
-                                    </div>
-                                </div>
-
-                                <label className="flex items-center">
-                                    <input
-                                        type="checkbox"
-                                        checked={targetAudience.newSignups}
-                                        onChange={(e) => setTargetAudience({ ...targetAudience, newSignups: e.target.checked })}
-                                        className="mr-2"
-                                    />
-                                    <span className="text-sm">New Signups Only (last </span>
-                                    <input
-                                        type="number"
-                                        value={targetAudience.newSignupsDays}
-                                        onChange={(e) => setTargetAudience({ ...targetAudience, newSignupsDays: parseInt(e.target.value) || 7 })}
-                                        className="w-16 mx-1 px-2 py-1 border border-neutral-300 dark:border-neutral-600 rounded text-sm"
-                                        disabled={!targetAudience.newSignups}
-                                    />
-                                    <span className="text-sm"> days)</span>
-                                </label>
-                            </>
-                        )}
-                    </div>
+                    {useBroadcast && (
+                        <div className="grid grid-cols-2 gap-3 mt-3">
+                            <div>
+                                <label className="block text-xs font-medium text-neutral-600 dark:text-neutral-400 mb-1">Target District</label>
+                                <select
+                                    value={broadcastDistrict}
+                                    onChange={(e) => setBroadcastDistrict(e.target.value)}
+                                    className="w-full px-2 py-1 text-sm border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-900"
+                                >
+                                    <option value="all">🌍 All Districts</option>
+                                    {allDistricts.map(d => (
+                                        <option key={d} value={d}>{d}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-medium text-neutral-600 dark:text-neutral-400 mb-1">Expires In (Days)</label>
+                                <input
+                                    type="number"
+                                    min="1"
+                                    max="30"
+                                    value={broadcastExpiresInDays}
+                                    onChange={(e) => setBroadcastExpiresInDays(parseInt(e.target.value) || 7)}
+                                    className="w-full px-2 py-1 text-sm border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-900"
+                                />
+                            </div>
+                        </div>
+                    )}
                 </div>
+
+                {/* Target Audience - Only show if NOT in broadcast mode */}
+                {!useBroadcast && (
+                    <div className="mb-4">
+                        <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">Target Audience</label>
+
+                        <div className="space-y-2">
+                            <label className="flex items-center">
+                                <input
+                                    type="checkbox"
+                                    checked={targetAudience.allUsers}
+                                    onChange={(e) => setTargetAudience({ ...targetAudience, allUsers: e.target.checked })}
+                                    className="mr-2"
+                                />
+                                <span className="text-sm">All Users</span>
+                            </label>
+
+                            {!targetAudience.allUsers && (
+                                <>
+                                    <div>
+                                        <label className="block text-sm mb-1">Districts</label>
+                                        <select
+                                            multiple
+                                            value={targetAudience.districts}
+                                            onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setTargetAudience({ ...targetAudience, districts: Array.from(e.target.selectedOptions, option => option.value) })}
+                                            className="w-full px-3 py-2 border border-neutral-300 dark:border-neutral-600 rounded-md bg-white dark:bg-neutral-900"
+                                            size={4}
+                                        >
+                                            {allDistricts.map(district => (
+                                                <option key={district} value={district}>{district}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm mb-1">User Roles</label>
+                                        <div className="flex gap-3">
+                                            <label className="flex items-center">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={targetAudience.roles.includes('Farmer')}
+                                                    onChange={(e) => {
+                                                        const roles = e.target.checked
+                                                            ? [...targetAudience.roles, 'Farmer']
+                                                            : targetAudience.roles.filter(r => r !== 'Farmer');
+                                                        setTargetAudience({ ...targetAudience, roles });
+                                                    }}
+                                                    className="mr-1"
+                                                />
+                                                <span className="text-sm">Farmers</span>
+                                            </label>
+                                            <label className="flex items-center">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={targetAudience.roles.includes('Supplier')}
+                                                    onChange={(e) => {
+                                                        const roles = e.target.checked
+                                                            ? [...targetAudience.roles, 'Supplier']
+                                                            : targetAudience.roles.filter(r => r !== 'Supplier');
+                                                        setTargetAudience({ ...targetAudience, roles });
+                                                    }}
+                                                    className="mr-1"
+                                                />
+                                                <span className="text-sm">Suppliers</span>
+                                            </label>
+                                        </div>
+                                    </div>
+
+                                    <label className="flex items-center">
+                                        <input
+                                            type="checkbox"
+                                            checked={targetAudience.newSignups}
+                                            onChange={(e) => setTargetAudience({ ...targetAudience, newSignups: e.target.checked })}
+                                            className="mr-2"
+                                        />
+                                        <span className="text-sm">New Signups Only (last </span>
+                                        <input
+                                            type="number"
+                                            value={targetAudience.newSignupsDays}
+                                            onChange={(e) => setTargetAudience({ ...targetAudience, newSignupsDays: parseInt(e.target.value) || 7 })}
+                                            className="w-16 mx-1 px-2 py-1 border border-neutral-300 dark:border-neutral-600 rounded text-sm"
+                                            disabled={!targetAudience.newSignups}
+                                        />
+                                        <span className="text-sm"> days)</span>
+                                    </label>
+                                </>
+                            )}
+                        </div>
+                    </div>
+                )}
 
                 {/* Delivery Channels */}
                 <div className="mb-4">

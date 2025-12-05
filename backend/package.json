@@ -9,17 +9,20 @@
     "dev": "ts-node-dev src/index.ts",
     "migrate:auth": "ts-node-dev src/migrateAuthMetadata.ts",
     "approve-supplier": "ts-node-dev src/approve_supplier.ts",
-    "debug-profile": "ts-node-dev src/debug_profile.ts"
+    "debug-profile": "ts-node-dev src/debug_profile.ts",
+    "set-agent-role": "ts-node-dev src/set-agent-role.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.1",
+    "@types/uuid": "^10.0.0",
     "cloudinary": "^2.8.0",
     "cors": "^2.8.5",
     "dotenv": "^16.0.3",
     "express": "^4.18.2",
     "firebase-admin": "^13.6.0",
     "node-cache": "^5.1.2",
-    "pg": "^8.8.0"
+    "pg": "^8.8.0",
+    "uuid": "^13.0.0"
   },
   "devDependencies": {
     "@types/cors": "^2.8.12",

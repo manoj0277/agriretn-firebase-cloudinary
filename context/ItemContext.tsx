@@ -13,7 +13,7 @@ const API_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3001
 interface ItemContextType {
     items: Item[];
     addItem: (item: Omit<Item, 'id'>) => void;
-    updateItem: (updatedItem: Item) => void;
+    updateItem: (updatedItem: Item, showToastMessage?: boolean) => void;
     deleteItem: (itemId: number) => void;
     approveItem: (itemId: number) => void;
     rejectItem: (itemId: number) => void;
@@ -57,7 +57,7 @@ export const ItemProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         }
     };
 
-    const updateItem = async (updatedItem: Item) => {
+    const updateItem = async (updatedItem: Item, showToastMessage: boolean = true) => {
         try {
             const prev = items.find(i => i.id === updatedItem.id);
             const res = await fetch(`${API_URL}/items/${updatedItem.id}`, {
@@ -68,7 +68,9 @@ export const ItemProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             if (!res.ok) throw new Error('Failed');
 
             setItems(prevItems => prevItems.map(i => i.id === updatedItem.id ? updatedItem : i));
-            showToast('Item updated successfully!', 'success');
+            if (showToastMessage) {
+                showToast('Item updated successfully!', 'success');
+            }
 
             if (prev) {
                 const inc = prev.purposes.some(p => {
@@ -76,11 +78,13 @@ export const ItemProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                     return next && next.price > p.price * 1.3;
                 });
                 if (inc) {
-                    addNotification && addNotification({ userId: 0, message: `Rapid price increase detected for item ${updatedItem.id}.`, type: 'admin' });
+                    addNotification && addNotification({ userId: '0', message: `Rapid price increase detected for item ${updatedItem.id}.`, type: 'admin' });
                 }
             }
         } catch {
-            showToast('Failed to update item.', 'error');
+            if (showToastMessage) {
+                showToast('Failed to update item.', 'error');
+            }
         }
     };
 

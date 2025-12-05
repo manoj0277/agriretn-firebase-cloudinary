@@ -74,13 +74,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ setActiveTab }) => {
 
     return (
         <div className="dark:text-neutral-200 bg-neutral-50 dark:bg-neutral-900">
+            <Header title="Admin Dashboard" navigate={(view) => setActiveTab(view.view === 'ADMIN_ALERTS' ? 'Alerts' : 'Dashboard')} />
             <div className="p-4 space-y-6">
                 <div className="bg-white dark:bg-neutral-800 p-6 rounded-lg border border-neutral-200 dark:border-neutral-700">
                     <h2 className="text-xl font-bold text-neutral-800 dark:text-neutral-100">{t('welcomeAdmin', { name: user?.name || '' })}!</h2>
                     <p className="text-neutral-600 dark:text-neutral-300 mt-1">{t('summary')}</p>
                     <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-2">{new Date().toLocaleString()}</p>
                 </div>
-                
+
                 {/* Overview Stats */}
                 <section>
                     <h3 className="text-lg font-bold text-neutral-800 dark:text-neutral-100 mb-3 px-2">{t('overview')}</h3>
@@ -91,7 +92,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ setActiveTab }) => {
                         <StatCard title={t('completedBookings')} value={stats.completedBookings} icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>} />
                     </div>
                 </section>
-                
+
                 {/* Pending Actions */}
                 <section>
                     <h3 className="text-lg font-bold text-neutral-800 dark:text-neutral-100 mb-3 px-2">{t('pendingActions')}</h3>

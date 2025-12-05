@@ -19,6 +19,7 @@ import ItemCard from '../components/ItemCard';
 import Button from '../components/Button';
 import ConfirmationDialog from '../components/ConfirmationDialog';
 import NotificationBell from '../components/NotificationBell';
+import BulkBookingProcessor from '../components/BulkBookingProcessor';
 import { useChat } from '../context/ChatContext';
 import { useNotification } from '../context/NotificationContext';
 import { GoogleGenAI, Type } from "@google/genai";
@@ -36,7 +37,7 @@ const apiKey = typeof process !== 'undefined' && process.env && process.env.API_
 const ai = apiKey ? new GoogleGenAI({ apiKey }) : null;
 
 
-interface FarmerViewProps {
+interface AgentViewProps {
     navigate: (view: AppView) => void;
 }
 
@@ -57,7 +58,7 @@ const ChatIcon: React.FC<{ onClick: () => void; unreadCount: number; }> = ({ onC
     </button>
 );
 
-const FarmerHomeScreen: React.FC<FarmerViewProps> = ({ navigate }) => {
+const AgentHomeScreen: React.FC<AgentViewProps> = ({ navigate }) => {
     const { items } = useItem();
     const { bookings } = useBooking();
     const { user, allUsers } = useAuth();
@@ -262,7 +263,6 @@ const FarmerHomeScreen: React.FC<FarmerViewProps> = ({ navigate }) => {
                 matchesRadius = true;
             }
 
-
             return matchesSearch && matchesCategory && matchesPrice && matchesRating && matchesAvailability && matchesDate && matchesRadius;
         });
 
@@ -292,152 +292,115 @@ const FarmerHomeScreen: React.FC<FarmerViewProps> = ({ navigate }) => {
 
     return (
         <div className="dark:text-neutral-200">
-            {/* Header with centered title */}
-            <div className="sticky top-0 z-10 bg-white dark:bg-neutral-800 border-b border-neutral-200 dark:border-neutral-700 px-4 py-3">
-                <div className="flex items-center justify-between mb-3">
-                    <ChatIcon onClick={() => navigate({ view: 'CONVERSATIONS' })} unreadCount={unreadChatCount} />
-                    <h1 className="text-lg font-bold text-neutral-900 dark:text-white">{t('marketplace')}</h1>
-                    <NotificationBell />
-                </div>
-
-                {/* Search bar with icons */}
-                <div className="flex items-center space-x-2">
-                    <div className="flex-grow relative">
-                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-neutral-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                            </svg>
-                        </div>
-                        <input
-                            type="text"
-                            placeholder={t('searchPlaceholder')}
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            className="w-full pl-10 pr-3 py-2.5 border border-neutral-200 dark:border-neutral-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/50 bg-white dark:bg-neutral-700 text-neutral-900 dark:text-white text-sm"
-                        />
-                    </div>
+            <Header title={t('marketplace')}>
+                <ChatIcon onClick={() => navigate({ view: 'CONVERSATIONS' })} unreadCount={unreadChatCount} />
+                <NotificationBell />
+            </Header>
+            <div className="p-4">
+                <div className="flex items-center space-x-2 mb-4">
+                    <input
+                        type="text"
+                        placeholder={t('searchPlaceholder')}
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="flex-grow p-3 border border-neutral-200 dark:border-neutral-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/50 bg-white dark:bg-neutral-700 text-neutral-900 dark:text-white"
+                    />
                     <button
                         onClick={() => setIsFilterModalOpen(true)}
-                        className={`p-2.5 border rounded-lg transition-colors relative ${areFiltersActive ? 'bg-primary border-primary text-white' : 'bg-white dark:bg-neutral-700 border-neutral-200 dark:border-neutral-600 text-neutral-600 dark:text-neutral-300'}`}
+                        className={`p-3 border rounded-lg transition-colors relative ${areFiltersActive ? 'bg-primary border-primary text-white' : 'bg-white dark:bg-neutral-700 border-neutral-200 dark:border-neutral-600 text-neutral-600 dark:text-neutral-300'}`}
                         aria-label="Open filters"
                     >
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                             <path strokeLinecap="round" strokeLinejoin="round" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2a1 1 0 01-.293.707L16 11.414V16l-4 2v-6.586L3.293 6.707A1 1 0 013 6V4z" />
                         </svg>
-                        {areFiltersActive && <span className="absolute -top-1 -right-1 block h-2.5 w-2.5 rounded-full bg-red-500 ring-2 ring-white"></span>}
+                        {areFiltersActive && <span className="absolute -top-1 -right-1 block h-3 w-3 rounded-full bg-red-500 ring-2 ring-white"></span>}
+                    </button>
+                    <button
+                        onClick={() => {
+                            if (!navigator.geolocation) return;
+                            navigator.geolocation.getCurrentPosition(pos => {
+                                const { latitude, longitude } = pos.coords;
+                                const nearest = processedItems
+                                    .filter(i => i.available)
+                                    .map(i => {
+                                        const la = i.locationCoords?.lat ?? latitude;
+                                        const ln = i.locationCoords?.lng ?? longitude;
+                                        const dLat = (la - latitude) * Math.PI / 180;
+                                        const dLng = (ln - longitude) * Math.PI / 180;
+                                        const r = Math.sin(dLat / 2) ** 2 + Math.cos(latitude * Math.PI / 180) * Math.cos(la * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+                                        const dist = 2 * 6371 * Math.asin(Math.sqrt(r));
+                                        return { i, dist };
+                                    })
+                                    .sort((x, y) => x.dist - y.dist)[0]?.i;
+                                if (nearest) navigate({ view: 'ITEM_DETAIL', item: nearest });
+                            });
+                        }}
+                        className="p-3 border rounded-full transition-colors bg-white dark:bg-neutral-700 border-neutral-200 dark:border-neutral-600 text-neutral-700 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-600"
+                        aria-label="Nearest Supplier"
+                        title="Nearest Supplier"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 2a10 10 0 100 20 10 10 0 000-20zm0 5a2 2 0 110 4 2 2 0 010-4zm0 4c-2.21 0-4 1.343-4 3v3h8v-3c0-1.657-1.79-3-4-3z" /></svg>
+                    </button>
+                    <button
+                        onClick={() => setIsSuggestionsOpen(true)}
+                        aria-label="Smart Suggestions"
+                        title="Smart Suggestions"
+                        className="p-3 border rounded-full transition-colors bg-white dark:bg-neutral-700 border-neutral-200 dark:border-neutral-600 text-neutral-700 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-600"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3c3.866 0 7 3.134 7 7 0 2.577-1.429 4.815-3.539 6.002-.26.151-.461.401-.521.693l-.25 1.25A1 1 0 0013.7 19H10.3a1 1 0 01-.97-.73l-.25-1.25a1 1 0 00-.522-.693A6.996 6.996 0 015 10c0-3.866 3.134-7 7-7zM9 21h6" /></svg>
                     </button>
                     <button
                         onClick={() => navigate({ view: 'CROP_CALENDAR' })}
-                        className="p-2.5 border rounded-lg transition-colors bg-white dark:bg-neutral-700 border-neutral-200 dark:border-neutral-600 text-neutral-600 dark:text-neutral-300"
                         aria-label="Crop Calendar"
+                        title="Crop Calendar"
+                        className="p-3 border rounded-full transition-colors bg-white dark:bg-neutral-700 border-neutral-200 dark:border-neutral-600 text-neutral-700 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-600"
                     >
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                        </svg>
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
                     </button>
                 </div>
-            </div>
-
-            <div className="px-4 pt-4">
-                {/* Horizontal category pills */}
-                <div className="flex space-x-2 overflow-x-auto pb-3 mb-4 hide-scrollbar">
+                <div className="flex space-x-2 overflow-x-auto pb-2 mb-6 hide-scrollbar">
                     {itemCategories.map(type => (
                         <button
                             key={type}
                             onClick={() => setSelectedCategory(type)}
-                            className={`px-4 py-2 text-sm font-medium rounded-full whitespace-nowrap transition-all ${selectedCategory === type
-                                ? 'bg-primary text-white shadow-sm'
-                                : 'bg-white dark:bg-neutral-700 text-neutral-700 dark:text-neutral-200 border border-neutral-200 dark:border-neutral-600'
-                                }`}
+                            className={`px-4 py-2 text-sm font-semibold rounded-full whitespace-nowrap transition-colors ${selectedCategory === type ? 'bg-primary text-white' : 'bg-neutral-200 dark:bg-neutral-600 text-neutral-700 dark:text-neutral-200'}`}
                         >
                             {type}
                         </button>
                     ))}
                 </div>
 
-                {/* Popular Near You section */}
+
                 <div className="mb-6">
-                    <h2 className="text-lg font-bold text-neutral-900 dark:text-neutral-100 mb-3">{t('popularNearYou')}</h2>
+                    <h2 className="text-xl font-bold text-neutral-800 dark:text-neutral-100 mb-3">{t('popularNearYou')}</h2>
                     {popularItems.length > 0 ? (
-                        <div ref={popularRef} className="flex space-x-3 overflow-x-auto pb-2 hide-scrollbar">
+                        <div ref={popularRef} className="flex space-x-4 overflow-x-auto pb-2 -ml-4 pl-4 hide-scrollbar">
                             {popularItems.map(item => (
-                                <div key={item.id} className="flex-shrink-0 w-44">
-                                    <div
-                                        onClick={() => navigate({ view: 'ITEM_DETAIL', item })}
-                                        className="bg-white dark:bg-neutral-700 rounded-lg overflow-hidden shadow-sm border border-neutral-100 dark:border-neutral-600 cursor-pointer hover:shadow-md transition-shadow"
-                                    >
-                                        <div className="relative aspect-square bg-neutral-100 dark:bg-neutral-600">
-                                            <img
-                                                src={item.images?.[0] || 'https://via.placeholder.com/200'}
-                                                alt={item.name}
-                                                className="w-full h-full object-cover"
-                                            />
-                                            <div className="absolute top-2 left-2 bg-white/90 dark:bg-neutral-800/90 px-2 py-1 rounded text-xs font-medium text-neutral-700 dark:text-neutral-200">
-                                                {item.category}
-                                            </div>
-                                        </div>
-                                        <div className="p-3">
-                                            <h3 className="font-semibold text-sm text-neutral-900 dark:text-white mb-1 truncate">{item.name}</h3>
-                                            <p className="text-sm font-bold text-neutral-900 dark:text-white mb-1">₹{Math.min(...item.purposes.map(p => p.price))}/hr</p>
-                                            <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                                                {item.avgRating ? `${item.avgRating.toFixed(1)} ★` : 'No reviews yet'}
-                                            </p>
-                                        </div>
-                                    </div>
+                                <div key={item.id} className="w-48 flex-shrink-0">
+                                    <ItemCard item={item} onClick={() => navigate({ view: 'ITEM_DETAIL', item })} compact />
                                 </div>
                             ))}
                         </div>
                     ) : (
-                        <p className="text-neutral-500 dark:text-neutral-400 text-sm">No popular items in your area yet.</p>
+                        <p className="text-neutral-700 dark:text-neutral-300">No popular items in your area yet.</p>
                     )}
                 </div>
 
-                {/* Sort By dropdown */}
                 <div className="flex justify-between items-center mb-3">
-                    <h2 className="text-lg font-bold text-neutral-900 dark:text-neutral-100">{t('allServices')}</h2>
+                    <h2 className="text-xl font-bold text-neutral-800 dark:text-neutral-100">{t('allServices')}</h2>
                     <div className="flex items-center space-x-2">
-                        <label className="text-sm text-neutral-600 dark:text-neutral-400">{t('sortBy')}:</label>
-                        <select
-                            value={sortBy}
-                            onChange={e => setSortBy(e.target.value)}
-                            className="text-sm border border-neutral-200 dark:border-neutral-600 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary/50 bg-white dark:bg-neutral-700 text-neutral-800 dark:text-neutral-200 cursor-pointer"
-                        >
-                            <option value="popularity">{t('popularity')}</option>
-                            <option value="rating">{t('rating')}</option>
+                        <select value={sortBy} onChange={e => setSortBy(e.target.value)} className="text-sm border border-neutral-200 dark:border-neutral-600 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-primary/50 bg-white dark:bg-neutral-700 text-neutral-800 dark:text-neutral-200">
+                            <option value="popularity">{t('sortBy')}: {t('popularity')}</option>
+                            <option value="rating">{t('sortBy')}: {t('rating')}</option>
                             <option value="price-asc">{t('priceAsc')}</option>
                             <option value="price-desc">{t('priceDesc')}</option>
                         </select>
                     </div>
                 </div>
 
-                {/* All Services - Vertical list with horizontal cards */}
-                <div className="space-y-3 pb-20">
+                <div className="grid grid-cols-1 gap-4">
                     {processedItems.map(item => (
-                        <div
-                            key={item.id}
-                            onClick={() => navigate({ view: 'ITEM_DETAIL', item })}
-                            className="bg-white dark:bg-neutral-700 rounded-lg overflow-hidden shadow-sm border border-neutral-100 dark:border-neutral-600 cursor-pointer hover:shadow-md transition-shadow"
-                        >
-                            <div className="flex">
-                                <div className="relative w-40 h-40 flex-shrink-0 bg-neutral-100 dark:bg-neutral-600">
-                                    <img
-                                        src={item.images?.[0] || 'https://via.placeholder.com/140'}
-                                        alt={item.name}
-                                        className="w-full h-full object-cover"
-                                    />
-                                </div>
-                                <div className="flex-1 p-3">
-                                    <div className="inline-block bg-primary/10 text-primary px-2 py-0.5 rounded text-xs font-medium mb-1.5">
-                                        {item.category}
-                                    </div>
-                                    <h3 className="font-semibold text-base text-neutral-900 dark:text-white mb-1">{item.name}</h3>
-                                    <p className="text-base font-bold text-neutral-900 dark:text-white mb-1">₹{Math.min(...item.purposes.map(p => p.price))}/hr</p>
-                                    <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                                        {item.avgRating ? `${item.avgRating.toFixed(1)} ★` : 'No reviews yet'}
-                                    </p>
-                                </div>
-                            </div>
-                        </div>
+                        <ItemCard key={item.id} item={item} onClick={() => navigate({ view: 'ITEM_DETAIL', item })} />
                     ))}
                 </div>
 
@@ -510,12 +473,11 @@ const FarmerHomeScreen: React.FC<FarmerViewProps> = ({ navigate }) => {
     );
 };
 
-const FarmerMapView: React.FC<FarmerViewProps> = ({ navigate }) => {
+const AgentMapScreen: React.FC<AgentViewProps> = ({ navigate }) => {
     const { items } = useItem();
     const { bookings } = useBooking();
     const { user, allUsers } = useAuth();
     const { getUnreadMessageCount } = useChat();
-    const { t } = useLanguage();
     const unreadChatCount = user ? getUnreadMessageCount(user.id) : 0;
 
     const [userLocation, setUserLocation] = useState<{ lat: number; lng: number; } | undefined>();
@@ -618,13 +580,6 @@ const FarmerMapView: React.FC<FarmerViewProps> = ({ navigate }) => {
         });
     }, [searchQuery, selectedCategory, approvedItems, bookings, priceRange, minRating, showAvailableOnly, filterDate, allUsers]);
 
-    const navItems: NavItemConfig[] = [
-        { name: 'home', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg> },
-        { name: 'bookings', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg> },
-        { name: 'map', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l5.447 2.724A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m-6 3l6-3m0 10V4" /></svg> },
-        { name: 'profile', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg> }
-    ];
-
     return (
         <div className="flex flex-col h-full">
             <Header title="Map View">
@@ -666,22 +621,6 @@ const FarmerMapView: React.FC<FarmerViewProps> = ({ navigate }) => {
                 <FarmerMapScreen items={processedItems} navigate={navigate} userLocation={userLocation} />
             </div>
 
-            {/* Location warning popup on map */}
-            {locationError && (
-                <div className="absolute top-20 left-4 right-4 z-20">
-                    <div className="p-3 bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-300 text-sm rounded-lg flex items-center justify-between shadow-lg">
-                        <span>{locationError}</span>
-                        <div className="flex items-center gap-2">
-                            <button onClick={retryLocation} className="px-2 py-1 text-xs rounded bg-yellow-200 hover:bg-yellow-300 text-yellow-900 dark:bg-yellow-800/40 dark:hover:bg-yellow-700">Retry</button>
-                            <button aria-label="Dismiss" onClick={() => setLocationError(null)} className="p-1 rounded hover:bg-yellow-200 dark:hover:bg-yellow-800/40">
-                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            <BottomNav items={navItems} />
             {/* Location Permission Popup */}
             {showLocationPopup && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4" style={{ zIndex: 9999 }}>
@@ -731,7 +670,7 @@ const FarmerMapView: React.FC<FarmerViewProps> = ({ navigate }) => {
 
 
 
-const FarmerBookingsScreen: React.FC<FarmerViewProps> = ({ navigate }) => {
+const AgentBookingsScreen: React.FC<AgentViewProps> = ({ navigate }) => {
     const { user, allUsers } = useAuth();
     const { bookings, cancelBooking, raiseDispute, completeBooking, makeFinalPayment } = useBooking();
     const { items } = useItem();
@@ -740,8 +679,8 @@ const FarmerBookingsScreen: React.FC<FarmerViewProps> = ({ navigate }) => {
     const { t } = useLanguage();
     const unreadChatCount = user ? getUnreadMessageCount(user.id) : 0;
     const userBookings = bookings.filter(b => b.farmerId === user?.id);
-    const [bookingToCancel, setBookingToCancel] = useState<Booking | null>(null);
     const [userLocation, setUserLocation] = useState<{ lat: number; lng: number; } | undefined>();
+    const [bookingToCancel, setBookingToCancel] = useState<Booking | null>(null);
     const [statusFilter, setStatusFilter] = useState<'Upcoming' | 'Completed' | 'Cancelled'>('Upcoming');
     const [isSearchOpen, setIsSearchOpen] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
@@ -788,45 +727,37 @@ const FarmerBookingsScreen: React.FC<FarmerViewProps> = ({ navigate }) => {
 
     return (
         <div className="dark:text-neutral-200">
-            {/* Header with search and filter icons */}
-            {/* Header with search and filter icons */}
-            <div className="sticky top-0 z-10 bg-white dark:bg-neutral-800 border-b border-neutral-200 dark:border-neutral-700 px-4 py-3">
-                <div className="flex items-center justify-between mb-3">
-                    <h1 className="text-lg font-bold text-neutral-900 dark:text-white">{t('myBookings')}</h1>
-                    <div className="flex items-center space-x-1">
-                        <button
-                            onClick={() => navigate({ view: 'PAYMENT_HISTORY' })}
-                            className="relative p-2 text-neutral-700 dark:text-neutral-300 hover:text-primary rounded-full hover:bg-neutral-100 dark:hover:bg-neutral-700"
-                            aria-label={t('paymentHistory')}
-                        >
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H4a3 3 0 00-3 3v8a3 3 0 003 3z" />
-                            </svg>
-                        </button>
-                        <button
-                            onClick={() => navigate({ view: 'BOOKING_HISTORY' })}
-                            className="relative p-2 text-neutral-700 dark:text-neutral-300 hover:text-primary rounded-full hover:bg-neutral-100 dark:hover:bg-neutral-700"
-                            aria-label={t('bookingHistory')}
-                        >
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6 1a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
-                        </button>
-                        <button
-                            onClick={() => setIsSearchOpen(!isSearchOpen)}
-                            className={`p-2 rounded-full transition-colors ${isSearchOpen ? 'bg-neutral-100 dark:bg-neutral-700 text-primary' : 'text-neutral-600 dark:text-neutral-300'}`}
-                        >
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                            </svg>
-                        </button>
-                        <button className="p-2 text-neutral-600 dark:text-neutral-300">
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2a1 1 0 01-.293.707L16 11.414V16l-4 2v-6.586L3.293 6.707A1 1 0 013 6V4z" />
-                            </svg>
-                        </button>
-                    </div>
-                </div>
+            <Header title={t('myBookings')}>
+                <button
+                    onClick={() => navigate({ view: 'PAYMENT_HISTORY' })}
+                    className="relative p-2 text-neutral-700 dark:text-neutral-300 hover:text-primary rounded-full hover:bg-neutral-100 dark:hover:bg-neutral-700"
+                    aria-label={t('paymentHistory')}
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H4a3 3 0 00-3 3v8a3 3 0 003 3z" />
+                    </svg>
+                </button>
+                <button
+                    onClick={() => navigate({ view: 'BOOKING_HISTORY' })}
+                    className="relative p-2 text-neutral-700 dark:text-neutral-300 hover:text-primary rounded-full hover:bg-neutral-100 dark:hover:bg-neutral-700"
+                    aria-label={t('bookingHistory')}
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6 1a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                </button>
+                <button
+                    onClick={() => setIsSearchOpen(!isSearchOpen)}
+                    className={`p-2 rounded-full transition-colors ${isSearchOpen ? 'bg-neutral-100 dark:bg-neutral-700 text-primary' : 'text-neutral-600 dark:text-neutral-300'}`}
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                </button>
+                <ChatIcon onClick={() => navigate({ view: 'CONVERSATIONS' })} unreadCount={unreadChatCount} />
+                <NotificationBell />
+            </Header>
+            <div className="p-4 space-y-4 pb-24">
                 {/* Search Input */}
                 {isSearchOpen && (
                     <div className="mb-3 animate-fade-in">
@@ -856,124 +787,118 @@ const FarmerBookingsScreen: React.FC<FarmerViewProps> = ({ navigate }) => {
                         </button>
                     ))}
                 </div>
-            </div>
 
-            {/* Booking cards */}
-            < div className="p-4 space-y-4 pb-24" >
-                {
-                    filteredBookings.length > 0 ? [...filteredBookings].reverse().map(booking => {
-                        const item = items.find(m => m.id === booking.itemId);
-                        const supplier = allUsers.find(u => u.id === booking.supplierId);
-                        const distance = userLocation && supplier?.locationCoords
-                            ? calculateDistance(userLocation.lat, userLocation.lng, supplier.locationCoords.lat, supplier.locationCoords.lng)
-                            : null;
+                {filteredBookings.length > 0 ? [...filteredBookings].reverse().map(booking => {
+                    const item = items.find(m => m.id === booking.itemId);
+                    const supplier = allUsers.find(u => u.id === booking.supplierId);
+                    const distance = userLocation && supplier?.locationCoords
+                        ? calculateDistance(userLocation.lat, userLocation.lng, supplier.locationCoords.lat, supplier.locationCoords.lng)
+                        : null;
 
-                        return (
-                            <div key={booking.id} className="bg-white dark:bg-neutral-700 rounded-lg overflow-hidden shadow-sm border border-neutral-200 dark:border-neutral-600">
-                                <div className="flex">
-                                    {/* Equipment image */}
-                                    <div className="relative w-32 h-32 flex-shrink-0 bg-neutral-100 dark:bg-neutral-600">
-                                        <img
-                                            src={item?.images?.[0] || 'https://via.placeholder.com/140'}
-                                            alt={item?.name}
-                                            className="w-full h-full object-cover"
-                                        />
-                                    </div>
-
-                                    {/* Booking details */}
-                                    <div className="flex-1 p-3">
-                                        <div className="flex items-start justify-between mb-2">
-                                            <h3 className="font-semibold text-base text-neutral-900 dark:text-white">
-                                                {item?.name || `${booking.itemCategory}`}
-                                            </h3>
-                                            <span className={`text-xs font-medium px-2 py-0.5 rounded ${getStatusBadgeColor(booking.status)}`}>
-                                                {booking.status}
-                                            </span>
-                                        </div>
-
-                                        {/* Date */}
-                                        <div className="flex items-center text-sm text-neutral-600 dark:text-neutral-300 mb-1">
-                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                                            </svg>
-                                            <span>Date: {booking.date}</span>
-                                        </div>
-
-                                        {/* Time */}
-                                        <div className="flex items-center text-sm text-neutral-600 dark:text-neutral-300 mb-1">
-                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                            </svg>
-                                            <span>Time: {booking.startTime} - {booking.endTime}</span>
-                                        </div>
-
-                                        {/* Location */}
-                                        <div className="flex items-center text-sm text-neutral-600 dark:text-neutral-300 mb-1">
-                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                                            </svg>
-                                            <span className="truncate">Location: {booking.location}</span>
-                                        </div>
-
-                                        {/* Distance (if available) */}
-                                        {distance && (
-                                            <div className="flex items-center text-xs text-neutral-500 dark:text-neutral-400">
-                                                <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
-                                                </svg>
-                                                <span>{distance} km away</span>
-                                            </div>
-                                        )}
-
-                                        {/* Operator requested note */}
-                                        {booking.operatorRequired && (
-                                            <p className="text-xs text-neutral-600 dark:text-neutral-400 mt-1">Operator Requested</p>
-                                        )}
-                                    </div>
+                    return (
+                        <div key={booking.id} className="bg-white dark:bg-neutral-700 rounded-lg overflow-hidden shadow-sm border border-neutral-200 dark:border-neutral-600">
+                            <div className="flex">
+                                {/* Equipment image */}
+                                <div className="relative w-32 h-32 flex-shrink-0 bg-neutral-100 dark:bg-neutral-600">
+                                    <img
+                                        src={item?.images?.[0] || 'https://via.placeholder.com/140'}
+                                        alt={item?.name}
+                                        className="w-full h-full object-cover"
+                                    />
                                 </div>
 
-                                {/* Action buttons */}
-                                <div className="px-3 pb-3 flex justify-end space-x-2">
-                                    {booking.status === 'Cancelled' && (
-                                        <button
-                                            onClick={() => navigate({ view: 'ITEM_DETAIL', item: item! })}
-                                            className="px-4 py-2 text-sm font-medium text-neutral-700 dark:text-neutral-200 border border-neutral-300 dark:border-neutral-600 rounded-lg hover:bg-neutral-50 dark:hover:bg-neutral-600"
-                                        >
-                                            View Details
-                                        </button>
-                                    )}
-                                    {['Searching', 'Pending Confirmation', 'Awaiting Operator', 'Confirmed', 'Arrived'].includes(booking.status) && (
-                                        <button
-                                            onClick={() => setBookingToCancel(booking)}
-                                            className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700"
-                                        >
-                                            Cancel Booking
-                                        </button>
-                                    )}
-                                    {booking.status === 'Completed' && !hasReview(booking.id) && (
-                                        <button
-                                            onClick={() => navigate({ view: 'RATE_ITEM', booking })}
-                                            className="px-4 py-2 text-sm font-medium text-neutral-700 dark:text-neutral-200 border border-neutral-300 dark:border-neutral-600 rounded-lg hover:bg-neutral-50 dark:hover:bg-neutral-600"
-                                        >
-                                            View Details
-                                        </button>
-                                    )}
+                                {/* Booking details */}
+                                <div className="flex-1 p-3">
+                                    <div className="flex items-start justify-between mb-2">
+                                        <h3 className="font-semibold text-base text-neutral-900 dark:text-white">
+                                            {item?.name || `${booking.itemCategory}`}
+                                        </h3>
+                                        <span className={`text-xs font-medium px-2 py-0.5 rounded ${getStatusBadgeColor(booking.status)}`}>
+                                            {booking.status}
+                                        </span>
+                                    </div>
+
+                                    {/* Date */}
+                                    <div className="flex items-center text-sm text-neutral-600 dark:text-neutral-300 mb-1">
+                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                        </svg>
+                                        <span>Date: {booking.date}</span>
+                                    </div>
+
+                                    {/* Time */}
+                                    <div className="flex items-center text-sm text-neutral-600 dark:text-neutral-300 mb-1">
+                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                        </svg>
+                                        <span>Time: {booking.startTime} - {booking.endTime}</span>
+                                    </div>
+
+                                    {/* Location */}
+                                    <div className="flex items-center text-sm text-neutral-600 dark:text-neutral-300 mb-1">
+                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                                        </svg>
+                                        <span className="truncate">Location: {booking.location}</span>
+                                    </div>
+
+                                    {/* Actions */}
+                                    <div className="mt-3 flex flex-wrap gap-2">
+                                        {(booking.status === 'Confirmed' || booking.status === 'Arrived' || booking.status === 'In Process') && supplier && (
+                                            <button
+                                                onClick={() => navigate({ view: 'CHAT', chatPartner: supplier, item })}
+                                                className="px-3 py-1 bg-primary text-white text-xs rounded-md"
+                                            >
+                                                Chat
+                                            </button>
+                                        )}
+                                        {booking.status === 'Confirmed' && item?.currentLocation && (
+                                            <button
+                                                onClick={() => navigate({ view: 'TRACKING', item })}
+                                                className="px-3 py-1 bg-blue-100 text-blue-700 text-xs rounded-md"
+                                            >
+                                                Track
+                                            </button>
+                                        )}
+                                        {(['Searching', 'Awaiting Operator', 'Confirmed', 'Pending Confirmation', 'Arrived'].includes(booking.status)) && (
+                                            <button
+                                                onClick={() => setBookingToCancel(booking)}
+                                                className="px-3 py-1 bg-red-50 text-red-600 border border-red-200 text-xs rounded-md"
+                                            >
+                                                Cancel
+                                            </button>
+                                        )}
+                                        {booking.status === 'In Process' && (
+                                            <button
+                                                onClick={() => { completeBooking(booking.id); navigate({ view: 'PAYMENT', booking, fromCompletion: true }); }}
+                                                className="px-3 py-1 bg-green-600 text-white text-xs rounded-md"
+                                            >
+                                                Complete
+                                            </button>
+                                        )}
+                                        {booking.status === 'Pending Payment' && (
+                                            <button
+                                                onClick={() => navigate({ view: 'PAYMENT', booking })}
+                                                className="px-3 py-1 bg-green-600 text-white text-xs rounded-md animate-pulse"
+                                            >
+                                                Pay Now
+                                            </button>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
-                        );
-                    }) : (
-                        <div className="flex flex-col items-center py-16">
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-16 w-16 text-neutral-300 dark:text-neutral-600 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                            </svg>
-                            <p className="text-neutral-500 dark:text-neutral-400 mb-4">No {statusFilter.toLowerCase()} bookings</p>
-                            {statusFilter === 'Upcoming' && (
-                                <Button className="px-6 py-2 text-sm" onClick={() => navigate({ view: 'HOME' })}>Browse Equipment</Button>
-                            )}
                         </div>
-                    )
-                }
-            </div >
+                    );
+                }) : (
+                    <div className="flex flex-col items-center justify-center py-12 text-neutral-500 dark:text-neutral-400">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-16 w-16 mb-4 text-neutral-300 dark:text-neutral-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                        </svg>
+                        <p className="text-lg font-medium">No bookings found</p>
+                        <p className="text-sm">Check other tabs or book a service</p>
+                    </div>
+                )}
+            </div>
 
             {bookingToCancel && (
                 <ConfirmationDialog
@@ -986,18 +911,18 @@ const FarmerBookingsScreen: React.FC<FarmerViewProps> = ({ navigate }) => {
                     onCancel={() => setBookingToCancel(null)}
                 />
             )}
-        </div >
+        </div>
     );
 }
 
-const ProfileScreen: React.FC<FarmerViewProps> = ({ navigate }) => {
+const AgentProfileScreen: React.FC<AgentViewProps> = ({ navigate }) => {
     const { user, logout } = useAuth();
     const { getUnreadMessageCount } = useChat();
     const { t } = useLanguage();
     const unreadChatCount = user ? getUnreadMessageCount(user.id) : 0;
 
     const ProfileLink: React.FC<{ label: string, onClick: () => void, icon?: React.ReactElement }> = ({ label, onClick, icon }) => (
-        <button onClick={onClick} className="w-full text-left p-4 bg-white dark:bg-neutral-700 flex justify-between items-center hover:bg-neutral-50 dark:hover:bg-neutral-600 transition-colors">
+        <button onClick={onClick} className="w-full p-4 bg-white dark:bg-neutral-700 flex justify-between items-center hover:bg-neutral-50 dark:hover:bg-neutral-600 transition-colors">
             <span className="font-semibold text-neutral-800 dark:text-neutral-100">{label}</span>
             {icon || <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-neutral-500 dark:text-neutral-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>}
         </button>
@@ -1006,11 +931,17 @@ const ProfileScreen: React.FC<FarmerViewProps> = ({ navigate }) => {
     return (
         <div className="dark:text-neutral-200">
             <Header title={t('myProfile')}>
+                <div className="mr-2 inline-flex items-center px-3 py-1 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-full text-xs font-bold shadow-sm">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                    </svg>
+                    AGENT
+                </div>
                 <ChatIcon onClick={() => navigate({ view: 'CONVERSATIONS' })} unreadCount={unreadChatCount} />
                 <NotificationBell />
             </Header>
-            <div className="p-6">
-                <div className="text-center mb-8">
+            <div className="p-6 text-center">
+                <div className="mb-8">
                     <img
                         src={user?.profilePicture}
                         alt={user?.name}
@@ -1026,7 +957,7 @@ const ProfileScreen: React.FC<FarmerViewProps> = ({ navigate }) => {
                     <h2 className="text-2xl font-bold mt-4 text-neutral-800 dark:text-neutral-100">{user?.name}</h2>
                 </div>
 
-                <div className="space-y-4">
+                <div className="space-y-3">
                     <div className="bg-white dark:bg-neutral-700 rounded-lg border border-neutral-200 dark:border-neutral-600 overflow-hidden divide-y divide-neutral-200 dark:divide-neutral-600">
                         <h3 className="p-4 text-lg font-bold text-neutral-800 dark:text-neutral-100">AI Services</h3>
                         <ProfileLink label="AI Chat Assistant" onClick={() => navigate({ view: 'AI_ASSISTANT' })} />
@@ -1035,13 +966,18 @@ const ProfileScreen: React.FC<FarmerViewProps> = ({ navigate }) => {
                     </div>
 
                     <div className="bg-white dark:bg-neutral-700 rounded-lg border border-neutral-200 dark:border-neutral-600 overflow-hidden divide-y divide-neutral-200 dark:divide-neutral-600">
-                        <h3 className="p-4 text-lg font-bold text-neutral-800 dark:text-neutral-100">{t('community')}</h3>
-                        <ProfileLink label={t('communityForum')} onClick={() => navigate({ view: 'COMMUNITY' })} icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-neutral-500 dark:text-neutral-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.653-.124-1.282-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.653.124-1.282.356-1.857m0 0a3.001 3.001 0 015.688 0M12 12a3 3 0 100-6 3 3 0 000 6z" /></svg>} />
-                    </div>
-
-                    <div className="bg-white dark:bg-neutral-700 rounded-lg border border-neutral-200 dark:border-neutral-600 overflow-hidden divide-y divide-neutral-200 dark:divide-neutral-600">
-                        <h3 className="p-4 text-lg font-bold text-neutral-800 dark:text-neutral-100">{t('profile')}</h3>
+                        <h3 className="p-4 text-lg font-bold text-neutral-800 dark:text-neutral-100">More Services</h3>
                         <ProfileLink label={t('myAccount')} onClick={() => navigate({ view: 'MY_ACCOUNT' })} />
+                        <ProfileLink
+                            label="Bulk Booking Processor"
+                            onClick={() => navigate({ view: 'BULK_BOOKING' })}
+                            icon={
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                                </svg>
+                            }
+                        />
+                        <ProfileLink label={t('communityForum')} onClick={() => navigate({ view: 'COMMUNITY' })} icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-neutral-500 dark:text-neutral-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.653-.124-1.282-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.653.124-1.282.356-1.857m0 0a3.001 3.001 0 015.688 0M12 12a3 3 0 100-6 3 3 0 000 6z" /></svg>} />
                         <ProfileLink label={t('paymentHistory')} onClick={() => navigate({ view: 'PAYMENT_HISTORY' })} />
                         <ProfileLink label={t('bookingHistory')} onClick={() => navigate({ view: 'BOOKING_HISTORY' })} />
                         <ProfileLink label={t('settings')} onClick={() => navigate({ view: 'SETTINGS' })} />
@@ -1060,22 +996,45 @@ const ProfileScreen: React.FC<FarmerViewProps> = ({ navigate }) => {
     );
 };
 
-const FarmerView: React.FC<FarmerViewProps> = ({ navigate }) => {
-    const [activeTab, setActiveTab] = useState<string>('home');
-    const { bookings } = useBooking();
+const AgentBulkBookingScreen: React.FC<AgentViewProps> = ({ navigate }) => {
+    const { user } = useAuth();
+    const { getUnreadMessageCount } = useChat();
+    const unreadChatCount = user ? getUnreadMessageCount(user.id) : 0;
 
-    const latestArrivedWithOtp = useMemo(() => {
-        const arrived = bookings.filter(b => b.status === 'Arrived' && b.otpCode);
-        if (arrived.length === 0) return undefined;
-        // Prefer the most recent by date or start time if available
-        return arrived.sort((a, b) => {
-            const aTime = new Date(a.workStartTime || a.date).getTime();
-            const bTime = new Date(b.workStartTime || b.date).getTime();
-            return bTime - aTime;
-        })[0];
-    }, [bookings]);
+    return (
+        <div className="dark:text-neutral-200">
+            <Header title="Bulk Booking">
+                <button onClick={() => navigate({ view: 'PROFILE' })} className="p-2 text-neutral-700 dark:text-neutral-300 hover:text-primary rounded-full hover:bg-neutral-100 dark:hover:bg-neutral-700">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                    </svg>
+                </button>
+                <ChatIcon onClick={() => navigate({ view: 'CONVERSATIONS' })} unreadCount={unreadChatCount} />
+                <NotificationBell />
+            </Header>
+            <div className="p-4">
+                <BulkBookingProcessor />
+            </div>
+        </div>
+    );
+};
 
-    const farmerNavItems: NavItemConfig[] = [
+const AgentView: React.FC<AgentViewProps> = ({ navigate: parentNavigate }) => {
+    const [activeTab, setActiveTab] = useState('home');
+
+    const handleNavigate = (viewObj: AppView) => {
+        if (viewObj.view === 'BULK_BOOKING') {
+            setActiveTab('bulk_booking');
+        } else if (viewObj.view === 'HOME') {
+            setActiveTab('home');
+        } else if (viewObj.view === 'PROFILE') {
+            setActiveTab('profile');
+        } else {
+            parentNavigate(viewObj);
+        }
+    };
+
+    const agentNavItems = [
         {
             name: 'home',
             icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>
@@ -1086,9 +1045,9 @@ const FarmerView: React.FC<FarmerViewProps> = ({ navigate }) => {
         },
         {
             name: 'book',
-            icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" /></svg>,
+            icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" /></svg>,
             isCenter: true,
-            onClick: () => navigate({ view: 'BOOKING_FORM' })
+            onClick: () => handleNavigate({ view: 'BOOKING_FORM' })
         },
         {
             name: 'map',
@@ -1103,15 +1062,17 @@ const FarmerView: React.FC<FarmerViewProps> = ({ navigate }) => {
     const renderContent = () => {
         switch (activeTab) {
             case 'home':
-                return <FarmerHomeScreen navigate={navigate} />;
+                return <AgentHomeScreen navigate={handleNavigate} />;
             case 'bookings':
-                return <FarmerBookingsScreen navigate={navigate} />;
+                return <AgentBookingsScreen navigate={handleNavigate} />;
             case 'map':
-                return <FarmerMapView navigate={navigate} />;
+                return <AgentMapScreen navigate={handleNavigate} />;
             case 'profile':
-                return <ProfileScreen navigate={navigate} />;
+                return <AgentProfileScreen navigate={handleNavigate} />;
+            case 'bulk_booking':
+                return <AgentBulkBookingScreen navigate={handleNavigate} />;
             default:
-                return <FarmerHomeScreen navigate={navigate} />;
+                return <AgentHomeScreen navigate={handleNavigate} />;
         }
     };
 
@@ -1120,10 +1081,9 @@ const FarmerView: React.FC<FarmerViewProps> = ({ navigate }) => {
             <div className="flex-grow overflow-y-auto pb-20">
                 {renderContent()}
             </div>
-            {/* OTP is now shown inside booking cards only, per request */}
-            <BottomNav activeTab={activeTab} setActiveTab={setActiveTab} navItems={farmerNavItems} />
+            <BottomNav activeTab={activeTab} setActiveTab={setActiveTab} navItems={agentNavItems} />
         </div>
     );
 };
 
-export default FarmerView;
+export default AgentView;

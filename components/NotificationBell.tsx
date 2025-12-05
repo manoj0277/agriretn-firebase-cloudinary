@@ -2,8 +2,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNotification } from '../context/NotificationContext';
 
 const NotificationBell: React.FC = () => {
-    const { notifications, markAsRead, markAsSeen } = useNotification();
+    const { notifications, markAsRead, markAsSeen, deleteNotification, deleteAllNotifications } = useNotification();
     const [isOpen, setIsOpen] = useState(false);
+    const [hoveredNotificationId, setHoveredNotificationId] = useState<number | null>(null);
     const dropdownRef = useRef<HTMLDivElement>(null);
 
     const unreadCount = notifications.filter(n => !n.read).length;
@@ -56,6 +57,17 @@ const NotificationBell: React.FC = () => {
         return '';
     };
 
+    const handleDeleteAll = () => {
+        if (window.confirm('Are you sure you want to delete all notifications?')) {
+            deleteAllNotifications();
+        }
+    };
+
+    const handleDeleteOne = (e: React.MouseEvent, notificationId: number) => {
+        e.stopPropagation();
+        deleteNotification(notificationId);
+    };
+
     return (
         <div className="relative" ref={dropdownRef}>
             <button onClick={handleToggle} className="relative p-2 text-neutral-700 dark:text-neutral-300 hover:text-primary rounded-full hover:bg-neutral-100 dark:hover:bg-neutral-700">
@@ -71,15 +83,44 @@ const NotificationBell: React.FC = () => {
             </button>
             {isOpen && (
                 <div className="absolute right-0 mt-2 w-80 bg-white dark:bg-neutral-800 rounded-lg shadow-xl border border-neutral-200 dark:border-neutral-700 z-50">
-                    <div className="p-3 border-b dark:border-neutral-700 font-semibold text-neutral-800 dark:text-neutral-100">Notifications</div>
+                    <div className="p-3 border-b dark:border-neutral-700 flex items-center justify-between">
+                        <span className="font-semibold text-neutral-800 dark:text-neutral-100">Notifications</span>
+                        {notifications.length > 0 && (
+                            <button
+                                onClick={handleDeleteAll}
+                                className="p-1.5 hover:bg-red-100 dark:hover:bg-red-900/30 rounded transition-colors"
+                                title="Delete all notifications"
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-red-600 dark:text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                            </button>
+                        )}
+                    </div>
                     <div className="max-h-96 overflow-y-auto hide-scrollbar">
                         {notifications.length > 0 ? (
                             [...notifications].reverse().map(n => (
-                                <div key={n.id} className={`p-3 border-l-4 ${!n.read ? 'bg-neutral-50 dark:bg-neutral-700/50' : ''} ${getTypeClasses(n.category)}`}>
+                                <div
+                                    key={n.id}
+                                    className={`p-3 border-l-4 ${!n.read ? 'bg-neutral-50 dark:bg-neutral-700/50' : ''} ${getTypeClasses(n.category)} relative group`}
+                                    onMouseEnter={() => setHoveredNotificationId(n.id)}
+                                    onMouseLeave={() => setHoveredNotificationId(null)}
+                                >
                                     <div className="flex items-start justify-between">
-                                        <p className="text-sm text-neutral-800 dark:text-neutral-100 flex-1">
+                                        <p className="text-sm text-neutral-800 dark:text-neutral-100 flex-1 pr-6">
                                             {getPriorityBadge(n.priority)} {n.message}
                                         </p>
+                                        {hoveredNotificationId === n.id && (
+                                            <button
+                                                onClick={(e) => handleDeleteOne(e, n.id)}
+                                                className="absolute top-2 right-2 p-1 hover:bg-red-100 dark:hover:bg-red-900/30 rounded transition-colors"
+                                                title="Delete this notification"
+                                            >
+                                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-red-600 dark:text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                                </svg>
+                                            </button>
+                                        )}
                                     </div>
                                     <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1 text-right">
                                         {new Date(n.timestamp).toLocaleString()}

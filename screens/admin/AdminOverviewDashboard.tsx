@@ -42,8 +42,15 @@ const AdminOverviewDashboard: React.FC = () => {
 
   const dailyBookings = useMemo(() => {
     const map = new Map<string, number>()
-    bookings.forEach(b => { const d = b.date; map.set(d, (map.get(d) || 0) + 1) })
-    return Array.from(map.entries()).sort(([a], [b]) => a.localeCompare(b)).map(([date, count]) => ({ date, count }))
+    bookings.forEach(b => {
+      if (b.date) {
+        const d = b.date;
+        map.set(d, (map.get(d) || 0) + 1)
+      }
+    })
+    return Array.from(map.entries())
+      .sort(([a], [b]) => (a || '').localeCompare(b || ''))
+      .map(([date, count]) => ({ date, count }))
   }, [bookings])
 
   const farmerVsSupplierGrowth = useMemo(() => {
@@ -69,6 +76,12 @@ const AdminOverviewDashboard: React.FC = () => {
     return Array.from(map.entries()).sort(([a], [b]) => a.localeCompare(b)).map(([date, amount]) => ({ date, amount }))
   }, [payments])
 
+  // Safety check for data
+  if (!allUsers || !bookings || !items) {
+    console.warn('AdminOverviewDashboard: Missing data context', { allUsers, bookings, items })
+    return <div className="p-4">Loading dashboard data...</div>
+  }
+
   return (
     <div className="p-4 space-y-6">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -85,54 +98,62 @@ const AdminOverviewDashboard: React.FC = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="bg-white dark:bg-neutral-800 p-4 rounded-lg border border-neutral-200 dark:border-neutral-700">
           <h4 className="font-semibold mb-2">Daily bookings trend</h4>
-          <ResponsiveContainer width="100%" height={240}>
-            <LineChart data={dailyBookings}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="date" />
-              <YAxis />
-              <Tooltip />
-              <Line type="monotone" dataKey="count" stroke="#3b82f6" />
-            </LineChart>
-          </ResponsiveContainer>
+          <div style={{ width: '100%', height: 240 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={dailyBookings}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="date" />
+                <YAxis />
+                <Tooltip />
+                <Line type="monotone" dataKey="count" stroke="#3b82f6" />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
         </div>
 
         <div className="bg-white dark:bg-neutral-800 p-4 rounded-lg border border-neutral-200 dark:border-neutral-700">
           <h4 className="font-semibold mb-2">Farmer vs Supplier growth</h4>
-          <ResponsiveContainer width="100%" height={240}>
-            <BarChart data={farmerVsSupplierGrowth}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="period" />
-              <YAxis />
-              <Tooltip />
-              <Bar dataKey="farmers" fill="#22c55e" />
-              <Bar dataKey="suppliers" fill="#f59e0b" />
-            </BarChart>
-          </ResponsiveContainer>
+          <div style={{ width: '100%', height: 240 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={farmerVsSupplierGrowth}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="period" />
+                <YAxis />
+                <Tooltip />
+                <Bar dataKey="farmers" fill="#22c55e" />
+                <Bar dataKey="suppliers" fill="#f59e0b" />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
         </div>
 
         <div className="bg-white dark:bg-neutral-800 p-4 rounded-lg border border-neutral-200 dark:border-neutral-700">
           <h4 className="font-semibold mb-2">Machine demand by category</h4>
-          <ResponsiveContainer width="100%" height={240}>
-            <PieChart>
-              <Pie data={demandByCategory} dataKey="value" nameKey="name" innerRadius={40} outerRadius={80}>
-                {demandByCategory.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-              </Pie>
-              <Tooltip />
-            </PieChart>
-          </ResponsiveContainer>
+          <div style={{ width: '100%', height: 240 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie data={demandByCategory} dataKey="value" nameKey="name" innerRadius={40} outerRadius={80}>
+                  {demandByCategory.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                </Pie>
+                <Tooltip />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
         </div>
 
         <div className="bg-white dark:bg-neutral-800 p-4 rounded-lg border border-neutral-200 dark:border-neutral-700">
           <h4 className="font-semibold mb-2">Revenue chart</h4>
-          <ResponsiveContainer width="100%" height={240}>
-            <LineChart data={revenueByDay}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="date" />
-              <YAxis />
-              <Tooltip />
-              <Line type="monotone" dataKey="amount" stroke="#10b981" />
-            </LineChart>
-          </ResponsiveContainer>
+          <div style={{ width: '100%', height: 240 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={revenueByDay}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="date" />
+                <YAxis />
+                <Tooltip />
+                <Line type="monotone" dataKey="amount" stroke="#10b981" />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
         </div>
       </div>
 

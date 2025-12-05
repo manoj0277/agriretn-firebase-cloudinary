@@ -1,10 +1,9 @@
 import NodeCache from 'node-cache';
 
-// District cache with TTL of 30 days (2592000 seconds)
-const districtCache = new NodeCache({ stdTTL: 2592000, checkperiod: 86400 });
+// Location cache with TTL of 30 days (2592000 seconds)
+const locationCache = new NodeCache({ stdTTL: 2592000, checkperiod: 86400 });
 
-// India district mapping approximation based on coordinates
-// This is a fallback when geocoding API is unavailable
+// India district mapping approximation based on coordinates (fallback)
 const INDIA_DISTRICTS_APPROX: { [key: string]: { lat: number; lng: number } } = {
     'Hyderabad': { lat: 17.385, lng: 78.4867 },
     'Rangareddy': { lat: 17.4065, lng: 78.2783 },
@@ -18,6 +17,16 @@ const INDIA_DISTRICTS_APPROX: { [key: string]: { lat: number; lng: number } } = 
     'Kolkata': { lat: 22.5726, lng: 88.3639 },
     'Delhi': { lat: 28.7041, lng: 77.1025 },
 };
+
+/**
+ * Location info with both district and mandal
+ */
+export interface LocationInfo {
+    district: string;
+    mandal: string;  // Mandal/Taluk/Tehsil - more granular than district
+    village?: string;
+    state?: string;
+}
 
 /**
  * Calculate distance between two coordinates using Haversine formula
@@ -35,16 +44,16 @@ function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: numbe
 }
 
 /**
- * Get district from coordinates using OpenCage Geocoding API
- * Falls back to approximate matching if API fails
+ * Get FULL location info (district + mandal) from coordinates
+ * Returns both district (larger) and mandal (smaller, more accurate)
  */
-export async function getDistrictFromCoords(lat: number, lng: number): Promise<string> {
-    const cacheKey = `${lat.toFixed(4)},${lng.toFixed(4)}`;
+export async function getLocationFromCoords(lat: number, lng: number): Promise<LocationInfo> {
+    const cacheKey = `loc_${lat.toFixed(4)},${lng.toFixed(4)}`;
 
     // Check cache first
-    const cached = districtCache.get<string>(cacheKey);
+    const cached = locationCache.get<LocationInfo>(cacheKey);
     if (cached) {
-        console.log(`[Geocoding] Cache hit for ${cacheKey}: ${cached}`);
+        console.log(`[Geocoding] Cache hit for ${cacheKey}:`, cached);
         return cached;
     }
 
@@ -59,21 +68,23 @@ export async function getDistrictFromCoords(lat: number, lng: number): Promise<s
 
             if (data.results && data.results.length > 0) {
                 const components = data.results[0].components;
-                // Try to get district from various possible fields
-                const district = components.state_district ||
-                    components.county ||
-                    components.city ||
-                    components.town ||
-                    components.village ||
-                    'Unknown';
 
-                console.log(`[Geocoding] API success for ${cacheKey}: ${district}`);
-                districtCache.set(cacheKey, district);
-                return district;
+                // Extract location hierarchy
+                // District: state_district or county (larger administrative unit)
+                // Mandal: town, suburb, or village (smaller, more accurate)
+                const location: LocationInfo = {
+                    district: components.state_district || components.county || components.city || 'Unknown',
+                    mandal: components.town || components.suburb || components.village || components.city_district || components.state_district || 'Unknown',
+                    village: components.village || components.hamlet || undefined,
+                    state: components.state || undefined
+                };
+
+                console.log(`[Geocoding] API success for ${cacheKey}:`, location);
+                locationCache.set(cacheKey, location);
+                return location;
             }
         } catch (error) {
             console.error('[Geocoding] API error:', error);
-            // Fall through to approximate matching
         }
     }
 
@@ -89,30 +100,59 @@ export async function getDistrictFromCoords(lat: number, lng: number): Promise<s
         }
     }
 
+    const fallbackLocation: LocationInfo = {
+        district: nearestDistrict,
+        mandal: nearestDistrict // Fallback: use district as mandal
+    };
+
     console.log(`[Geocoding] Approximate match for ${cacheKey}: ${nearestDistrict} (${minDistance.toFixed(1)}km away)`);
-    districtCache.set(cacheKey, nearestDistrict);
-    return nearestDistrict;
+    locationCache.set(cacheKey, fallbackLocation);
+    return fallbackLocation;
 }
 
 /**
- * Normalize district name for consistent targeting
+ * Get district from coordinates (legacy function for backward compatibility)
  */
-export function normalizeDistrictName(district: string): string {
-    return district
+export async function getDistrictFromCoords(lat: number, lng: number): Promise<string> {
+    const location = await getLocationFromCoords(lat, lng);
+    return location.district;
+}
+
+/**
+ * Get mandal from coordinates (new function for accurate targeting)
+ */
+export async function getMandalFromCoords(lat: number, lng: number): Promise<string> {
+    const location = await getLocationFromCoords(lat, lng);
+    return location.mandal;
+}
+
+/**
+ * Normalize location name for consistent targeting
+ */
+export function normalizeLocationName(name: string): string {
+    return name
         .trim()
         .toLowerCase()
         .replace(/\s+/g, ' ')
         .replace(/district$/i, '')
+        .replace(/mandal$/i, '')
+        .replace(/taluk$/i, '')
+        .replace(/tehsil$/i, '')
         .trim();
 }
 
 /**
- * Check if two district names match (fuzzy comparison)
+ * Check if two location names match (fuzzy comparison)
  */
-export function districtMatches(district1: string, district2: string): boolean {
-    const norm1 = normalizeDistrictName(district1);
-    const norm2 = normalizeDistrictName(district2);
+export function locationMatches(loc1: string, loc2: string): boolean {
+    const norm1 = normalizeLocationName(loc1);
+    const norm2 = normalizeLocationName(loc2);
     return norm1 === norm2 ||
         norm1.includes(norm2) ||
         norm2.includes(norm1);
 }
+
+// Keep legacy function names for backward compatibility
+export const normalizeDistrictName = normalizeLocationName;
+export const districtMatches = locationMatches;
+

@@ -73,10 +73,10 @@ const ItemCard: React.FC<ItemCardProps> = ({ item, onClick, compact = false }) =
     return (
         <div
             onClick={onClick}
-            className={`bg-white dark:bg-neutral-700 rounded-lg border border-neutral-200 dark:border-neutral-600 shadow-sm hover:shadow-lg hover:border-primary/50 transition-all cursor-pointer overflow-hidden ${compact ? 'hover:translate-y-0.5' : ''}`}
+            className={`bg-white dark:bg-neutral-700 rounded-xl border border-neutral-200 dark:border-neutral-600 shadow-sm hover:shadow-md hover:border-primary/50 transition-all cursor-pointer overflow-hidden ${compact ? 'hover:translate-y-0.5' : ''}`}
         >
             <div>
-                <div className={`w-full ${compact ? 'aspect-[4/3]' : 'aspect-video'} bg-neutral-100 dark:bg-neutral-600`}>
+                <div className={`w-full ${compact ? 'h-32' : 'h-40'} bg-gradient-to-br from-neutral-100 to-neutral-200 dark:from-neutral-600 dark:to-neutral-700 relative`}>
                     <img
                         src={imgSrc}
                         alt={item.name}
@@ -89,32 +89,33 @@ const ItemCard: React.FC<ItemCardProps> = ({ item, onClick, compact = false }) =
                             if (target.src !== fallback) target.src = fallback;
                         }}
                     />
+                    {/* Status Badge Overlay */}
+                    <span className={`absolute top-2 right-2 px-2.5 py-1 text-xs font-semibold rounded-full shadow-md backdrop-blur-sm ${!isBookedNow ? 'bg-green-500/90 text-white' : 'bg-red-500/90 text-white'}`}>
+                        {!isBookedNow ? 'Available' : 'Booked'}
+                    </span>
                 </div>
-                <div className={`${compact ? 'p-2' : 'p-3'}`}>
-                    <div className="flex justify-between items-center mb-1">
-                        <div className={`flex items-center ${compact ? 'text-[10px]' : 'text-xs'} text-neutral-500 dark:text-neutral-400`}>
+                <div className={`${compact ? 'p-2.5' : 'p-3'}`}>
+                    <div className="flex justify-between items-start mb-1.5">
+                        <div className={`flex items-center ${compact ? 'text-xs' : 'text-xs'} text-neutral-500 dark:text-neutral-400 font-medium`}>
                             <CategoryIcon category={item.category} />
-                            <span className="ml-1">{item.category}</span>
+                            <span className="ml-1.5">{item.category}</span>
                         </div>
-                        <span className={`px-2 py-0.5 ${compact ? 'text-[10px]' : 'text-xs'} font-semibold rounded-full ${!isBookedNow ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                            {!isBookedNow ? 'Available' : 'Booked'}
-                        </span>
                     </div>
-                    <h3 className={`font-bold ${compact ? 'text-sm' : 'text-md'} text-neutral-800 dark:text-neutral-100 leading-tight truncate mb-2`}>{item.name}</h3>
+                    <h3 className={`font-bold ${compact ? 'text-sm' : 'text-base'} text-neutral-800 dark:text-neutral-100 leading-tight truncate mb-2`}>{item.name}</h3>
                     <div className="flex justify-between items-end">
                         <div>
                             {item.avgRating && item.avgRating > 0 ? (
                                 <div className="flex items-center space-x-1">
                                     <StarRating rating={item.avgRating} />
-                                    <span className={`${compact ? 'text-[10px]' : 'text-xs'} text-neutral-600 dark:text-neutral-300`}>({item.avgRating.toFixed(1)})</span>
+                                    <span className={`${compact ? 'text-xs' : 'text-xs'} text-neutral-600 dark:text-neutral-300 font-medium`}>({item.avgRating.toFixed(1)})</span>
                                 </div>
                             ) : (
-                                <p className={`${compact ? 'text-[10px]' : 'text-xs'} text-neutral-500 dark:text-neutral-400`}>No reviews yet</p>
+                                <p className={`${compact ? 'text-xs' : 'text-xs'} text-neutral-500 dark:text-neutral-400`}>No reviews yet</p>
                             )}
                         </div>
                         <div className="text-right">
-                            <p className={`${compact ? 'text-[10px]' : 'text-xs'} text-neutral-600 dark:text-neutral-300`}>from</p>
-                            <p className={`font-bold ${compact ? 'text-base' : 'text-lg'} text-primary`}>₹{minPrice}<span className={`${compact ? 'text-[10px]' : 'text-xs'} font-normal text-neutral-500 dark:text-neutral-400`}>/hr</span></p>
+                            <p className={`${compact ? 'text-xs' : 'text-xs'} text-neutral-600 dark:text-neutral-300`}>from</p>
+                            <p className={`font-bold ${compact ? 'text-lg' : 'text-xl'} text-primary`}>₹{minPrice}<span className={`${compact ? 'text-xs' : 'text-xs'} font-normal text-neutral-500 dark:text-neutral-400`}>/hr</span></p>
                         </div>
                     </div>
                 </div>

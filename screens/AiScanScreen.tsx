@@ -8,8 +8,8 @@ import { GoogleGenAI } from "@google/genai";
 import { useLanguage } from '../context/LanguageContext';
 
 const apiKey = typeof process !== 'undefined' && process.env && process.env.API_KEY
-  ? process.env.API_KEY
-  : undefined;
+    ? process.env.API_KEY
+    : undefined;
 
 const ai = apiKey ? new GoogleGenAI({ apiKey }) : null;
 
@@ -52,7 +52,7 @@ const AiScanScreen: React.FC<AiScanScreenProps> = ({ navigate, goBack }) => {
 
         setAiResponse(null);
         setError(null);
-        
+
         if (file.type.startsWith('video/')) {
             setIsProcessingVideo(true);
             const videoElement = document.createElement('video');
@@ -75,7 +75,7 @@ const AiScanScreen: React.FC<AiScanScreenProps> = ({ navigate, goBack }) => {
             };
 
             videoElement.onerror = () => {
-                setError("Could not process video file.");
+                setError(t('couldNotProcessVideo'));
                 setIsProcessingVideo(false);
             };
         } else if (file.type.startsWith('image/')) {
@@ -100,11 +100,11 @@ const AiScanScreen: React.FC<AiScanScreenProps> = ({ navigate, goBack }) => {
             setImageSrc(null);
         } catch (err) {
             console.error("Camera error:", err);
-            setError("Could not access camera. Please check permissions.");
+            setError(t('couldNotAccessCamera'));
             setShowCamera(false);
         }
     };
-    
+
     const captureImage = () => {
         if (videoRef.current && canvasRef.current) {
             const video = videoRef.current;
@@ -122,12 +122,12 @@ const AiScanScreen: React.FC<AiScanScreenProps> = ({ navigate, goBack }) => {
 
     const handleAnalyze = async () => {
         if (!imageSrc) {
-            setError("Please select an image first.");
+            setError(t('pleaseSelectImageFirst'));
             return;
         }
         if (!ai) {
-            setError("AI service is not configured. Missing API Key.");
-            showToast("AI service is not configured", "error");
+            setError(t('aiServiceNotConfigured'));
+            showToast(t('aiServiceNotConfigured'), "error");
             return;
         }
 
@@ -138,54 +138,54 @@ const AiScanScreen: React.FC<AiScanScreenProps> = ({ navigate, goBack }) => {
         try {
             const mimeType = imageSrc.split(';')[0].split(':')[1];
             const base64Data = imageSrc.split(',')[1];
-            
+
             const imagePart = { inlineData: { mimeType, data: base64Data } };
             const textPart = { text: "You are an expert agronomist. Analyze the attached image, which is a frame from a crop video. Identify any pests, diseases, or nutritional deficiencies. Provide a detailed remedy including: 1. A clear diagnosis of the problem. 2. A list of suggested organic and chemical pesticides or treatments. 3. Step-by-step instructions on how to apply the recommended treatment, including dosage and safety precautions. If you identify an insect pest, also describe its lifecycle (e.g., egg, larva, pupa, adult) and, based on the image, try to determine what stage the infestation is in. Format the entire response in a way that is very easy for a farmer to understand. Use simple language. Use markdown to highlight key terms, such as the names of pests/diseases and the recommended treatments, by making them bold (e.g., **Aphids** or **Neem Oil**)." };
-            
+
             const response = await ai.models.generateContent({
                 model: 'gemini-2.5-flash',
                 contents: { parts: [imagePart, textPart] },
             });
-            
+
             setAiResponse(response.text);
 
         } catch (err) {
             console.error("Gemini API error:", err);
-            setError("Failed to analyze the image. Please try again.");
-            showToast("Analysis failed. Please try again.", "error");
+            setError(t('failedToAnalyzeImage'));
+            showToast(t('failedToAnalyzeImage'), "error");
         } finally {
             setIsLoading(false);
         }
     };
-    
+
     const reset = () => {
         stopCameraStream();
         setImageSrc(null);
         setAiResponse(null);
         setError(null);
         setShowCamera(false);
-        if(fileInputRef.current) fileInputRef.current.value = "";
+        if (fileInputRef.current) fileInputRef.current.value = "";
     }
-    
+
     const CameraView = () => (
         <div className="relative w-full aspect-square bg-black rounded-lg overflow-hidden">
             <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover"></video>
             <canvas ref={canvasRef} className="hidden"></canvas>
             <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex space-x-4">
-                <Button onClick={captureImage} className="w-auto px-4 py-2 !rounded-full">Capture</Button>
+                <Button onClick={captureImage} className="w-auto px-4 py-2 !rounded-full">{t('capture')}</Button>
                 <Button onClick={() => setShowCamera(false)} variant="secondary" className="w-auto px-4 py-2 !rounded-full">{t('cancel')}</Button>
             </div>
         </div>
     );
-    
+
     const SelectionView = () => (
-         <div className="w-full aspect-square bg-neutral-100 dark:bg-neutral-700 rounded-lg flex flex-col items-center justify-center border-2 border-dashed border-neutral-300 dark:border-neutral-500 text-center p-4">
+        <div className="w-full aspect-square bg-neutral-100 dark:bg-neutral-700 rounded-lg flex flex-col items-center justify-center border-2 border-dashed border-neutral-300 dark:border-neutral-500 text-center p-4">
             <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 text-neutral-400 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-            <p className="font-semibold text-neutral-700 dark:text-neutral-200 mb-4">Get instant crop analysis</p>
+            <p className="font-semibold text-neutral-700 dark:text-neutral-200 mb-4">{t('getInstantCropAnalysis')}</p>
             <input type="file" accept="image/*,video/*" ref={fileInputRef} onChange={handleFileChange} className="hidden" />
             <div className="space-y-3 w-full max-w-xs">
-                <Button onClick={startCamera}>Use Camera</Button>
-                <Button onClick={() => fileInputRef.current?.click()} variant="secondary">Upload Image or Video</Button>
+                <Button onClick={startCamera}>{t('useCamera')}</Button>
+                <Button onClick={() => fileInputRef.current?.click()} variant="secondary">{t('uploadImageOrVideo')}</Button>
             </div>
         </div>
     );
@@ -203,19 +203,19 @@ const AiScanScreen: React.FC<AiScanScreenProps> = ({ navigate, goBack }) => {
             </div>
         );
     };
-    
+
     return (
         <div className="flex flex-col h-screen">
             <Header title={t('aiCropScan')} onBack={goBack} />
             <div className="flex-grow overflow-y-auto p-4 space-y-4 hide-scrollbar">
-                 {error && <div className="p-3 bg-red-100 text-red-800 rounded-lg text-center">{error}</div>}
-                 
-                 {showCamera ? <CameraView /> : (
-                     imageSrc ? (
+                {error && <div className="p-3 bg-red-100 text-red-800 rounded-lg text-center">{error}</div>}
+
+                {showCamera ? <CameraView /> : (
+                    imageSrc ? (
                         <div className="w-full aspect-square bg-black rounded-lg overflow-hidden relative">
-                             <img 
-                                src={imageSrc} 
-                                alt="Crop preview" 
+                            <img
+                                src={imageSrc}
+                                alt="Crop preview"
                                 className="w-full h-full object-contain"
                                 referrerPolicy="no-referrer"
                                 crossOrigin="anonymous"
@@ -224,39 +224,39 @@ const AiScanScreen: React.FC<AiScanScreenProps> = ({ navigate, goBack }) => {
                                     const target = e.currentTarget as HTMLImageElement;
                                     if (target.src !== fallback) target.src = fallback;
                                 }}
-                             />
+                            />
                         </div>
-                     ) : isProcessingVideo ? (
+                    ) : isProcessingVideo ? (
                         <div className="w-full aspect-square bg-neutral-100 dark:bg-neutral-700 rounded-lg flex flex-col items-center justify-center text-center p-4">
-                             <div className="inline-block w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
-                             <p className="mt-4 font-semibold text-neutral-700 dark:text-neutral-300">{t('processing')}</p>
+                            <div className="inline-block w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
+                            <p className="mt-4 font-semibold text-neutral-700 dark:text-neutral-300">{t('processing')}</p>
                         </div>
-                     ) : (
+                    ) : (
                         <SelectionView />
-                     )
-                 )}
-                 
-                 <div className="flex space-x-2">
+                    )
+                )}
+
+                <div className="flex space-x-2">
                     {imageSrc && !isLoading && (
                         <Button onClick={handleAnalyze} disabled={isLoading} className="flex-grow">
-                           {isLoading ? t('analyzing') : 'Analyze Crop'}
+                            {isLoading ? t('analyzing') : t('analyzeCrop')}
                         </Button>
                     )}
                     {(imageSrc || aiResponse) && !isLoading && (
-                         <Button onClick={reset} variant="secondary" className="w-auto px-4">Clear</Button>
+                        <Button onClick={reset} variant="secondary" className="w-auto px-4">{t('clear')}</Button>
                     )}
                 </div>
 
-                 {isLoading && (
+                {isLoading && (
                     <div className="text-center p-8">
                         <div className="inline-block w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
-                        <p className="mt-4 font-semibold text-neutral-700 dark:text-neutral-300">AI is analyzing your image...</p>
+                        <p className="mt-4 font-semibold text-neutral-700 dark:text-neutral-300">{t('aiAnalyzingImage')}</p>
                     </div>
                 )}
-                
+
                 {aiResponse && (
                     <div className="bg-white dark:bg-neutral-700 p-4 rounded-lg border border-neutral-200 dark:border-neutral-600">
-                        <h3 className="text-xl font-bold text-neutral-800 dark:text-neutral-100 mb-2">AI Analysis Report</h3>
+                        <h3 className="text-xl font-bold text-neutral-800 dark:text-neutral-100 mb-2">{t('aiAnalysisReport')}</h3>
                         <MarkdownRenderer text={aiResponse} />
                     </div>
                 )}

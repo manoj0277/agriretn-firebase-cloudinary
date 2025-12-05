@@ -1,6 +1,6 @@
 
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useBooking } from '../context/BookingContext';
 import { useItem } from '../context/ItemContext';
@@ -8,6 +8,7 @@ import { useReview } from '../context/ReviewContext';
 import { AppView, Booking } from '../types';
 import Button from '../components/Button';
 import StarRating from '../components/StarRating';
+import { calculateDistance } from '../utils/location';
 
 interface SupplierViewProps {
     navigate: (view: AppView) => void;
@@ -15,15 +16,27 @@ interface SupplierViewProps {
 
 const SupplierBookingsScreen: React.FC<SupplierViewProps> = ({ navigate }) => {
     const { user, allUsers } = useAuth();
-    const { bookings, markAsArrived, verifyOtpAndStartWork } = useBooking();
+    const { bookings, markAsArrived, verifyOtpAndStartWork, cancelBooking } = useBooking();
     const { items } = useItem();
     const { reviews } = useReview();
+    const [userLocation, setUserLocation] = useState<{ lat: number; lng: number; } | undefined>();
+
+    React.useEffect(() => {
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    setUserLocation({ lat: position.coords.latitude, lng: position.coords.longitude });
+                },
+                (error) => console.error("Error getting location:", error)
+            );
+        }
+    }, []);
 
     const myBookings = useMemo(() => {
         return bookings.filter(b => b.supplierId === user?.id || b.operatorId === user?.id);
     }, [bookings, user]);
 
-    const getFarmerName = (farmerId: number) => allUsers.find(u => u.id === farmerId)?.name || 'Unknown Farmer';
+    const getFarmerName = (farmerId: string) => allUsers.find(u => u.id === farmerId)?.name || 'Unknown Farmer';
     const getItem = (itemId?: number) => items.find(i => i.id === itemId);
 
     const getStatusClasses = (status: Booking['status']) => {
@@ -66,8 +79,22 @@ const SupplierBookingsScreen: React.FC<SupplierViewProps> = ({ navigate }) => {
                             </span>
                         </div>
 
+
+
+                        // ... (inside renderBookingList)
                         <div className="text-sm text-neutral-700 dark:text-neutral-300 space-y-1">
                             <p><strong>Date:</strong> {booking.date} from {booking.startTime} - {booking.estimatedDuration ? `${booking.estimatedDuration} hours` : 'Duration N/A'}</p>
+                            {userLocation && farmer?.locationCoords && (
+                                <div className="flex items-center gap-2 mt-1">
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-neutral-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                                    </svg>
+                                    <span className="text-xs bg-neutral-100 dark:bg-neutral-600 px-2 py-0.5 rounded-full text-neutral-600 dark:text-neutral-300 font-medium">
+                                        {calculateDistance(userLocation.lat, userLocation.lng, farmer.locationCoords.lat, farmer.locationCoords.lng)} km away
+                                    </span>
+                                </div>
+                            )}
                             {booking.status === 'Completed' && booking.paymentDetails ? (
                                 <div className="bg-green-50 dark:bg-green-900/20 p-3 rounded-lg mt-2">
                                     <p className="font-semibold text-green-800 dark:text-green-300 mb-1">Payment Breakdown:</p>
@@ -86,10 +113,25 @@ const SupplierBookingsScreen: React.FC<SupplierViewProps> = ({ navigate }) => {
                             {farmer && (booking.status === 'Confirmed' || booking.status === 'Arrived' || booking.status === 'In Process') && (
                                 <button
                                     onClick={() => navigate({ view: 'CHAT', chatPartner: farmer, item })}
-                                    className="text-primary hover:text-primary-dark font-semibold text-sm flex items-center space-x-1"
+                                    className="bg-green-50 text-green-700 hover:bg-green-100 px-3 py-1 rounded-full font-semibold text-sm flex items-center space-x-1 transition-colors"
                                 >
                                     <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
                                     <span>Chat with Farmer</span>
+                                </button>
+                            )}
+                            {(booking.status === 'Confirmed' || booking.status === 'Arrived') && (
+                                <button
+                                    onClick={() => {
+                                        if (window.confirm('Are you sure you want to cancel this booking?')) {
+                                            cancelBooking(booking.id);
+                                        }
+                                    }}
+                                    className="bg-red-50 text-red-700 hover:bg-red-100 px-3 py-1 rounded-full font-semibold text-sm flex items-center space-x-1 transition-colors"
+                                >
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                    </svg>
+                                    <span>Cancel Booking</span>
                                 </button>
                             )}
                             {booking.status === 'Confirmed' && item?.currentLocation && (
@@ -130,6 +172,7 @@ const SupplierBookingsScreen: React.FC<SupplierViewProps> = ({ navigate }) => {
                                     Rate Farmer
                                 </button>
                             )}
+
                             {booking.status === 'Completed' && hasReview && (
                                 <p className="text-sm text-neutral-600 dark:text-neutral-300">Rated</p>
                             )}

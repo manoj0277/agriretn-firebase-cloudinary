@@ -1,0 +1,119 @@
+
+// --- AGENT BULK BOOKING FROM GOOGLE SHEETS ---
+app.post('/api/agent/bulk-bookings/process', async (req: Request, res: Response) => {
+    try {
+        const { sheetsUrl, agentId, agentName } = req.body;
+
+        if (!sheetsUrl) {
+            return res.status(400).json({ error: 'Google Sheets URL is required' });
+        }
+
+        if (!agentId) {
+            return res.status(400).json({ error: 'Agent ID is required' });
+        }
+
+        console.log(`[Bulk Booking] Agent ${agentName} starting bulk booking process`);
+
+        // Fetch data from Google Sheets Web App
+        const fetch = (await import('node-fetch')).default;
+        const response = await fetch(sheetsUrl);
+        
+        if (!response.ok) {
+            throw new Error(`Failed to fetch from Google Sheets: ${response.statusText}`);
+        }
+
+        const rows: any[] = await response.json();
+        console.log(`[Bulk Booking] Fetched ${rows.length} PENDING rows`);
+
+        const results: any[] = [];
+        const updates: any[] = [];
+
+        for (const row of rows) {
+            try {
+                // Simple validation
+                const mobileRegex = /^[6-9]\d{9}$/;
+                if (!row.Customer_Mobile || !mobileRegex.test(row.Customer_Mobile)) {
+                    throw new Error(`Invalid mobile: ${row.Customer_Mobile}`);
+                }
+
+                // Create booking ID
+                const bookingId = `BK-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                
+                // Create booking (simplified - you may need to adapt to your schema)
+                const bookingData = {
+                    id: bookingId,
+                    farmerId: 0, // Will be looked up by mobile
+                    status: 'Searching' as const,
+                    itemCategory: row.Equipment_SKU,
+                    date: row.Rental_Date,
+                    startTime: '09:00',
+                    estimatedDuration: row.Rental_Duration_Hours,
+                    location: row.Delivery_Pincode,
+                    additionalInstructions: `Bulk booking from ${row.Booking_Source}`,
+                    bookedByAgentId: agentId,
+                    isAgentBooking: true
+                };
+
+                await BookingService.create(bookingData);
+
+                results.push({
+                    success: true,
+                    rowNumber: row.rowNumber,
+                    bookingId: bookingId
+                });
+
+                updates.push({
+                    rowNumber: row.rowNumber,
+                    status: 'PROCESSED',
+                    bookingId: bookingId
+                });
+
+            } catch (error: any) {
+                results.push({
+                    success: false,
+                    rowNumber: row.rowNumber,
+                    error: error.message
+                });
+
+                updates.push({
+                    rowNumber: row.rowNumber,
+                    status: 'FAILED',
+                    bookingId: `Error: ${error.message}`
+                });
+            }
+        }
+
+        // Update Google Sheets with status
+        try {
+            await fetch(sheetsUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ updates })
+            });
+        } catch (updateError) {
+            console.warn('[Bulk Booking] Error updating Google Sheets:', updateError);
+        }
+
+        const successfulCount = results.filter(r => r.success).length;
+        const failedCount = results.filter(r => !r.success).length;
+
+        res.json({
+            success: true,
+            message: `Processed ${results.length} bookings`,
+            results: {
+                total: results.length,
+                successful: successfulCount,
+                failed: failedCount,
+                details: results
+            }
+        });
+
+    } catch (error: any) {
+        console.error('[Bulk Booking] Fatal error:', error);
+        res.status(500).json({
+            error: 'Failed to process bulk bookings',
+            details: error.message
+        });
+    }
+});
+

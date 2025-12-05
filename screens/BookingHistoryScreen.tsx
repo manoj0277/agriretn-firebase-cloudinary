@@ -13,7 +13,7 @@ interface BookingHistoryScreenProps {
 
 const BookingHistoryScreen: React.FC<BookingHistoryScreenProps> = ({ navigate, goBack }) => {
   const { user } = useAuth();
-  const { bookings } = useBooking();
+  const { bookings, cancelBooking } = useBooking();
   const { items } = useItem();
   const { t } = useLanguage();
 
@@ -75,12 +75,30 @@ const BookingHistoryScreen: React.FC<BookingHistoryScreenProps> = ({ navigate, g
                 <div className="mt-3 text-right text-sm font-bold">
                   <span>Total: ₹{(b.finalPrice ?? b.estimatedPrice ?? 0).toLocaleString()}</span>
                 </div>
+
+                {
+                  (b.status === 'Confirmed' || b.status === 'Arrived') && (
+                    <div className="mt-3 border-t border-neutral-100 dark:border-neutral-600 pt-2 flex justify-between items-center">
+                      {b.lateStart ? <p className="text-xs text-red-600 font-semibold">Supplier is late (&gt;30m).</p> : <span></span>}
+                      <button
+                        onClick={() => {
+                          if (window.confirm('Do you want to cancel this booking?')) {
+                            cancelBooking(b.id);
+                          }
+                        }}
+                        className="text-[10px] bg-red-50 text-red-600 border border-red-200 px-2 py-0.5 rounded hover:bg-red-100 transition-colors"
+                      >
+                        Cancel Booking
+                      </button>
+                    </div>
+                  )
+                }
               </div>
             );
           })
         )}
       </div>
-    </div>
+    </div >
   );
 };
 

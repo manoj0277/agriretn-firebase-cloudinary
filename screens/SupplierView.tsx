@@ -1228,7 +1228,11 @@ const SupplierDashboardScreen: React.FC<SupplierViewProps & { goToTab?: (name: s
                     <ProfileLink label={t('raiseAComplaint')} onClick={() => navigate({ view: 'SUPPORT' })} />
                     <ProfileLink label={t('privacyPolicy')} onClick={() => navigate({ view: 'POLICY' })} />
                 </div>
-                <Button onClick={logout} variant="secondary">{t('logout')}</Button>
+                <Button onClick={() => {
+                    if (window.confirm('Are you sure you want to logout?')) {
+                        logout();
+                    }
+                }} variant="secondary" className="w-full">{t('logout')}</Button>
             </div>
             {showWeeklyTrend && (
                 <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">

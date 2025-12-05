@@ -5,7 +5,7 @@
 // In a real React Native app, this would be replaced by a robust library like React Navigation
 // (https://reactnavigation.org/) to handle stack, tab, and drawer navigators.
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { BookingProvider } from './context/BookingContext';
 import { ItemProvider } from './context/ItemContext';
@@ -13,6 +13,7 @@ import { ReviewProvider } from './context/ReviewContext';
 import { ToastProvider } from './context/ToastContext';
 import { CommunityProvider } from './context/CommunityContext';
 import { NotificationProvider } from './context/NotificationContext';
+import { AdminAlertProvider } from './context/AdminAlertContext';
 import { SupportProvider } from './context/SupportContext';
 import { ChatProvider } from './context/ChatContext';
 import { SettingsProvider } from './context/SettingsContext';
@@ -20,6 +21,7 @@ import { LanguageProvider, useLanguage } from './context/LanguageContext';
 import { AppView, Item, UserRole, Booking, User, ItemCategory } from './types';
 import AuthScreen from './screens/AuthScreen';
 import FarmerView from './screens/FarmerView';
+import AgentView from './screens/AgentView';
 import SupplierView, { SupplierKycInlineForm } from './screens/SupplierView';
 import ItemDetailScreen from './screens/ItemDetailScreen';
 import Header from './components/Header';
@@ -51,6 +53,7 @@ import ConversationsScreen from './screens/ConversationsScreen';
 import CommunityScreen from './screens/CommunityScreen';
 import PaymentScreen from './screens/PaymentScreen';
 import CropCalendarScreen from './screens/CropCalendarScreen';
+import AdminAlertsScreen from './screens/AdminAlertsScreen';
 
 
 const AppContent: React.FC = () => {
@@ -71,6 +74,8 @@ const AppContent: React.FC = () => {
         setViewStack(prev => {
             const next = [...prev, view];
             try { localStorage.setItem('agrirent-current-view', JSON.stringify(view)); } catch { }
+            // Push state to browser history for back button support
+            window.history.pushState({ viewIndex: next.length - 1 }, '');
             return next;
         });
     }, []);
@@ -81,6 +86,34 @@ const AppContent: React.FC = () => {
             try { localStorage.setItem('agrirent-current-view', JSON.stringify(next[next.length - 1])); } catch { }
             return next;
         });
+    }, []);
+
+    // Handle browser/mobile back button
+    useEffect(() => {
+        const handlePopState = (event: PopStateEvent) => {
+            // Go back one step in our view stack
+            setViewStack(prev => {
+                // If we're already at HOME (stack length of 1), don't go back further
+                if (prev.length <= 1) {
+                    // Push a new history state to prevent actually leaving the app
+                    window.history.pushState({ viewIndex: 0 }, '');
+                    return prev;
+                }
+
+                const next = prev.slice(0, -1);
+                try { localStorage.setItem('agrirent-current-view', JSON.stringify(next[next.length - 1])); } catch { }
+                return next;
+            });
+        };
+
+        window.addEventListener('popstate', handlePopState);
+
+        // Initialize history state
+        if (!window.history.state) {
+            window.history.replaceState({ viewIndex: 0 }, '');
+        }
+
+        return () => window.removeEventListener('popstate', handlePopState);
     }, []);
 
     const currentView = viewStack[viewStack.length - 1];
@@ -155,23 +188,37 @@ const AppContent: React.FC = () => {
             return <CommunityScreen goBack={goBack} />;
         case 'PAYMENT':
             return <PaymentScreen booking={currentView.booking as Booking} goBack={goBack} navigate={navigate} fromCompletion={(currentView as any).fromCompletion} />;
+        case 'ADMIN_ALERTS':
+            return <AdminAlertsScreen navigate={navigate} goBack={goBack} />;
+        case 'ADMIN_DASHBOARD':
+            return <AdminView navigate={navigate} />;
         case 'HOME':
         default:
             console.log('Rendering HOME view for user:', user);
             console.log('User role:', user?.role);
             console.log('Role enum values:', UserRole);
 
-            if (user.role === UserRole.Farmer) {
+            const role = user.role?.toLowerCase();
+            if (role === UserRole.Farmer.toLowerCase()) {
                 return <FarmerView navigate={navigate} />;
             }
-            if (user.role === UserRole.Supplier) {
+            if (role === UserRole.Supplier.toLowerCase()) {
                 return <SupplierView navigate={navigate} />;
             }
-            if (user.role === UserRole.Admin) {
+            if (role === UserRole.Admin.toLowerCase()) {
                 return <AdminView navigate={navigate} />;
             }
+            if (role === UserRole.Agent.toLowerCase()) {
+                return <AgentView navigate={navigate} />;
+            }
             console.error('Unknown user role - no match found:', user.role);
-            return <div>Unknown user role: {user.role}</div>;
+            return (
+                <div className="p-8 text-center">
+                    <h2 className="text-xl font-bold text-red-600">Login Error</h2>
+                    <p className="text-gray-700 mt-2">Unknown user role: {user.role}</p>
+                    <p className="text-sm text-gray-500 mt-1">Please contact support.</p>
+                </div>
+            );
     }
 };
 
@@ -181,34 +228,36 @@ const App: React.FC = () => {
             <LanguageProvider>
                 <AuthProvider>
                     <NotificationProvider>
-                        <ItemProvider>
-                            <BookingProvider>
-                                <ReviewProvider>
-                                    <CommunityProvider>
-                                        <SupportProvider>
-                                            <ChatProvider>
-                                                <SettingsProvider>
-                                                    <AiAssistantProvider>
-                                                        <WeatherProvider>
-                                                            {/* REACT NATIVE MIGRATION NOTE:
-                                                            This main container <div> would be replaced by a <SafeAreaView> or <View> component
-                                                            from 'react-native' to ensure content is displayed correctly on mobile devices with notches.
-                                                            Styling would be applied using the StyleSheet API. */}
-                                                            <div className="bg-gray-100 min-h-screen font-sans">
-                                                                <div className="container mx-auto max-w-lg shadow-2xl bg-white min-h-screen relative">
-                                                                    <AppContent />
-                                                                    <Toast />
+                        <AdminAlertProvider>
+                            <ItemProvider>
+                                <BookingProvider>
+                                    <ReviewProvider>
+                                        <CommunityProvider>
+                                            <SupportProvider>
+                                                <ChatProvider>
+                                                    <SettingsProvider>
+                                                        <AiAssistantProvider>
+                                                            <WeatherProvider>
+                                                                {/* REACT NATIVE MIGRATION NOTE:
+                                                                This main container <div> would be replaced by a <SafeAreaView> or <View> component
+                                                                from 'react-native' to ensure content is displayed correctly on mobile devices with notches.
+                                                                Styling would be applied using the StyleSheet API. */}
+                                                                <div className="bg-gray-100 min-h-screen font-sans">
+                                                                    <div className="container mx-auto max-w-lg shadow-2xl bg-white min-h-screen relative">
+                                                                        <AppContent />
+                                                                        <Toast />
+                                                                    </div>
                                                                 </div>
-                                                            </div>
-                                                        </WeatherProvider>
-                                                    </AiAssistantProvider>
-                                                </SettingsProvider>
-                                            </ChatProvider>
-                                        </SupportProvider>
-                                    </CommunityProvider>
-                                </ReviewProvider>
-                            </BookingProvider>
-                        </ItemProvider>
+                                                            </WeatherProvider>
+                                                        </AiAssistantProvider>
+                                                    </SettingsProvider>
+                                                </ChatProvider>
+                                            </SupportProvider>
+                                        </CommunityProvider>
+                                    </ReviewProvider>
+                                </BookingProvider>
+                            </ItemProvider>
+                        </AdminAlertProvider>
                     </NotificationProvider>
                 </AuthProvider>
             </LanguageProvider>

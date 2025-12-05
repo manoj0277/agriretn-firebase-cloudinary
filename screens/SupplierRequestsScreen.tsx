@@ -11,6 +11,7 @@ import Input from '../components/Input';
 import { useReview } from '../context/ReviewContext';
 import StarRating from '../components/StarRating';
 import { useNotification } from '../context/NotificationContext';
+import { calculateDistance, openMap } from '../utils/location';
 
 const AcceptJobModal: React.FC<{
     booking: Booking;
@@ -58,7 +59,7 @@ const AcceptJobModal: React.FC<{
     return (
         <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-4">
             <div className="bg-white dark:bg-neutral-800 rounded-lg shadow-xl w-full max-w-md p-6">
-                <h2 className="text-xl font-bold mb-2 text-neutral-800 dark:text-neutral-100">Accept Job Request</h2>
+                <h2 className="text-xl font-bold mb-2 text-neutral-800 dark:text-neutral-100">Accept Request</h2>
                 <p className="text-sm text-neutral-600 dark:text-neutral-300 mb-4">Select an item to fulfill this booking request.</p>
 
                 <div className="bg-neutral-50 dark:bg-neutral-700 p-3 rounded-lg mb-4 text-sm">
@@ -139,6 +140,19 @@ export const SupplierRequestsScreen: React.FC = () => {
     const { addNotification } = useNotification();
     const [bookingToAccept, setBookingToAccept] = useState<Booking | null>(null);
     const [conflictWarning, setConflictWarning] = useState<{ show: boolean; conflictingBookings: Booking[]; itemId: number; options?: any } | null>(null);
+    const [userLocation, setUserLocation] = useState<{ lat: number; lng: number; } | undefined>();
+    const [selectedCategory, setSelectedCategory] = useState<string>('All');
+
+    React.useEffect(() => {
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    setUserLocation({ lat: position.coords.latitude, lng: position.coords.longitude });
+                },
+                (error) => console.error("Error getting location:", error)
+            );
+        }
+    }, []);
 
     const supplierItems = useMemo(() => items.filter(i => i.ownerId === user?.id), [items, user]);
 
@@ -169,12 +183,18 @@ export const SupplierRequestsScreen: React.FC = () => {
         });
     }, [bookings, user, items]);
 
-    const getFarmerName = (farmerId: number) => allUsers.find(u => u.id === farmerId)?.name || 'Unknown Farmer';
+    const filteredRequests = useMemo(() => {
+        if (selectedCategory === 'All') return availableRequests;
+        return availableRequests.filter(b => b.itemCategory === selectedCategory);
+    }, [availableRequests, selectedCategory]);
+
+    const getFarmerName = (farmerId: string) => allUsers.find(u => u.id === farmerId)?.name || 'Unknown Farmer';
+    const getFarmerRole = (farmerId: string) => allUsers.find(u => u.id === farmerId)?.role || 'Farmer';
     const getMachineNameForOpRequest = (itemId?: number) => items.find(i => i.id === itemId)?.name || 'a machine';
 
     const handleAcceptClick = (booking: Booking) => setBookingToAccept(booking);
 
-    const handleConfirmAccept = (itemId: number, options?: { operateSelf?: boolean, quantityToProvide?: number }) => {
+    const handleConfirmAccept = async (itemId: number, options?: { operateSelf?: boolean, quantityToProvide?: number }) => {
         if (bookingToAccept && user) {
             // Check for time conflicts with existing bookings
             const conflicts = bookings.filter(b => {
@@ -201,30 +221,34 @@ export const SupplierRequestsScreen: React.FC = () => {
                 // Show warning modal
                 setConflictWarning({ show: true, conflictingBookings: conflicts, itemId, options });
             } else {
-                acceptBookingRequest(bookingToAccept.id, user.id, itemId, options);
-                setBookingToAccept(null);
+                const success = await acceptBookingRequest(bookingToAccept.id, user.id, itemId, options);
+                if (success) {
+                    setBookingToAccept(null);
+                }
             }
         }
     };
 
-    const handleConfirmWithConflict = () => {
+    const handleConfirmWithConflict = async () => {
         if (bookingToAccept && user && conflictWarning) {
-            acceptBookingRequest(bookingToAccept.id, user.id, conflictWarning.itemId, conflictWarning.options);
+            const success = await acceptBookingRequest(bookingToAccept.id, user.id, conflictWarning.itemId, conflictWarning.options);
 
-            // Notify admin
-            const conflictDetails = conflictWarning.conflictingBookings.map(b => {
-                const item = items.find(i => i.id === b.itemId);
-                return `${item?.name || 'Item'} at ${b.startTime} on ${b.date}`;
-            }).join(', ');
+            if (success) {
+                // Notify admin
+                const conflictDetails = conflictWarning.conflictingBookings.map(b => {
+                    const item = items.find(i => i.id === b.itemId);
+                    return `${item?.name || 'Item'} at ${b.startTime} on ${b.date}`;
+                }).join(', ');
 
-            addNotification({
-                userId: 0,
-                message: `Supplier ${user.name} (ID: ${user.id}) accepted overlapping bookings. Existing: ${conflictDetails}. New: ${bookingToAccept.startTime} on ${bookingToAccept.date}. Please contact them.`,
-                type: 'admin'
-            });
+                addNotification({
+                    userId: '0',
+                    message: `Supplier ${user.name} (ID: ${user.id}) accepted overlapping bookings. Existing: ${conflictDetails}. New: ${bookingToAccept.startTime} on ${bookingToAccept.date}. Please contact them.`,
+                    type: 'admin'
+                });
 
-            setBookingToAccept(null);
-            setConflictWarning(null);
+                setBookingToAccept(null);
+                setConflictWarning(null);
+            }
         }
     };
 
@@ -245,18 +269,40 @@ export const SupplierRequestsScreen: React.FC = () => {
         );
     }, [bookingToAccept, supplierItems]);
 
+    const categories = ['All', ...Object.values(ItemCategory)];
+
     return (
-        <div>
-            <div className="p-4 space-y-3">
-                {availableRequests.length > 0 ? (
-                    [...availableRequests].reverse().map(booking => {
+        <div className="bg-gray-50 dark:bg-neutral-900 min-h-screen pb-20">
+            {/* Header removed as it's provided by SupplierView */}
+
+            {/* Category Filters - Styled as sub-header */}
+            <div className="bg-white dark:bg-neutral-800 sticky top-0 z-10 shadow-sm px-4 py-3">
+                <div className="overflow-x-auto flex space-x-2 no-scrollbar">
+                    {categories.map(cat => (
+                        <button
+                            key={cat}
+                            onClick={() => setSelectedCategory(cat)}
+                            className={`px-4 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${selectedCategory === cat
+                                ? 'bg-primary text-white'
+                                : 'bg-neutral-100 dark:bg-neutral-700 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-600'
+                                }`}
+                        >
+                            {cat}
+                        </button>
+                    ))}
+                </div>
+            </div>
+
+            <div className="p-4 space-y-4">
+                {filteredRequests.length > 0 ? (
+                    [...filteredRequests].reverse().map(booking => {
                         const isOperatorRequest = booking.status === 'Awaiting Operator';
                         const isPendingConfirmation = booking.status === 'Pending Confirmation';
 
                         const itemForBooking = items.find(i => i.id === booking.itemId);
 
                         const title = isPendingConfirmation
-                            ? `Direct Request: ${itemForBooking?.name || 'Unknown Item'}`
+                            ? `Request for ${itemForBooking?.name || 'Unknown Item'}`
                             : isOperatorRequest
                                 ? `Driver for ${getMachineNameForOpRequest(booking.itemId)}`
                                 : `Request for ${booking.itemCategory}`;
@@ -264,42 +310,136 @@ export const SupplierRequestsScreen: React.FC = () => {
                         const tagText = isPendingConfirmation ? 'Direct Request' : isOperatorRequest ? 'Operator Request' : 'Broadcast';
                         const tagColor = isPendingConfirmation ? 'bg-green-100 text-green-800' : isOperatorRequest ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800';
 
+                        const farmer = allUsers.find(u => u.id === booking.farmerId);
+                        const distance = userLocation && farmer?.locationCoords
+                            ? calculateDistance(userLocation.lat, userLocation.lng, farmer.locationCoords.lat, farmer.locationCoords.lng)
+                            : null;
+
+                        // Dynamic Icon Logic
+                        const getIcon = () => {
+                            if (booking.itemCategory === ItemCategory.Workers || booking.workPurpose?.toLowerCase().includes('labour')) {
+                                return (
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-neutral-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                                    </svg>
+                                );
+                            }
+                            if (booking.itemCategory === ItemCategory.Harvesters) {
+                                return (
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-neutral-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                                    </svg>
+                                ); // Placeholder for Harvester, using Lightning for power/machine
+                            }
+                            // Default Tractor/Machine
+                            return (
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-neutral-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path d="M9 17a2 2 0 11-4 0 2 2 0 014 0zM19 17a2 2 0 11-4 0 2 2 0 014 0z" />
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V8a1 1 0 011-1h2.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V16a1 1 0 01-1 1h-1m-6-1a1 1 0 001 1h1M5 17a2 2 0 104 0m-4 0a2 2 0 114 0m6 0a2 2 0 104 0m-4 0a2 2 0 114 0" />
+                                </svg>
+                            );
+                        };
+
                         return (
-                            <div key={booking.id} className="bg-white dark:bg-neutral-700 p-4 rounded-lg border border-neutral-200 dark:border-neutral-600 shadow-sm">
-                                <div className="flex justify-between items-start">
-                                    <div>
-                                        <h3 className="font-bold text-lg text-neutral-800 dark:text-neutral-100">{title}</h3>
-                                        <p className="text-sm text-neutral-600 dark:text-neutral-300">From: {getFarmerName(booking.farmerId)}</p>
+                            <div key={booking.id} className="bg-white dark:bg-neutral-800 rounded-xl shadow-sm border border-neutral-100 dark:border-neutral-700 overflow-hidden">
+                                <div className="p-4">
+                                    <div className="flex justify-between items-start mb-3">
+                                        <div>
+                                            <h3 className="font-bold text-lg text-neutral-800 dark:text-neutral-100 leading-tight">{title}</h3>
+                                            <div className="flex items-center mt-1 text-neutral-500 dark:text-neutral-400 text-sm">
+                                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" viewBox="0 0 20 20" fill="currentColor">
+                                                    <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" />
+                                                </svg>
+                                                <span>From: {getFarmerRole(booking.farmerId)}</span>
+                                            </div>
+                                        </div>
+                                        <span className={`text-xs font-semibold px-2 py-1 rounded ${tagColor}`}>
+                                            {tagText}
+                                        </span>
                                     </div>
-                                    <span className={`text-xs font-semibold px-3 py-1 rounded-full ${tagColor}`}>
-                                        {tagText}
-                                    </span>
-                                </div>
-                                <div className="mt-3 border-t dark:border-neutral-600 pt-3 space-y-1 text-sm text-neutral-700 dark:text-neutral-300">
-                                    <p><strong>Date:</strong> {booking.date} from {booking.startTime} - {booking.estimatedDuration ? `${booking.estimatedDuration} hours` : booking.endTime}</p>
-                                    {booking.quantity && !isOperatorRequest && <p><strong>Quantity:</strong> {booking.quantity}</p>}
-                                    <p><strong>Location:</strong> {booking.location}</p>
-                                    {booking.workPurpose && <p><strong>Work Purpose:</strong> {booking.workPurpose}</p>}
-                                    {booking.preferredModel && <p><strong>Preferred Model:</strong> {booking.preferredModel}</p>}
-                                    {booking.operatorRequired && !isOperatorRequest && <p className="text-blue-600 dark:text-blue-400 font-semibold">Operator Required</p>}
-                                    {booking.additionalInstructions && <p className="p-2 bg-neutral-50 dark:bg-neutral-600 rounded-md mt-1"><strong>Instructions:</strong> <em>{booking.additionalInstructions}</em></p>}
-                                </div>
-                                <div className="mt-4 border-t dark:border-neutral-600 pt-3 flex justify-end space-x-2">
-                                    {isPendingConfirmation && (
-                                        <Button variant="secondary" className="w-auto px-6 bg-red-600/10 text-red-700 hover:bg-red-600/20" onClick={() => rejectBooking(booking.id)}>
-                                            Reject
-                                        </Button>
-                                    )}
-                                    <Button className="w-auto px-6" onClick={() => handleAcceptClick(booking)}>
-                                        {isPendingConfirmation ? 'Accept' : 'View & Accept'}
-                                    </Button>
+
+                                    <div className="space-y-3 mt-4">
+                                        <div className="flex items-start">
+                                            <div className="w-6 flex-shrink-0 flex justify-center mt-0.5">
+                                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-neutral-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                                </svg>
+                                            </div>
+                                            <div className="ml-2">
+                                                <p className="text-sm font-semibold text-neutral-800 dark:text-neutral-200">Date: {booking.date} from {booking.startTime}</p>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex items-start justify-between">
+                                            <div className="flex items-start flex-grow">
+                                                <div className="w-6 flex-shrink-0 flex justify-center mt-0.5">
+                                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-neutral-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                                                    </svg>
+                                                </div>
+                                                <div className="ml-2">
+                                                    <button
+                                                        onClick={() => openMap(booking.location)}
+                                                        className="text-sm font-semibold text-neutral-800 dark:text-neutral-200 hover:text-blue-600 hover:underline text-left"
+                                                    >
+                                                        Location: {booking.location}
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            {distance && (
+                                                <span className="text-xs text-neutral-500 whitespace-nowrap ml-2">{distance} km away</span>
+                                            )}
+                                        </div>
+
+                                        <div className="flex items-start">
+                                            <div className="w-6 flex-shrink-0 flex justify-center mt-0.5">
+                                                {getIcon()}
+                                            </div>
+                                            <div className="ml-2">
+                                                <p className="text-sm font-semibold text-neutral-800 dark:text-neutral-200">Work Purpose: {booking.workPurpose}</p>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="mt-5">
+                                        {isPendingConfirmation ? (
+                                            <div className="flex space-x-3">
+                                                <button
+                                                    onClick={() => rejectBooking(booking.id)}
+                                                    className="flex-1 bg-red-50 text-red-700 font-bold py-3 px-4 rounded-lg hover:bg-red-100 transition-colors"
+                                                >
+                                                    Reject
+                                                </button>
+                                                <button
+                                                    onClick={() => handleAcceptClick(booking)}
+                                                    className="flex-1 bg-primary text-white font-bold py-3 px-4 rounded-lg hover:bg-primary-dark transition-colors shadow-md"
+                                                >
+                                                    Accept
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            <button
+                                                onClick={() => handleAcceptClick(booking)}
+                                                className="w-full bg-primary text-white font-bold py-3 px-4 rounded-lg hover:bg-primary-dark transition-colors shadow-md"
+                                            >
+                                                View & Accept
+                                            </button>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
                         )
                     })
                 ) : (
                     <div className="text-center py-16">
-                        <p className="text-neutral-700 dark:text-neutral-300">No available job requests right now.</p>
+                        <div className="bg-neutral-100 dark:bg-neutral-800 rounded-full w-20 h-20 flex items-center justify-center mx-auto mb-4">
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-neutral-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                            </svg>
+                        </div>
+                        <h3 className="text-lg font-bold text-neutral-800 dark:text-neutral-200 mb-1">No Requests Found</h3>
+                        <p className="text-neutral-500 dark:text-neutral-400">There are no job requests matching your criteria right now.</p>
                     </div>
                 )}
             </div>

@@ -6,16 +6,16 @@ const API_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3001
 
 type ConversationSummary = {
     chatId: string;
-    otherUserId: number;
+    otherUserId: string; // Changed to string for firebaseUid
     lastMessage: ChatMessage;
 };
 
 interface ChatContextType {
     getMessagesForChat: (chatId: string) => ChatMessage[];
     sendMessage: (chatId: string, messageData: Omit<ChatMessage, 'id' | 'chatId' | 'timestamp' | 'read'>) => void;
-    getConversationsForUser: (userId: number) => ConversationSummary[];
-    getUnreadMessageCount: (userId: number) => number;
-    markChatAsRead: (chatId: string, currentUserId: number) => void;
+    getConversationsForUser: (userId: string) => ConversationSummary[];
+    getUnreadMessageCount: (userId: string) => number;
+    markChatAsRead: (chatId: string, currentUserId: string) => void;
 }
 
 const ChatContext = createContext<ChatContextType | undefined>(undefined);
@@ -53,12 +53,12 @@ export const ChatProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             const lower = (newMsg.text || '').toLowerCase();
             const blacklist = ['abuse', 'idiot', 'stupid', 'fool', 'fraud'];
             if (blacklist.some(w => lower.includes(w))) {
-                addNotification && addNotification({ userId: 0, message: `Potential abusive chat detected from user ${newMsg.senderId}.`, type: 'admin' });
+                addNotification && addNotification({ userId: '0', message: `Potential abusive chat detected from user ${newMsg.senderId}.`, type: 'admin' });
             }
         } catch { }
     }, [addNotification]);
 
-    const getConversationsForUser = useCallback((userId: number) => {
+    const getConversationsForUser = useCallback((userId: string) => {
         const conversations = new Map<string, ChatMessage[]>();
         messages.forEach(msg => {
             if (!conversations.has(msg.chatId)) {
@@ -70,7 +70,7 @@ export const ChatProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         const userConversations: ConversationSummary[] = [];
 
         conversations.forEach((msgs, chatId) => {
-            const participants = chatId.split('-').map(Number);
+            const participants = chatId.split('-');
             if (participants.includes(userId)) {
                 const otherUserId = participants.find(id => id !== userId);
                 if (otherUserId) {
@@ -87,11 +87,11 @@ export const ChatProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         return userConversations.sort((a, b) => new Date(b.lastMessage.timestamp).getTime() - new Date(a.lastMessage.timestamp).getTime());
     }, [messages]);
 
-    const getUnreadMessageCount = useCallback((userId: number): number => {
+    const getUnreadMessageCount = useCallback((userId: string): number => {
         return messages.filter(msg => msg.receiverId === userId && !msg.read).length;
     }, [messages]);
 
-    const markChatAsRead = useCallback(async (chatId: string, currentUserId: number) => {
+    const markChatAsRead = useCallback(async (chatId: string, currentUserId: string) => {
         const unread = messages.filter(m => m.chatId === chatId && m.receiverId === currentUserId && !m.read);
         if (unread.length > 0) {
             for (const msg of unread) {

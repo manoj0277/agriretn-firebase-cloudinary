@@ -7,7 +7,7 @@ export enum UserRole {
 }
 
 export interface User {
-    id: number;
+    id: string; // firebaseUid - use String(id) for legacy conversions
     name: string;
     email: string;
     password?: string;
@@ -20,13 +20,16 @@ export interface User {
     age?: number;
     gender?: 'Male' | 'Female' | 'Other' | 'Prefer not to say';
     location?: string;
-    status: 'approved' | 'pending' | 'suspended';
+    userStatus: 'approved' | 'pending' | 'suspended' | 'blocked';
+    kycStatus?: 'pending' | 'approved' | 'rejected' | 'not_submitted';
+    lastAlerts?: Record<string, string>; // Map of alertType -> timestamp
     firebaseUid?: string;
     avgRating?: number;
     blockedDates?: string[];
     locationCoords?: { lat: number; lng: number; };
     // Notification-related fields
     district?: string; // Derived from GPS coordinates
+    mandal?: string; // Mandal/Taluk/Tehsil - more accurate than district
     notificationPreferences?: {
         sms: boolean;
         push: boolean;
@@ -34,6 +37,8 @@ export interface User {
     };
     deviceTokens?: string[]; // For push notifications
     signupDate?: string; // ISO timestamp for targeting new users
+    googleSheetsUrl?: string; // For Agent Bulk Booking
+    isTrustedSupplier?: boolean; // Admin can mark suppliers as trusted for manual allocation
 }
 
 export enum ItemCategory {
@@ -74,7 +79,7 @@ export interface Item {
     category: ItemCategory;
     purposes: { name: WorkPurpose, price: number }[];
     images: string[];
-    ownerId: number;
+    ownerId: string; // Changed to string for firebaseUid
     location: string;
     available: boolean;
     status: 'approved' | 'pending' | 'rejected';
@@ -96,13 +101,13 @@ export interface Item {
 
 export interface Booking {
     id: string;
-    farmerId: number;
-    supplierId?: number;
+    farmerId: string; // Changed to string for firebaseUid
+    supplierId?: string; // Changed to string for firebaseUid
     itemId?: number;
     itemCategory: ItemCategory;
     date: string;
     startTime: string;
-    endTime: string;
+    endTime?: string;
     location: string;
     paymentId?: string;
     status: 'Searching' | 'Awaiting Operator' | 'Confirmed' | 'Arrived' | 'In Process' | 'Pending Payment' | 'Completed' | 'Cancelled' | 'Expired' | 'Pending Confirmation';
@@ -124,29 +129,42 @@ export interface Booking {
     discountAmount?: number;
     quantity?: number;
     allowMultipleSuppliers?: boolean;
-    operatorId?: number;
+    operatorId?: string; // Changed to string for firebaseUid
     isRebroadcast?: boolean;
     otpCode?: string;
     otpVerified?: boolean;
     workStartTime?: string;
     workEndTime?: string;
+    // Agent booking tracking
+    bookedByAgentId?: string;        // Changed to string for firebaseUid
+    bookedForFarmerId?: string;      // Changed to string for firebaseUid
+    isAgentBooking?: boolean;        // Flag for quick identification
+    // Timeout and radius tracking
+    createdAt?: string;              // Track when booking was created for timeout calculation
+    searchTimeoutNotified?: boolean; // Track if 6-hour alert was sent
+    searchRadiusExpanded?: boolean;  // Track if farmer expanded search radius
+    originalSearchRadius?: number;   // Store original radius before expansion
+    expandedSearchRadius?: number;   // Store expanded radius
+    manuallyAllottedBy?: string;     // Changed to string for firebaseUid
+    adminAlertCount?: number;        // Count of admin alerts sent (max 3 before auto-cancel)
+    lastAdminAlertTime?: string;     // Timestamp of last admin alert
 }
 
 export interface Review {
     id: number;
     itemId?: number;
-    ratedUserId?: number;
+    ratedUserId?: string; // Changed to string for firebaseUid
     bookingId: string;
-    reviewerId: number;
+    reviewerId: string; // Changed to string for firebaseUid
     rating: number;
     comment: string;
 }
 
 export interface ChatMessage {
     id: number;
-    chatId: string; // Composite key for the chat room, e.g., '1-2' for users or 'post-1' for forum
-    senderId: number;
-    receiverId: number; // Can be a user ID or 0 for a group/post chat
+    chatId: string; // Composite key for the chat room
+    senderId: string; // Changed to string for firebaseUid
+    receiverId: string; // Changed to string for firebaseUid
     text: string;
     timestamp: string;
     read: boolean;
@@ -155,14 +173,14 @@ export interface ChatMessage {
 
 export interface CommunityReply {
     id: number;
-    authorId: number;
+    authorId: string; // Changed to string for firebaseUid
     content: string;
     timestamp: string;
 }
 
 export interface ForumPost {
     id: number;
-    authorId: number;
+    authorId: string; // Changed to string for firebaseUid
     title: string;
     content: string;
     timestamp: string;
@@ -173,7 +191,7 @@ export interface DamageReport {
     id: number;
     bookingId: string;
     itemId: number;
-    reporterId: number;
+    reporterId: string; // Changed to string for firebaseUid
     description: string;
     status: 'pending' | 'resolved';
     timestamp: string;
@@ -185,7 +203,7 @@ export type NotificationChannel = 'app' | 'push';
 
 export interface Notification {
     id: number;
-    userId: number; // 0 for broadcast
+    userId: string; // Changed to string for firebaseUid - '0' for broadcast
     message: string;
     type: 'booking' | 'offer' | 'community' | 'admin' | 'coupon' | 'news' | 'update';
     read: boolean;
@@ -203,14 +221,14 @@ export interface Notification {
 
 export interface SupportReply {
     id: number;
-    authorId: number;
+    authorId: string; // Changed to string for firebaseUid
     text: string;
     timestamp: string;
 }
 
 export interface SupportTicket {
     id: number;
-    userId?: number;
+    userId?: string; // Changed to string for firebaseUid
     name: string;
     email: string;
     message: string;

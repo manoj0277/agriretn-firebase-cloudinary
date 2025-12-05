@@ -20,13 +20,13 @@ const ReviewCard: React.FC<{ review: Review }> = ({ review }) => {
     const user = allUsers.find(u => u.id === review.reviewerId);
     return (
         <div className="bg-neutral-100 dark:bg-neutral-700 p-4 rounded-lg">
-           <div className="flex items-center mb-2 justify-between">
+            <div className="flex items-center mb-2 justify-between">
                 <div>
                     <p className="font-semibold text-neutral-800 dark:text-neutral-100">{user?.name || 'Anonymous'}</p>
                     <StarRating rating={review.rating} />
                 </div>
-           </div>
-           <p className="text-neutral-700 dark:text-neutral-300">{review.comment}</p>
+            </div>
+            <p className="text-neutral-700 dark:text-neutral-300">{review.comment}</p>
         </div>
     );
 };
@@ -45,7 +45,7 @@ const ItemDetailScreen: React.FC<ItemDetailScreenProps> = ({ item, navigate, goB
         const supplierItems = items.filter(m => m.ownerId === supplier.id);
         const itemIds = supplierItems.map(m => m.id);
         const supplierReviews = reviews.filter(r => r.itemId && itemIds.includes(r.itemId));
-        
+
         if (supplierReviews.length < 2) return false;
 
         const totalRating = supplierReviews.reduce((acc, r) => acc + r.rating, 0);
@@ -60,7 +60,7 @@ const ItemDetailScreen: React.FC<ItemDetailScreenProps> = ({ item, navigate, goB
         const total = itemReviews.reduce((acc, r) => acc + r.rating, 0);
         return total / itemReviews.length;
     }, [itemReviews]);
-    
+
     const isMachineType = [ItemCategory.Tractors, ItemCategory.Harvesters, ItemCategory.JCB, ItemCategory.Borewell].includes(item.category);
 
     const handleRequest = () => {
@@ -74,9 +74,9 @@ const ItemDetailScreen: React.FC<ItemDetailScreenProps> = ({ item, navigate, goB
             <div className="flex-grow overflow-y-auto pb-24 hide-scrollbar">
                 <div>
                     <div className="relative">
-                        <img 
-                            src={item.images[currentImageIndex]} 
-                            alt={item.name} 
+                        <img
+                            src={item.images[currentImageIndex]}
+                            alt={item.name}
                             className="w-full h-64 object-cover"
                             referrerPolicy="no-referrer"
                             crossOrigin="anonymous"
@@ -114,15 +114,15 @@ const ItemDetailScreen: React.FC<ItemDetailScreenProps> = ({ item, navigate, goB
                     {item.images.length > 2 && (
                         <div className="flex space-x-2 mt-2 p-2 overflow-x-auto hide-scrollbar">
                             {item.images.slice(2).map((img, index) => (
-                                <button 
-                                    key={index + 2} 
+                                <button
+                                    key={index + 2}
                                     onClick={() => setCurrentImageIndex(index + 2)}
                                     className={`w-16 h-16 rounded-md flex-shrink-0 overflow-hidden border-2 transition-all ${currentImageIndex === index + 2 ? 'border-primary' : 'border-transparent hover:border-primary/50'}`}
                                 >
-                                    <img 
-                                        src={img} 
-                                        alt={`${item.name} thumbnail ${index + 3}`} 
-                                        className="w-full h-full object-cover" 
+                                    <img
+                                        src={img}
+                                        alt={`${item.name} thumbnail ${index + 3}`}
+                                        className="w-full h-full object-cover"
                                         referrerPolicy="no-referrer"
                                         crossOrigin="anonymous"
                                         onError={(e) => {
@@ -147,7 +147,7 @@ const ItemDetailScreen: React.FC<ItemDetailScreenProps> = ({ item, navigate, goB
                         </span>
                     </div>
 
-                     <div className="mt-4 border-t pt-4 dark:border-neutral-700">
+                    <div className="mt-4 border-t pt-4 dark:border-neutral-700">
                         <p className="text-2xl font-bold text-primary">Starting from ₹{minPrice} <span className="text-lg font-normal text-neutral-900 dark:text-neutral-300">per hour</span></p>
                     </div>
 
@@ -168,7 +168,7 @@ const ItemDetailScreen: React.FC<ItemDetailScreenProps> = ({ item, navigate, goB
                         <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-2">Description</h3>
                         <p className="text-neutral-700 dark:text-neutral-300">{item.description}</p>
                     </div>
-                    
+
                     {isMachineType && (
                         <div className="mt-6">
                             <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-2">Specifications</h3>
@@ -182,32 +182,40 @@ const ItemDetailScreen: React.FC<ItemDetailScreenProps> = ({ item, navigate, goB
                         </div>
                     )}
 
-                     <div className="mt-6">
+                    <div className="mt-6">
                         <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-2">Supplier Details</h3>
                         <div className="flex items-center space-x-2">
-                             <p className="text-neutral-900 dark:text-neutral-200 font-semibold">{supplier?.name}</p>
+                            <p className="text-neutral-900 dark:text-neutral-200 font-semibold">{supplier?.name}</p>
                             {isTopSupplier && (
                                 <span className="bg-yellow-400 text-yellow-900 text-xs font-bold px-2 py-0.5 rounded-full flex items-center">
-                                     <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 mr-1" viewBox="0 0 20 20" fill="currentColor">
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 mr-1" viewBox="0 0 20 20" fill="currentColor">
                                         <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
                                     </svg>
                                     Top Rated
                                 </span>
                             )}
                         </div>
-                        <p className="text-neutral-900 dark:text-neutral-300">Location: {item.location}</p>
+                        <p className="text-neutral-900 dark:text-neutral-300">
+                            Location: {(() => {
+                                if (supplier?.address) return supplier.address;
+                                if (supplier?.mandal && supplier?.district) return `${supplier.mandal}, ${supplier.district}`;
+                                if (supplier?.location && !/^-?\d+(\.\d+)?,\s*-?\d+(\.\d+)?$/.test(supplier.location)) return supplier.location;
+                                if (item.location && !/^-?\d+(\.\d+)?,\s*-?\d+(\.\d+)?$/.test(item.location)) return item.location;
+                                return "Contact for full address";
+                            })()}
+                        </p>
                     </div>
 
                     <div className="mt-6">
                         <div className="flex justify-between items-center mb-2">
-                             <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">Reviews</h3>
-                             {averageRating > 0 && (
+                            <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">Reviews</h3>
+                            {averageRating > 0 && (
                                 <div className="flex items-center space-x-1">
                                     <svg className="w-5 h-5 text-yellow-400" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"></path></svg>
                                     <span className="font-bold text-neutral-900 dark:text-neutral-100">{averageRating.toFixed(1)}</span>
                                     <span className="text-sm text-neutral-700 dark:text-neutral-300">({itemReviews.length})</span>
                                 </div>
-                             )}
+                            )}
                         </div>
                         <div className="space-y-3">
                             {itemReviews.length > 0 ? (
@@ -221,7 +229,7 @@ const ItemDetailScreen: React.FC<ItemDetailScreenProps> = ({ item, navigate, goB
             </div>
             {user?.role === UserRole.Farmer && (
                 <div className="fixed bottom-0 left-0 right-0 max-w-lg mx-auto p-4 bg-white dark:bg-neutral-800 border-t border-neutral-200 dark:border-neutral-700 shadow-[0_-2px_5px_rgba(0,0,0,0.05)]">
-                    <Button 
+                    <Button
                         onClick={handleRequest}
                         disabled={!item.available}
                         className={!item.available ? 'bg-neutral-400 hover:bg-neutral-400 cursor-not-allowed' : ''}

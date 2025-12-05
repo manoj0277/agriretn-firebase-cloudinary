@@ -123,7 +123,13 @@ const CommunityScreen: React.FC<{ goBack?: () => void }> = ({ goBack }) => {
             <div className="p-4">
                 <div className="flex justify-between items-center mb-4">
                     <h2 className="text-xl font-bold text-neutral-800 dark:text-neutral-100">{t('discussions')}</h2>
-                    <Button onClick={() => setShowForm(!showForm)} className="!w-auto !px-3 !py-1 !text-xs">{showForm ? t('cancel') : `+ ${t('newPost')}`}</Button>
+                    <button
+                        onClick={() => setShowForm(!showForm)}
+                        className="px-3 py-1.5 text-xs font-semibold bg-primary text-white rounded-lg hover:bg-primary-dark transition-colors shadow-sm flex items-center space-x-1"
+                    >
+                        <span>+</span>
+                        <span>{showForm ? t('cancel') : t('newPost')}</span>
+                    </button>
                 </div>
 
                 {showForm && (

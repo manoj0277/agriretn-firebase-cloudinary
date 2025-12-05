@@ -36,7 +36,7 @@ export const translations = {
   farmers: { en: 'Farmers', hi: 'किसान', te: 'రైతులు' },
   suppliers: { en: 'Suppliers', hi: 'आपूर्तिकर्ता', te: 'సరఫరాదారులు' },
   processing: { en: 'Processing...', hi: 'प्रोसेस हो रहा है...', te: 'ప్రాసెస్ అవుతోంది...' },
-  
+
   // AuthScreen
   login: { en: 'Login', hi: 'लॉग इन करें', te: 'లాగిన్' },
   signup: { en: 'Sign Up', hi: 'साइन अप करें', te: 'సైన్ అప్' },
@@ -77,7 +77,7 @@ export const translations = {
   aiVoiceAssistant: { en: 'AI Voice Assistant', hi: 'एआई वॉयस असिस्टेंट', te: 'AI వాయిస్ అసిస్టెంట్' },
   aiCropScan: { en: 'AI Crop Scan', hi: 'एआई फसल स्कैन', te: 'AI పంట స్కాన్' },
   mapView: { en: 'Map View', hi: 'मानचित्र दृश्य', te: 'మ్యాప్ వీక్షణ' },
-  
+
   // SupplierView
   welcome: { en: 'Welcome', hi: 'स्वागत है', te: 'స్వాగతం' },
   totalEarnings: { en: 'Total Earnings', hi: 'कुल कमाई', te: 'మొత్తం సంపాదన' },
@@ -95,7 +95,7 @@ export const translations = {
   myItemsAndServices: { en: 'My Items & Services', hi: 'मेरे आइटम और सेवाएँ', te: 'నా అంశాలు & సేవలు' },
   aiSuggestPrice: { en: 'AI Suggest Price', hi: 'एआई मूल्य सुझाएं', te: 'AI ధరను సూచించండి' },
   analyzing: { en: 'Analyzing...', hi: 'विश्लेषण हो रहा है...', te: 'విశ్లేషిస్తోంది...' },
-  
+
   // Chat & Support
   typeAMessage: { en: 'Type a message...', hi: 'एक संदेश लिखें...', te: 'సందేశం టైప్ చేయండి...' },
   helpAndSupport: { en: 'Help & Support', hi: 'सहायता और समर्थन', te: 'సహాయం & మద్దతు' },
@@ -103,7 +103,7 @@ export const translations = {
   faqs: { en: 'Frequently Asked Questions', hi: 'अक्सर पूछे जाने वाले प्रश्न', te: 'తరచుగా అడిగే ప్రశ్నలు' },
   contactSupport: { en: 'Contact Support', hi: 'समर्थन से संपर्क करें', te: 'మద్దతును సంప్రదించండి' },
   chats: { en: 'Chats', hi: 'चैट', te: 'చాట్‌లు' },
-  
+
   // Other Screens
   confirmYourBooking: { en: 'Confirm Your Booking', hi: 'अपनी बुकिंग की पुष्टि करें', te: 'మీ బుకింగ్‌ను నిర్ధారించండి' },
   confirmBooking: { en: 'Confirm Booking', hi: 'बुकिंग की पुष्टि करें', te: 'బుకింగ్‌ను నిర్ధారించండి' },
@@ -213,6 +213,21 @@ export const translations = {
   selectPaymentMethod: { en: 'Select Payment Method', hi: 'भुगतान विधि चुनें', te: 'చెల్లింపు పద్ధతిని ఎంచుకోండి' },
   confirmAndPay: { en: 'Confirm & Pay', hi: 'पुष्टि करें और भुगतान करें', te: 'నిర్ధారించి, చెల్లించండి' },
   awaitingPaymentFrom: { en: 'Awaiting payment from {{name}}', hi: '{{name}} से भुगतान की प्रतीक्षा है', te: '{{name}} నుండి చెల్లింపు కోసం వేచి ఉంది' },
+
+  // AI Scan Screen
+  couldNotProcessVideo: { en: 'Could not process video file.', hi: 'वीडियो फ़ाइल संसाधित नहीं हो सकी।', te: 'వీడియో ఫైల్‌ను ప్రాసెస్ చేయలేకపోయింది.' },
+  couldNotAccessCamera: { en: 'Could not access camera. Please check permissions.', hi: 'कैमरा एक्सेस नहीं हो सका। कृपया अनुमतियाँ जांचें।', te: 'కెమెరాను యాక్సెస్ చేయలేకపోయింది. దయచేసి అనుమతులను చెక్ చేయండి.' },
+  pleaseSelectImageFirst: { en: 'Please select an image first.', hi: 'कृपया पहले एक छवि चुनें।', te: 'దయచేసి ముందు ఒక చిత్రాన్ని ఎంచుకోండి.' },
+  aiServiceNotConfigured: { en: 'AI service is not configured. Missing API Key.', hi: 'एआई सेवा कॉन्फ़िगर नहीं है। एपीआई कुंजी गुम है।', te: 'AI సేవ కాన్ఫిగర్ చేయబడలేదు. API కీ లేదు.' },
+  failedToAnalyzeImage: { en: 'Failed to analyze the image. Please try again.', hi: 'छवि का विश्लेषण करने में विफल। कृपया पुन: प्रयास करें।', te: 'చిత్రాన్ని విశ్లేషించడంలో విఫలమైంది. దయచేసి మళ్లీ ప్రయత్నించండి.' },
+  getInstantCropAnalysis: { en: 'Get instant crop analysis', hi: 'तत्काल फसल विश्लेषण प्राप्त करें', te: 'తక్షణ పంట విశ్లేషణ పొందండి' },
+  useCamera: { en: 'Use Camera', hi: 'कैमरा उपयोग करें', te: 'కెమెరాను ఉపయోగించండి' },
+  uploadImageOrVideo: { en: 'Upload Image or Video', hi: 'छवि या वीडियो अपलोड करें', te: 'చిత్రం లేదా వీడియోను అప్‌లోడ్ చేయండి' },
+  capture: { en: 'Capture', hi: 'कैप్चर్', te: 'క్యాప్చర్' },
+  analyzeCrop: { en: 'Analyze Crop', hi: 'फसल का विश्लेषण करें', te: 'పంటను విశ్లేషించండి' },
+  clear: { en: 'Clear', hi: 'साफ करें', te: 'క్లియర్' },
+  aiAnalyzingImage: { en: 'AI is analyzing your image...', hi: 'एआई आपकी छवि का विश्लेषण कर रहा है...', te: 'AI మీ చిత్రాన్ని విశ్లేషిస్తోంది...' },
+  aiAnalysisReport: { en: 'AI Analysis Report', hi: 'एआई विश्लेषण रिपोर्ट', te: 'AI విశ్లేషణ నివేదిక' },
 };
 
 export type TranslationKey = keyof typeof translations;
