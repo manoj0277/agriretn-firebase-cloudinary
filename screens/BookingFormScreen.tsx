@@ -140,9 +140,10 @@ const BookingFormScreen: React.FC<BookingFormScreenProps> = ({ navigate, goBack,
     const billableHours = useMemo(() => Math.max(1, durationInHours), [durationInHours]);
 
     const distanceCharge = useMemo(() => {
-        if (!isDirectRequest || !item || !item.locationCoords || !user || !user.locationCoords) return 0;
+        // Use field location (locationCoords) from booking form, not user profile location
+        if (!isDirectRequest || !item || !item.locationCoords || !locationCoords) return 0;
 
-        const distance = haversineDistance(user.locationCoords, item.locationCoords);
+        const distance = haversineDistance(locationCoords, item.locationCoords);
         let serviceRadius = 3; // default 3km
         if (item.category === ItemCategory.Borewell) serviceRadius = 15;
         if (item.category === ItemCategory.Harvesters) serviceRadius = 10;
@@ -152,7 +153,7 @@ const BookingFormScreen: React.FC<BookingFormScreenProps> = ({ navigate, goBack,
             return Math.round(extraDistance * 10); // ₹10 per km
         }
         return 0;
-    }, [isDirectRequest, item, user]);
+    }, [isDirectRequest, item, locationCoords]);
 
     const applicableItems = useMemo(() => {
         return isDirectRequest && !isBroadcastOverride
@@ -344,6 +345,20 @@ const BookingFormScreen: React.FC<BookingFormScreenProps> = ({ navigate, goBack,
             return;
         }
 
+        // Validate Working Hours for Labour (Workers)
+        // Skip for Agent/AgentPro farmers (managed by founder, can book anytime)
+        if (itemCategory === ItemCategory.Workers && user?.role !== 'Agent' && user?.role !== 'AgentPro') {
+            const [startH, startM] = startTime.split(':').map(Number);
+            const startDecimal = startH + startM / 60;
+            const endDecimal = startDecimal + durationInHours;
+
+            // Working hours: 6 AM (6.0) to 7 PM (19.0)
+            if (startDecimal < 6 || endDecimal > 19) {
+                alert('Labour works only between 6:00 AM and 7:00 PM. Please adjust your start time or duration.');
+                return;
+            }
+        }
+
         if (user) {
             // Check for existing unconfirmed bookings for the same equipment (only for direct requests)
             if (isDirectRequest && item && !isBroadcastOverride) {
@@ -474,6 +489,11 @@ const BookingFormScreen: React.FC<BookingFormScreenProps> = ({ navigate, goBack,
                             <p className="text-xs text-neutral-500 mt-1">{t('minimumBookingHint') || 'Minimum booking: 1 hour'}</p>
                         </div>
                     </div>
+                    {itemCategory === ItemCategory.Workers && (
+                        <div className="mt-1 p-2 bg-orange-100 text-orange-800 text-xs rounded-md border border-orange-200">
+                            Note: Labour working hours are strictly <strong>6:00 AM to 7:00 PM</strong>.
+                        </div>
+                    )}
                     {durationInHours > 0 && durationInHours < 1 && (
                         <div className="mt-2 p-2 bg-yellow-100 text-yellow-800 text-xs rounded-md">
                             {t('minimumBillingNote') || 'Note: Minimum billing is 1 hour. Pricing will be calculated for 1 hour.'}
@@ -512,7 +532,7 @@ const BookingFormScreen: React.FC<BookingFormScreenProps> = ({ navigate, goBack,
 
                             {/* Search Suggestions Dropdown */}
                             {showSuggestions && searchSuggestions.length > 0 && (
-                                <div className="absolute z-50 w-full mt-1 bg-white dark:bg-gray-700 border border-neutral-300 dark:border-gray-600 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                                <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-gray-700 border border-neutral-300 dark:border-gray-600 rounded-lg shadow-lg max-h-48 overflow-y-auto" style={{ zIndex: 9999 }}>
                                     {searchSuggestions.map((suggestion, index) => (
                                         <button
                                             key={index}

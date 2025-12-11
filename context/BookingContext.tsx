@@ -46,6 +46,36 @@ const getDurationInHours = (startTime: string, endTime?: string, estimatedDurati
     return hours > 0 ? hours : 3; // Fallback if invalid
 }
 
+// Maximum daily working hours per equipment category
+const MAX_DAILY_WORKING_HOURS: Record<string, number> = {
+    'Tractors': 12,
+    'Drones': 12,
+    'Harvesters': 16,
+    'Borewell': 16,
+    'Workers': 13, // 6 AM to 7 PM
+    'default': 12
+};
+
+// Helper to calculate already booked hours for a supplier/item on a specific date
+const getBookedHoursForDate = (
+    bookings: Booking[],
+    supplierId: string,
+    itemId: number,
+    date: string
+): number => {
+    const activeStatuses = ['Confirmed', 'In Process', 'Arrived', 'Pending Payment'];
+    const relevantBookings = bookings.filter(b =>
+        b.supplierId === supplierId &&
+        b.itemId === itemId &&
+        b.date === date &&
+        activeStatuses.includes(b.status)
+    );
+
+    return relevantBookings.reduce((total, b) => {
+        return total + (b.estimatedDuration || 3); // Default 3 hours if not specified
+    }, 0);
+};
+
 export const BookingProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     const [bookings, setBookings] = useState<Booking[]>([]);
     const [damageReports, setDamageReports] = useState<DamageReport[]>([]);
@@ -71,23 +101,56 @@ export const BookingProvider: React.FC<{ children: ReactNode }> = ({ children })
         loadBookings();
     }, []);
 
-    // Poll for booking updates every 5 seconds to keep lists in sync
+    // Poll for booking updates every 60 seconds to avoid quota limits
     useEffect(() => {
         const interval = setInterval(async () => {
             try {
+                // Check if document is visible to avoid polling in background tabs
+                if (document.visibilityState === 'hidden') return;
+
                 const res = await fetch(`${API_URL}/bookings`);
                 if (res.ok) {
                     const data = await res.json();
-                    // Only update if data is different to avoid unnecessary re-renders? 
-                    // For simplicity in this context, we just update. React handles diffing.
+
+                    // Auto-cancel expired bookings that haven't been accepted
+                    const now = new Date();
+                    const expiredBookings = data.filter((b: Booking) => {
+                        // Only auto-cancel if still searching or pending confirmation
+                        if (!['Searching', 'Pending Confirmation'].includes(b.status)) return false;
+
+                        const bookingDate = new Date(b.date);
+                        const [hours, minutes] = b.startTime.split(':').map(Number);
+                        const bookingDateTime = new Date(bookingDate);
+                        bookingDateTime.setHours(hours, minutes, 0, 0);
+
+                        // Check if booking time has passed
+                        return now > bookingDateTime;
+                    });
+
+                    // Cancel each expired booking
+                    for (const booking of expiredBookings) {
+                        await fetch(`${API_URL}/bookings/${booking.id}`, {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ status: 'Expired' })
+                        });
+
+                        // Notify farmer
+                        addNotification({
+                            userId: booking.farmerId,
+                            message: `Your booking for ${booking.itemCategory} on ${booking.date} at ${booking.startTime} has been automatically cancelled as no supplier accepted it in time.`,
+                            type: 'booking'
+                        });
+                    }
+
                     setBookings(data);
                 }
             } catch (err) {
                 console.error("Polling error:", err);
             }
-        }, 5000);
+        }, 60000); // Increased to 60s
         return () => clearInterval(interval);
-    }, []);
+    }, [addNotification]);
 
     useEffect(() => {
         const loadReports = async () => {
@@ -302,6 +365,29 @@ export const BookingProvider: React.FC<{ children: ReactNode }> = ({ children })
         }
 
         const duration = Math.max(1, getDurationInHours(booking.startTime, undefined, booking.estimatedDuration));
+
+        // --- DAILY WORKING HOURS LIMIT CHECK ---
+        // Skip for Agent/AgentPro suppliers (managed by founder, no limits)
+        const supplier = items.find(i => i.id === itemId);
+        const supplierUser = supplier ? allUsers.find(u => u.id === supplier.ownerId) : null;
+        const isAgentSupplier = supplierUser?.role === 'Agent' || supplierUser?.role === 'AgentPro';
+
+        if (!isAgentSupplier) {
+            const bookingDate = booking.date || new Date().toISOString().split('T')[0];
+            const alreadyBookedHours = getBookedHoursForDate(bookings, supplierId, itemId, bookingDate);
+            const maxHours = MAX_DAILY_WORKING_HOURS[item.category] || MAX_DAILY_WORKING_HOURS['default'];
+            const remainingHours = maxHours - alreadyBookedHours;
+
+            if (duration > remainingHours) {
+                if (remainingHours <= 0) {
+                    showToast(`You have reached the maximum ${maxHours} working hours for this ${item.category} on ${bookingDate}. Cannot accept more bookings.`, 'error');
+                } else {
+                    showToast(`This booking requires ${duration} hours, but you only have ${remainingHours.toFixed(1)} hours remaining for ${bookingDate}. Max daily limit: ${maxHours} hours.`, 'error');
+                }
+                return false;
+            }
+        }
+
         const surgeMultiplier = (() => {
             const month = new Date(booking.date || new Date().toISOString()).getMonth() + 1;
             let base = 1;

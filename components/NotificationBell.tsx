@@ -11,14 +11,17 @@ const NotificationBell: React.FC = () => {
 
     const handleToggle = () => {
         setIsOpen(prev => !prev);
-        if (!isOpen) { // When opening, mark all as seen after delay
+        if (!isOpen) { // When opening, mark all as read
             setTimeout(() => {
                 notifications.forEach(n => {
+                    if (!n.read) {
+                        markAsRead(n.id); // Mark as read
+                    }
                     if (!n.seenAt) {
-                        markAsSeen(n.id); // This sets seenAt and expiresAt (+24h)
+                        markAsSeen(n.id); // Also set seenAt and expiresAt
                     }
                 });
-            }, 2000);
+            }, 500); // Short delay for better UX
         }
     };
 
@@ -82,7 +85,10 @@ const NotificationBell: React.FC = () => {
                 )}
             </button>
             {isOpen && (
-                <div className="absolute right-0 mt-2 w-80 bg-white dark:bg-neutral-800 rounded-lg shadow-xl border border-neutral-200 dark:border-neutral-700 z-50">
+                <div
+                    className="absolute right-0 mt-2 w-80 bg-white dark:bg-neutral-800 rounded-lg shadow-xl border border-neutral-200 dark:border-neutral-700"
+                    style={{ zIndex: 99999 }}
+                >
                     <div className="p-3 border-b dark:border-neutral-700 flex items-center justify-between">
                         <span className="font-semibold text-neutral-800 dark:text-neutral-100">Notifications</span>
                         {notifications.length > 0 && (

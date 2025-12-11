@@ -4,6 +4,8 @@ export enum UserRole {
     Farmer = 'Farmer',
     Supplier = 'Supplier',
     Admin = 'Admin',
+    AgentPro = 'AgentPro',
+    Agent = 'Agent',
 }
 
 export interface User {
@@ -39,6 +41,20 @@ export interface User {
     signupDate?: string; // ISO timestamp for targeting new users
     googleSheetsUrl?: string; // For Agent Bulk Booking
     isTrustedSupplier?: boolean; // Admin can mark suppliers as trusted for manual allocation
+    cancelledStreak?: number; // Count of sequential cancellations
+    suspendedUntil?: string; // ISO timestamp until when the user is suspended
+    isVerifiedAccount?: boolean; // Paid verified account - higher visibility, 85% utilization cap
+    verifiedAccountPurchaseDate?: string; // When the supplier purchased verified account
+    verifiedAccountExpiryDate?: string; // When the verification expires
+    verificationHistory?: { purchaseDate: string; expiryDate: string; plan: string; amount: number; }[]; // History of verification purchases
+    // --- Weighted Average Rating (WAR) System Fields ---
+    warTotalJobs?: number; // Total completed jobs
+    warOnTimeCount?: number; // Number of on-time deliveries
+    warDisputeCount6M?: number; // Disputes in last 6 months
+    warCancellationCount6M?: number; // Supplier-initiated cancellations in last 6 months
+    warLastCalculated?: string; // When the WAR was last recalculated
+    warBaseScore?: number; // Base score before penalties (for debugging)
+    warFinalRating?: number; // Final calculated WAR rating (displayed as avgRating)
 }
 
 export enum ItemCategory {
@@ -148,6 +164,7 @@ export interface Booking {
     manuallyAllottedBy?: string;     // Changed to string for firebaseUid
     adminAlertCount?: number;        // Count of admin alerts sent (max 3 before auto-cancel)
     lastAdminAlertTime?: string;     // Timestamp of last admin alert
+    estimatedDuration?: number;      // Estimated duration in hours
 }
 
 export interface Review {
@@ -197,15 +214,15 @@ export interface DamageReport {
     timestamp: string;
 }
 
-export type NotificationCategory = 'weather' | 'location' | 'price' | 'booking' | 'promotional' | 'performance' | 'system';
-export type NotificationPriority = 'low' | 'medium' | 'high' | 'urgent';
+export type NotificationCategory = 'weather' | 'location' | 'price' | 'booking' | 'promotional' | 'performance' | 'system' | 'alert';
+export type NotificationPriority = 'low' | 'medium' | 'high' | 'urgent' | 'critical';
 export type NotificationChannel = 'app' | 'push';
 
 export interface Notification {
     id: number;
     userId: string; // Changed to string for firebaseUid - '0' for broadcast
     message: string;
-    type: 'booking' | 'offer' | 'community' | 'admin' | 'coupon' | 'news' | 'update';
+    type: 'booking' | 'offer' | 'community' | 'admin' | 'coupon' | 'news' | 'update' | 'system' | 'alert';
     read: boolean;
     timestamp: string;
     // Enhanced fields for smart notifications
@@ -217,6 +234,7 @@ export interface Notification {
     scheduledFor?: string; // For scheduled notifications
     sentVia?: NotificationChannel[]; // Delivery channels used
     metadata?: Record<string, any>; // Additional data (weather info, booking ID, etc.)
+    showTo?: string[]; // List of user IDs who can see this notification (for deletion management)
 }
 
 export interface SupportReply {

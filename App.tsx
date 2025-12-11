@@ -22,6 +22,7 @@ import { AppView, Item, UserRole, Booking, User, ItemCategory } from './types';
 import AuthScreen from './screens/AuthScreen';
 import FarmerView from './screens/FarmerView';
 import AgentView from './screens/AgentView';
+import NewAgentView from './screens/NewAgentView';
 import SupplierView, { SupplierKycInlineForm } from './screens/SupplierView';
 import ItemDetailScreen from './screens/ItemDetailScreen';
 import Header from './components/Header';
@@ -54,6 +55,7 @@ import CommunityScreen from './screens/CommunityScreen';
 import PaymentScreen from './screens/PaymentScreen';
 import CropCalendarScreen from './screens/CropCalendarScreen';
 import AdminAlertsScreen from './screens/AdminAlertsScreen';
+
 
 
 const AppContent: React.FC = () => {
@@ -122,10 +124,29 @@ const AppContent: React.FC = () => {
 
 
 
-    if (user === undefined) {
-        return <div>Loading...</div>;
+    const [showSplash, setShowSplash] = useState(true);
+
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            setShowSplash(false);
+        }, 2500); // Show splash for 2.5 seconds
+        return () => clearTimeout(timer);
+    }, []);
+
+    if (user === undefined || showSplash) {
+        console.log('[App] Waiting. User:', user, 'Splash:', showSplash);
+        return (
+            <div className="flex flex-col items-center justify-center min-h-screen bg-white">
+                <img
+                    src="/bhommihire_logo.png"
+                    alt="BhommiHire"
+                    className="w-32 h-32 object-contain animate-bounce"
+                />
+            </div>
+        );
     }
     if (!user) {
+        console.log('[App] No user found, rendering AuthScreen');
         return <AuthScreen />;
     }
 
@@ -190,6 +211,7 @@ const AppContent: React.FC = () => {
             return <PaymentScreen booking={currentView.booking as Booking} goBack={goBack} navigate={navigate} fromCompletion={(currentView as any).fromCompletion} />;
         case 'ADMIN_ALERTS':
             return <AdminAlertsScreen navigate={navigate} goBack={goBack} />;
+
         case 'ADMIN_DASHBOARD':
             return <AdminView navigate={navigate} />;
         case 'HOME':
@@ -208,8 +230,11 @@ const AppContent: React.FC = () => {
             if (role === UserRole.Admin.toLowerCase()) {
                 return <AdminView navigate={navigate} />;
             }
-            if (role === UserRole.Agent.toLowerCase()) {
+            if (role === UserRole.AgentPro.toLowerCase()) {
                 return <AgentView navigate={navigate} />;
+            }
+            if (role === UserRole.Agent.toLowerCase()) {
+                return <NewAgentView navigate={navigate} />;
             }
             console.error('Unknown user role - no match found:', user.role);
             return (
@@ -243,7 +268,7 @@ const App: React.FC = () => {
                                                                 from 'react-native' to ensure content is displayed correctly on mobile devices with notches.
                                                                 Styling would be applied using the StyleSheet API. */}
                                                                 <div className="bg-gray-100 min-h-screen font-sans">
-                                                                    <div className="container mx-auto max-w-lg shadow-2xl bg-white min-h-screen relative">
+                                                                    <div className="container mx-auto max-w-lg shadow-2xl bg-white min-h-screen relative flex flex-col">
                                                                         <AppContent />
                                                                         <Toast />
                                                                     </div>

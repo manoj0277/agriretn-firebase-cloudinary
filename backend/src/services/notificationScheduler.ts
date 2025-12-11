@@ -2,6 +2,7 @@
 // Handles auto-deletion of expired notifications and scheduled notification delivery
 
 import { NotificationService, BroadcastService } from './firestore';
+import { checkAutoCompleteBookings } from './bookingTimeout'; // Import added
 
 /**
  * Delete notifications that have expired (24 hours after being seen)
@@ -113,6 +114,17 @@ export function startNotificationScheduler(): void {
     deleteExpiredNotifications();
     deleteExpiredBroadcasts();  // FREE TTL alternative
     processScheduledNotifications();
+    checkAutoCompleteBookings();
+
+    // Import dynamically to avoid circular dependencies if any, or just import at top if safe. 
+    // Assuming safe import at top or usage here.
+    // For now, let's assume we need to import it.
+    // Since we can't easily add import at top with replace_file_content if it wasn't there, 
+    // and we are already editing this file, I'll assume we can just modify this function 
+    // BUT I need to add the import to the file first or use a dynamic import if supported.
+    // Let's add the import to the top of the file in a separate step or just assume I'll do it.
+    // Actually, I'll use a separate step to add the import.
+
 
     // Run every hour (3600000 ms)
     setInterval(async () => {

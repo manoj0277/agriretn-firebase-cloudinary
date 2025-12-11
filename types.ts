@@ -5,6 +5,7 @@ export enum UserRole {
     Farmer = 'Farmer',
     Supplier = 'Supplier',
     Admin = 'Admin',
+    AgentPro = 'AgentPro',
     Agent = 'Agent',
 }
 
@@ -21,6 +22,7 @@ export interface User {
     gender?: 'Male' | 'Female' | 'Other' | 'Prefer not to say';
     location?: string;
     userStatus: 'approved' | 'pending' | 'suspended' | 'blocked';
+    suspendedUntil?: string; // Date string for when suspension ends
     kycStatus?: 'pending' | 'approved' | 'rejected' | 'not_submitted';
     lastAlerts?: Record<string, string>; // Map of alertType -> timestamp
     avgRating?: number;
@@ -42,6 +44,17 @@ export interface User {
     signupDate?: string;
     googleSheetsUrl?: string; // For Agent Bulk Booking
     isTrustedSupplier?: boolean; // Admin can mark suppliers as trusted for manual allocation
+    isVerifiedAccount?: boolean; // Paid verified account - treated as "Agent" (bypass utilization cap, top priority)
+    verifiedAccountPurchaseDate?: string; // When the supplier purchased verified account
+    verifiedAccountExpiryDate?: string; // When the verification expires
+    verificationHistory?: { purchaseDate: string; expiryDate: string; plan: string; amount: number; }[]; // History of verification purchases
+    // --- Weighted Average Rating (WAR) System Fields ---
+    warTotalJobs?: number; // Total completed jobs
+    warOnTimeCount?: number; // Number of on-time deliveries
+    warDisputeCount6M?: number; // Disputes in last 6 months
+    warCancellationCount6M?: number; // Supplier-initiated cancellations in last 6 months
+    warLastCalculated?: string; // When the WAR was last recalculated
+    warFinalRating?: number; // Final calculated WAR rating (displayed as avgRating)
 }
 
 export enum ItemCategory {
@@ -248,6 +261,7 @@ export interface Notification {
     scheduledFor?: string;
     sentVia?: NotificationChannel[];
     metadata?: Record<string, any>;
+    showTo?: string[]; // List of user IDs who can see this notification
 }
 
 export interface SupportReply {
@@ -315,6 +329,8 @@ export type AppView =
     | { view: 'CROP_CALENDAR' }
     | { view: 'SUPPLIER_KYC' }
     | { view: 'BULK_BOOKING' }
+    | { view: 'VERIFIED_ACCOUNT_MANAGER' }
+    | { view: 'ADMIN_VERIFICATION_MANAGER' }
     | { view: 'PROFILE' };
 
 export type RiskLevel = 'LOW' | 'MEDIUM' | 'HIGH';

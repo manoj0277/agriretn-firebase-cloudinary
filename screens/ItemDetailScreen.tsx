@@ -4,6 +4,7 @@ import React, { useState, useMemo } from 'react';
 import { Item, AppView, Review, UserRole, ItemCategory } from '../types';
 import { useReview } from '../context/ReviewContext';
 import { useItem } from '../context/ItemContext';
+import { useBooking } from '../context/BookingContext';
 import Header from '../components/Header';
 import Button from '../components/Button';
 import StarRating from '../components/StarRating';
@@ -31,14 +32,37 @@ const ReviewCard: React.FC<{ review: Review }> = ({ review }) => {
     );
 };
 
+
 const ItemDetailScreen: React.FC<ItemDetailScreenProps> = ({ item, navigate, goBack }) => {
     const { user, allUsers } = useAuth();
     const [currentImageIndex, setCurrentImageIndex] = useState(0);
     const { reviews } = useReview();
     const { items } = useItem();
+    const { bookings } = useBooking();
 
     const supplier = useMemo(() => allUsers.find(u => u.id === item.ownerId), [item.ownerId, allUsers]);
     const minPrice = useMemo(() => item.purposes.length > 0 ? Math.min(...item.purposes.map(p => p.price)) : 0, [item.purposes]);
+
+    // Check if item is currently booked based on actual booking data
+    const isCurrentlyBooked = useMemo(() => {
+        const now = new Date();
+        const today = now.toISOString().split('T')[0]; // YYYY-MM-DD
+
+        // Find active bookings for this item today
+        const activeBookings = bookings.filter(b => {
+            if (b.itemId !== item.id) return false;
+
+            // Check only confirmed/in-progress bookings
+            const activeStatuses = ['Confirmed', 'Arrived', 'In Process', 'Awaiting Operator'];
+            if (!activeStatuses.includes(b.status)) return false;
+
+            // Check if booking is for today
+            const bookingDate = b.date?.split('T')[0];
+            return bookingDate === today;
+        });
+
+        return activeBookings.length > 0;
+    }, [bookings, item.id]);
 
     const isTopSupplier = useMemo(() => {
         if (!supplier) return false;
@@ -142,8 +166,8 @@ const ItemDetailScreen: React.FC<ItemDetailScreenProps> = ({ item, navigate, goB
                             <h2 className="text-2xl font-bold text-neutral-900 dark:text-neutral-100">{item.name}</h2>
                             <p className="text-md text-neutral-700 dark:text-neutral-300">{item.category}</p>
                         </div>
-                        <span className={`px-3 py-1 text-sm font-semibold rounded-full ${item.available ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                            {item.available ? 'Available' : 'Booked'}
+                        <span className={`px-3 py-1 text-sm font-semibold rounded-full ${!isCurrentlyBooked && item.available ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                            {isCurrentlyBooked ? 'Booked' : (item.available ? 'Available' : 'Unavailable')}
                         </span>
                     </div>
 

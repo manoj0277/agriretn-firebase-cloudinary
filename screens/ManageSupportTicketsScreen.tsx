@@ -14,7 +14,7 @@ const TicketCard: React.FC<{ ticket: SupportTicket, onResolve: (id: number) => v
     const [isChatOpen, setIsChatOpen] = useState(false);
     const [replyText, setReplyText] = useState('');
     const { user } = useAuth();
-    
+
     const getStatusClasses = (status: SupportTicket['status']) => {
         switch (status) {
             case 'open': return 'bg-yellow-100 text-yellow-800';
@@ -24,15 +24,16 @@ const TicketCard: React.FC<{ ticket: SupportTicket, onResolve: (id: number) => v
             default: return 'bg-gray-100 text-gray-800';
         }
     };
-    
+
     const handleReply = () => {
         if (replyText.trim()) {
             onReply(ticket.id, replyText);
             setReplyText('');
         }
     };
-    
+
     const getAuthorName = (authorId: number) => {
+        if (!allUsers) return "User";
         const author = allUsers.find(u => u.id === authorId);
         if (author?.role === UserRole.Admin) return "Support Team";
         return author?.name || "User";
@@ -59,18 +60,18 @@ const TicketCard: React.FC<{ ticket: SupportTicket, onResolve: (id: number) => v
             {ticket.evidenceUrls && ticket.evidenceUrls.length > 0 && (
                 <div className="mt-2 flex gap-2 flex-wrap">
                     {ticket.evidenceUrls.map((u, i) => (
-                        <a key={i} href={u} target="_blank" rel="noreferrer" className="text-xs underline text-primary">Evidence {i+1}</a>
+                        <a key={i} href={u} target="_blank" rel="noreferrer" className="text-xs underline text-primary">Evidence {i + 1}</a>
                     ))}
                 </div>
             )}
-            
+
             {isChatOpen && (
                 <div className="mt-3 border-t dark:border-neutral-600 pt-3 space-y-3">
                     {ticket.replies && ticket.replies.length > 0 ? (
                         ticket.replies.map(reply => (
                             <div key={reply.id} className={`p-2 rounded-lg text-sm ${reply.authorId === user?.id ? 'bg-blue-50 dark:bg-blue-900/40' : 'bg-neutral-100 dark:bg-neutral-600'}`}>
-                               <p className="font-semibold">{getAuthorName(reply.authorId)}:</p>
-                               <p>{reply.text}</p>
+                                <p className="font-semibold">{getAuthorName(reply.authorId)}:</p>
+                                <p>{reply.text}</p>
                             </div>
                         ))
                     ) : <p className="text-sm text-center text-neutral-500">No replies yet.</p>}
@@ -88,7 +89,7 @@ const TicketCard: React.FC<{ ticket: SupportTicket, onResolve: (id: number) => v
                     )}
                 </div>
             )}
-            
+
             {ticket.status === 'open' && (
                 <div className="text-right mt-3 border-t border-neutral-100 dark:border-neutral-600 pt-3 flex justify-end items-center space-x-2">
                     <button onClick={() => setIsChatOpen(!isChatOpen)} className="p-2 rounded-full hover:bg-neutral-100 dark:hover:bg-neutral-700 text-neutral-500" title="Chat with user">
@@ -120,32 +121,34 @@ const ManageSupportTicketsScreen: React.FC<ManageSupportTicketsScreenProps> = ({
     };
 
     useEffect(() => {
+        if (!tickets) return;
         const highPriority = tickets.filter(t => t.priority === 'High' && t.status === 'open');
         highPriority.forEach(t => {
             const created = new Date(t.timestamp).getTime();
             const now = Date.now();
             if (now - created > 2 * 60 * 60 * 1000) {
-                addNotification({ userId: 0, message: `High priority ticket ${t.id} breached 2h SLA.`, type: 'admin' });
+                addNotification({ userId: '0', message: `High priority ticket ${t.id} breached 2h SLA.`, type: 'admin' });
             }
         });
         const bySupplier: Record<number, number> = {};
-        tickets.forEach(t => { if (t.againstUserId) bySupplier[t.againstUserId] = (bySupplier[t.againstUserId] || 0) + 1; });
-        Object.entries(bySupplier).forEach(([uid, c]) => { if (c >= 3) addNotification({ userId: 0, message: `Supplier ${uid} flagged with ${c} tickets.`, type: 'admin' }); });
+        tickets.forEach(t => { if (t.againstUserId) bySupplier[Number(t.againstUserId)] = (bySupplier[Number(t.againstUserId)] || 0) + 1; });
+        Object.entries(bySupplier).forEach(([uid, c]) => { if (c >= 3) addNotification({ userId: '0', message: `Supplier ${uid} flagged with ${c} tickets.`, type: 'admin' }); });
         const byFarmerFalse: Record<number, number> = {};
         tickets.filter(t => t.status === 'closed' && (t.adminNotes || []).some(n => n.toLowerCase().includes('false')))
-            .forEach(t => { if (t.userId) byFarmerFalse[t.userId] = (byFarmerFalse[t.userId] || 0) + 1; });
-        Object.entries(byFarmerFalse).forEach(([uid, c]) => { if (c >= 2) addNotification({ userId: 0, message: `Farmer ${uid} flagged for repeated false reporting.`, type: 'admin' }); });
+            .forEach(t => { if (t.userId) byFarmerFalse[Number(t.userId)] = (byFarmerFalse[Number(t.userId)] || 0) + 1; });
+        Object.entries(byFarmerFalse).forEach(([uid, c]) => { if (c >= 2) addNotification({ userId: '0', message: `Farmer ${uid} flagged for repeated false reporting.`, type: 'admin' }); });
     }, [tickets]);
 
     const filteredTickets = useMemo(() => {
+        if (!tickets) return [];
         let arr = [...tickets];
         if (sortBy === 'priority') {
             const order = { High: 0, Med: 1, Low: 2 } as any;
-            arr.sort((a,b) => (order[a.priority || 'Low'] - order[b.priority || 'Low']))
+            arr.sort((a, b) => (order[a.priority || 'Low'] - order[b.priority || 'Low']))
         } else {
-            arr.sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+            arr.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
         }
-        if (filter === 'all') return sorted;
+        if (filter === 'all') return arr;
         const subset = arr.filter(t => t.status === filter);
         const q = search.trim().toLowerCase();
         if (!q) return subset;

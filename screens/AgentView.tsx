@@ -29,6 +29,7 @@ import FarmerMapScreen from './FarmerMapScreen';
 import { useLanguage } from '../context/LanguageContext';
 import AiSuggestionsModal from './AiSuggestionsModal';
 import { useWeather } from '../context/WeatherContext';
+import { FarmerHomeScreen } from './FarmerView';
 
 const apiKey = typeof process !== 'undefined' && process.env && process.env.API_KEY
     ? process.env.API_KEY
@@ -39,6 +40,8 @@ const ai = apiKey ? new GoogleGenAI({ apiKey }) : null;
 
 interface AgentViewProps {
     navigate: (view: AppView) => void;
+    onSwitchMode?: () => void;
+    roleBadge?: string;
 }
 
 const RepeatIcon: React.FC<{ className?: string }> = ({ className }) => (
@@ -58,7 +61,7 @@ const ChatIcon: React.FC<{ onClick: () => void; unreadCount: number; }> = ({ onC
     </button>
 );
 
-const AgentHomeScreen: React.FC<AgentViewProps> = ({ navigate }) => {
+const AgentHomeScreen: React.FC<AgentViewProps> = ({ navigate, roleBadge }) => {
     const { items } = useItem();
     const { bookings } = useBooking();
     const { user, allUsers } = useAuth();
@@ -197,11 +200,11 @@ const AgentHomeScreen: React.FC<AgentViewProps> = ({ navigate }) => {
 
     const processedItems = useMemo(() => {
         const RADIUS_LIMITS: Record<string, number> = {
-            'Labour': 10,
-            'Tractor': 20,
-            'Drone': 50,
+            'Workers': 10,
+            'Tractors': 20,
+            'Drones': 50,
             'Borewell': 50,
-            'Harvester': 30,
+            'Harvesters': 30,
             'default': 20
         };
 
@@ -293,6 +296,7 @@ const AgentHomeScreen: React.FC<AgentViewProps> = ({ navigate }) => {
     return (
         <div className="dark:text-neutral-200">
             <Header title={t('marketplace')}>
+
                 <ChatIcon onClick={() => navigate({ view: 'CONVERSATIONS' })} unreadCount={unreadChatCount} />
                 <NotificationBell />
             </Header>
@@ -586,8 +590,9 @@ const AgentMapScreen: React.FC<AgentViewProps> = ({ navigate }) => {
                 <ChatIcon onClick={() => navigate({ view: 'CONVERSATIONS' })} unreadCount={unreadChatCount} />
                 <NotificationBell />
             </Header>
-            <div className="px-4 pt-2 pb-2">
-                <div className="flex items-center space-x-2">
+
+            <div className="px-4 pt-3 pb-2">
+                <div className="flex items-center space-x-2 mb-3">
                     <input
                         type="text"
                         placeholder="Filter results on map..."
@@ -605,19 +610,25 @@ const AgentMapScreen: React.FC<AgentViewProps> = ({ navigate }) => {
                         </svg>
                     </button>
                 </div>
-                {locationError && (
-                    <div className="mt-2 p-3 bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-300 text-sm rounded-lg flex items-center justify-between">
-                        <span>{locationError}</span>
-                        <div className="flex items-center gap-2">
-                            <button onClick={retryLocation} className="px-2 py-1 text-xs rounded bg-yellow-200 hover:bg-yellow-300 text-yellow-900 dark:bg-yellow-800/40 dark:hover:bg-yellow-700">Retry</button>
-                            <button aria-label="Dismiss" onClick={() => setLocationError(null)} className="p-1 rounded hover:bg-yellow-200 dark:hover:bg-yellow-800/40">
-                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                            </button>
-                        </div>
-                    </div>
-                )}
+
+                {/* Category Filter Tabs */}
+                <div className="flex gap-2 overflow-x-auto pb-2 hide-scrollbar">
+                    {(['All', 'Tractors', 'Harvesters', 'JCB', 'Workers', 'Drones'] as const).map((category) => (
+                        <button
+                            key={category}
+                            onClick={() => setSelectedCategory(category)}
+                            className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${selectedCategory === category
+                                ? 'bg-primary text-white'
+                                : 'bg-neutral-100 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-600'
+                                }`}
+                        >
+                            {category}
+                        </button>
+                    ))}
+                </div>
             </div>
-            <div className="absolute left-0 right-0 bottom-0" style={{ top: locationError ? '140px' : '100px' }}>
+
+            <div className="flex-1 relative">
                 <FarmerMapScreen items={processedItems} navigate={navigate} userLocation={userLocation} />
             </div>
 
@@ -655,13 +666,6 @@ const AgentMapScreen: React.FC<AgentViewProps> = ({ navigate }) => {
                         </div>
                     </div>
                 </div>
-            )}
-
-            {isFilterModalOpen && (
-                // Filter modal JSX would be here, identical to the one in FarmerHomeScreen. It is omitted for brevity but the logic is implied to be present.
-                // For this implementation, let's assume filtering on map is a future feature and just show the map.
-                // A full implementation would include the filter modal here as well.
-                <></>
             )}
         </div>
     );
@@ -915,75 +919,121 @@ const AgentBookingsScreen: React.FC<AgentViewProps> = ({ navigate }) => {
     );
 }
 
-const AgentProfileScreen: React.FC<AgentViewProps> = ({ navigate }) => {
+const AgentProfileScreen: React.FC<AgentViewProps> = ({ navigate, onSwitchMode, roleBadge }) => {
     const { user, logout } = useAuth();
     const { getUnreadMessageCount } = useChat();
     const { t } = useLanguage();
     const unreadChatCount = user ? getUnreadMessageCount(user.id) : 0;
 
-    const ProfileLink: React.FC<{ label: string, onClick: () => void, icon?: React.ReactElement }> = ({ label, onClick, icon }) => (
-        <button onClick={onClick} className="w-full p-4 bg-white dark:bg-neutral-700 flex justify-between items-center hover:bg-neutral-50 dark:hover:bg-neutral-600 transition-colors">
-            <span className="font-semibold text-neutral-800 dark:text-neutral-100">{label}</span>
-            {icon || <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-neutral-500 dark:text-neutral-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>}
+    const ProfileLink: React.FC<{ label: string, onClick: () => void, icon: React.ReactElement }> = ({ label, onClick, icon }) => (
+        <button onClick={onClick} className="w-full p-4 bg-white dark:bg-neutral-800 flex items-center justify-between hover:bg-neutral-50 dark:hover:bg-neutral-700 transition-colors">
+            <div className="flex items-center gap-3">
+                <span className="text-green-600 dark:text-green-400">{icon}</span>
+                <span className="font-medium text-neutral-700 dark:text-neutral-200">{label}</span>
+            </div>
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-neutral-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
         </button>
     );
 
+    // Icons for menu items
+    const icons = {
+        aiChat: <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>,
+        aiVoice: <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /></svg>,
+        aiScan: <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>,
+        myAccount: <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>,
+        bulkBooking: <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>,
+        community: <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.653-.124-1.282-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.653.124-1.282.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg>,
+        payment: <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" /></svg>,
+        booking: <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>,
+        settings: <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>,
+        support: <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M18.364 5.636l-3.536 3.536m0 5.656l3.536 3.536M9.172 9.172L5.636 5.636m3.536 9.192l-3.536 3.536M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-5 0a4 4 0 11-8 0 4 4 0 018 0z" /></svg>,
+        privacy: <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>,
+    };
+
     return (
-        <div className="dark:text-neutral-200">
+        <div className="dark:text-neutral-200 bg-neutral-50 dark:bg-neutral-900 min-h-full">
             <Header title={t('myProfile')}>
-                <div className="mr-2 inline-flex items-center px-3 py-1 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-full text-xs font-bold shadow-sm">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                    </svg>
-                    AGENT
-                </div>
+                {roleBadge && (
+                    <div className="mr-2 inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-sm border border-blue-400/30 ml-2">
+                        {roleBadge}
+                    </div>
+                )}
                 <ChatIcon onClick={() => navigate({ view: 'CONVERSATIONS' })} unreadCount={unreadChatCount} />
                 <NotificationBell />
             </Header>
-            <div className="p-6 text-center">
-                <div className="mb-8">
-                    <img
-                        src={user?.profilePicture}
-                        alt={user?.name}
-                        className="w-24 h-24 rounded-full bg-primary text-white flex items-center justify-center mx-auto text-4xl font-bold object-cover border-4 border-white dark:border-neutral-700 shadow-lg"
-                        referrerPolicy="no-referrer"
-                        crossOrigin="anonymous"
-                        onError={(e) => {
-                            const fallback = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 800 450'%3E%3Crect width='800' height='450' fill='%23e5e7eb'/%3E%3Ctext x='400' y='225' font-size='32' text-anchor='middle' dominant-baseline='middle' fill='%236b7280' font-family='Arial'%3EImage%20Unavailable%3C/text%3E%3C/svg%3E";
-                            const target = e.currentTarget as HTMLImageElement;
-                            if (target.src !== fallback) target.src = fallback;
-                        }}
-                    />
-                    <h2 className="text-2xl font-bold mt-4 text-neutral-800 dark:text-neutral-100">{user?.name}</h2>
+            <div className="p-6">
+                {/* Profile Picture with Edit Badge */}
+                <div className="text-center mb-8">
+                    <div className="relative inline-block">
+                        <div className="w-24 h-24 rounded-full bg-green-50 dark:bg-green-900/20 border-4 border-green-100 dark:border-green-800 overflow-hidden mx-auto">
+                            <img
+                                src={user?.profilePicture}
+                                alt={user?.name}
+                                className="w-full h-full object-cover"
+                                referrerPolicy="no-referrer"
+                                crossOrigin="anonymous"
+                                onError={(e) => {
+                                    const fallback = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='50' fill='%2322c55e'/%3E%3Ctext x='50' y='55' font-size='40' text-anchor='middle' fill='white' font-family='Arial'%3E" + (user?.name?.[0] || 'A') + "%3C/text%3E%3C/svg%3E";
+                                    const target = e.currentTarget as HTMLImageElement;
+                                    if (target.src !== fallback) target.src = fallback;
+                                }}
+                            />
+                        </div>
+                    </div>
+                    <h2 className="text-xl font-bold mt-4 text-neutral-800 dark:text-neutral-100">{user?.name || 'agent'}</h2>
                 </div>
 
-                <div className="space-y-3">
-                    <div className="bg-white dark:bg-neutral-700 rounded-lg border border-neutral-200 dark:border-neutral-600 overflow-hidden divide-y divide-neutral-200 dark:divide-neutral-600">
-                        <h3 className="p-4 text-lg font-bold text-neutral-800 dark:text-neutral-100">AI Services</h3>
-                        <ProfileLink label="AI Chat Assistant" onClick={() => navigate({ view: 'AI_ASSISTANT' })} />
-                        <ProfileLink label="AI Voice Assistant" onClick={() => navigate({ view: 'VOICE_ASSISTANT' })} />
-                        <ProfileLink label="AI Crop Scan" onClick={() => navigate({ view: 'AI_SCAN' })} />
+                <div className="space-y-4">
+                    {/* AI Services Section */}
+                    <div className="bg-white dark:bg-neutral-800 rounded-xl shadow-sm overflow-hidden">
+                        <h3 className="px-4 py-3 text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider bg-neutral-50 dark:bg-neutral-800/50">AI Services</h3>
+                        <div className="divide-y divide-neutral-100 dark:divide-neutral-700">
+                            <ProfileLink label="AI Chat Assistant" onClick={() => navigate({ view: 'AI_ASSISTANT' })} icon={icons.aiChat} />
+                            <ProfileLink label="AI Voice Assistant" onClick={() => navigate({ view: 'VOICE_ASSISTANT' })} icon={icons.aiVoice} />
+                            <ProfileLink label="AI Crop Scan" onClick={() => navigate({ view: 'AI_SCAN' })} icon={icons.aiScan} />
+                        </div>
                     </div>
 
-                    <div className="bg-white dark:bg-neutral-700 rounded-lg border border-neutral-200 dark:border-neutral-600 overflow-hidden divide-y divide-neutral-200 dark:divide-neutral-600">
-                        <h3 className="p-4 text-lg font-bold text-neutral-800 dark:text-neutral-100">More Services</h3>
-                        <ProfileLink label={t('myAccount')} onClick={() => navigate({ view: 'MY_ACCOUNT' })} />
-                        <ProfileLink
-                            label="Bulk Booking Processor"
-                            onClick={() => navigate({ view: 'BULK_BOOKING' })}
-                            icon={
-                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
-                                </svg>
-                            }
-                        />
-                        <ProfileLink label={t('communityForum')} onClick={() => navigate({ view: 'COMMUNITY' })} icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-neutral-500 dark:text-neutral-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.653-.124-1.282-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.653.124-1.282.356-1.857m0 0a3.001 3.001 0 015.688 0M12 12a3 3 0 100-6 3 3 0 000 6z" /></svg>} />
-                        <ProfileLink label={t('paymentHistory')} onClick={() => navigate({ view: 'PAYMENT_HISTORY' })} />
-                        <ProfileLink label={t('bookingHistory')} onClick={() => navigate({ view: 'BOOKING_HISTORY' })} />
-                        <ProfileLink label={t('settings')} onClick={() => navigate({ view: 'SETTINGS' })} />
-                        <ProfileLink label={t('raiseAComplaint')} onClick={() => navigate({ view: 'SUPPORT' })} />
-                        <ProfileLink label={t('privacyPolicy')} onClick={() => navigate({ view: 'POLICY' })} />
+                    {/* Agent Tools Section */}
+                    <div className="bg-white dark:bg-neutral-800 rounded-xl shadow-sm overflow-hidden">
+                        <h3 className="px-4 py-3 text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider bg-neutral-50 dark:bg-neutral-800/50">Agent Tools</h3>
+                        <div className="divide-y divide-neutral-100 dark:divide-neutral-700">
+                            <ProfileLink label="Bulk Booking Processor" onClick={() => navigate({ view: 'BULK_BOOKING' })} icon={icons.bulkBooking} />
+                            <ProfileLink label={t('communityForum')} onClick={() => navigate({ view: 'COMMUNITY' })} icon={icons.community} />
+                        </div>
                     </div>
+
+                    {/* Profile Section */}
+                    <div className="bg-white dark:bg-neutral-800 rounded-xl shadow-sm overflow-hidden">
+                        <h3 className="px-4 py-3 text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider bg-neutral-50 dark:bg-neutral-800/50">{t('profile')}</h3>
+                        <div className="divide-y divide-neutral-100 dark:divide-neutral-700">
+                            <ProfileLink label={t('myAccount')} onClick={() => navigate({ view: 'MY_ACCOUNT' })} icon={icons.myAccount} />
+                            <ProfileLink label={t('paymentHistory')} onClick={() => navigate({ view: 'PAYMENT_HISTORY' })} icon={icons.payment} />
+                            <ProfileLink label={t('bookingHistory')} onClick={() => navigate({ view: 'BOOKING_HISTORY' })} icon={icons.booking} />
+                            <ProfileLink label={t('settings')} onClick={() => navigate({ view: 'SETTINGS' })} icon={icons.settings} />
+                            <ProfileLink label={t('raiseAComplaint')} onClick={() => navigate({ view: 'SUPPORT' })} icon={icons.support} />
+                            <ProfileLink label={t('privacyPolicy')} onClick={() => navigate({ view: 'POLICY' })} icon={icons.privacy} />
+                        </div>
+                    </div>
+
+
+                    {/* Switch Mode Button */}
+                    {onSwitchMode && (
+                        <button
+                            onClick={onSwitchMode}
+                            className="w-full p-4 bg-white dark:bg-neutral-800 flex items-center justify-between hover:bg-neutral-50 dark:hover:bg-neutral-700 transition-colors rounded-xl shadow-sm border border-orange-200 dark:border-orange-900"
+                        >
+                            <div className="flex items-center gap-3">
+                                <span className="text-orange-600 dark:text-orange-400">
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" /></svg>
+                                </span>
+                                <span className="font-medium text-neutral-700 dark:text-neutral-200">
+                                    Switch to {roleBadge?.includes('Supplier') ? 'Agent' : 'Supplier'} View
+                                </span>
+                            </div>
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-neutral-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                        </button>
+                    )}
 
                     <Button onClick={() => {
                         if (window.confirm('Are you sure you want to logout?')) {
@@ -992,7 +1042,7 @@ const AgentProfileScreen: React.FC<AgentViewProps> = ({ navigate }) => {
                     }} variant="secondary" className="w-full">{t('logout')}</Button>
                 </div>
             </div>
-        </div>
+        </div >
     );
 };
 
@@ -1019,7 +1069,7 @@ const AgentBulkBookingScreen: React.FC<AgentViewProps> = ({ navigate }) => {
     );
 };
 
-const AgentView: React.FC<AgentViewProps> = ({ navigate: parentNavigate }) => {
+const AgentProStandardView: React.FC<AgentViewProps> = ({ navigate: parentNavigate, onSwitchMode, roleBadge }) => {
     const [activeTab, setActiveTab] = useState('home');
 
     const handleNavigate = (viewObj: AppView) => {
@@ -1062,13 +1112,13 @@ const AgentView: React.FC<AgentViewProps> = ({ navigate: parentNavigate }) => {
     const renderContent = () => {
         switch (activeTab) {
             case 'home':
-                return <AgentHomeScreen navigate={handleNavigate} />;
+                return <FarmerHomeScreen navigate={handleNavigate} roleBadge={roleBadge} />;
             case 'bookings':
                 return <AgentBookingsScreen navigate={handleNavigate} />;
             case 'map':
                 return <AgentMapScreen navigate={handleNavigate} />;
             case 'profile':
-                return <AgentProfileScreen navigate={handleNavigate} />;
+                return <AgentProfileScreen navigate={handleNavigate} onSwitchMode={onSwitchMode} roleBadge={roleBadge} />;
             case 'bulk_booking':
                 return <AgentBulkBookingScreen navigate={handleNavigate} />;
             default:
@@ -1078,10 +1128,33 @@ const AgentView: React.FC<AgentViewProps> = ({ navigate: parentNavigate }) => {
 
     return (
         <div className="h-full flex flex-col">
-            <div className="flex-grow overflow-y-auto pb-20">
+            <div className={`flex-grow flex flex-col ${activeTab === 'map' ? 'overflow-hidden' : 'overflow-y-auto pb-20'}`}>
                 {renderContent()}
             </div>
             <BottomNav activeTab={activeTab} setActiveTab={setActiveTab} navItems={agentNavItems} />
+        </div>
+    );
+};
+
+import SupplierView from './SupplierView';
+
+const AgentView: React.FC<AgentViewProps> = ({ navigate }) => {
+    // Mode state to switch between Standard Agent View and Supplier View
+    const [mode, setMode] = useState<'standard' | 'supplier'>('standard');
+
+    const toggleMode = () => {
+        setMode(prev => prev === 'standard' ? 'supplier' : 'standard');
+    };
+
+    return (
+        <div className="relative min-h-screen flex flex-col">
+            <div className="flex-grow relative">
+                {mode === 'standard' ? (
+                    <AgentProStandardView navigate={navigate} onSwitchMode={toggleMode} roleBadge="AgentPro Farmer" />
+                ) : (
+                    <SupplierView navigate={navigate} onSwitchMode={toggleMode} roleBadge="Agent Pro Supplier" />
+                )}
+            </div>
         </div>
     );
 };

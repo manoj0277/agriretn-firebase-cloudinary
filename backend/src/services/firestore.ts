@@ -130,6 +130,7 @@ export const PostService = {
     getById: (id: number) => getById<ForumPost>(COLLECTIONS.POSTS, id),
     create: (post: ForumPost) => create<ForumPost>(COLLECTIONS.POSTS, post),
     update: (id: number, data: Partial<ForumPost>) => update<ForumPost>(COLLECTIONS.POSTS, id, data),
+    delete: (id: number) => remove(COLLECTIONS.POSTS, id),
 };
 
 
@@ -172,7 +173,18 @@ export const NotificationService = {
     },
     update: (id: number, data: Partial<Notification>) => update<Notification>(COLLECTIONS.NOTIFICATIONS, id, data),
     markAsRead: (id: number) => update<Notification>(COLLECTIONS.NOTIFICATIONS, id, { read: true }),
-    delete: (id: number) => remove(COLLECTIONS.NOTIFICATIONS, id)
+    delete: (id: number) => remove(COLLECTIONS.NOTIFICATIONS, id),
+    removeUserFromShowTo: async (notificationId: number | string, userId: string) => {
+        const docRef = db.collection(COLLECTIONS.NOTIFICATIONS).doc(String(notificationId));
+        const doc = await docRef.get();
+        if (doc.exists) {
+            const data = doc.data() as Notification;
+            if (data.showTo && data.showTo.includes(userId)) {
+                const newShowTo = data.showTo.filter(id => id !== userId);
+                await docRef.update({ showTo: newShowTo });
+            }
+        }
+    }
 };
 
 // Personal notifications stored in user subcollection (optimized storage)
@@ -189,13 +201,22 @@ export const UserNotificationService = {
     },
     create: async (userId: string, data: Notification): Promise<Notification> => {
         console.log(`[Firestore] Creating personal notification for user ${userId}:`, data.id);
+        const notificationWithShowTo = { ...data, showTo: [userId] };
         await db.collection(COLLECTIONS.USERS).doc(userId)
-            .collection('notifications').doc(String(data.id)).set(data);
-        return data;
+            .collection('notifications').doc(String(data.id)).set(notificationWithShowTo);
+        return notificationWithShowTo;
     },
     markAsRead: async (userId: string, notificationId: string): Promise<void> => {
         await db.collection(COLLECTIONS.USERS).doc(userId)
             .collection('notifications').doc(notificationId).update({ read: true });
+    },
+    updateReadStatus: async (userId: string, notificationId: number, read: boolean): Promise<void> => {
+        try {
+            await db.collection(COLLECTIONS.USERS).doc(userId)
+                .collection('notifications').doc(String(notificationId)).update({ read });
+        } catch (error) {
+            console.log(`[Firestore] Notification ${notificationId} not found in user ${userId}'s collection, skipping`);
+        }
     },
     delete: async (userId: string, notificationId: string): Promise<void> => {
         await db.collection(COLLECTIONS.USERS).doc(userId)
@@ -236,8 +257,27 @@ export const BroadcastService = {
     },
     create: async (data: Notification & { district: string }): Promise<Notification> => {
         console.log(`[Firestore] Creating broadcast for district ${data.district}:`, data.id);
-        await db.collection('broadcasts').doc(String(data.id)).set(data);
-        return data;
+
+        // Fetch all relevant users to populate 'showTo'
+        let targetUsers: User[] = [];
+        if (data.district === 'all') {
+            targetUsers = await UserService.getAll();
+        } else {
+            // This is inefficient but necessary without a direct query by district
+            const allUsers = await UserService.getAll();
+            targetUsers = allUsers.filter(u => u.district === data.district);
+        }
+
+        const showTo = targetUsers.map(u => u.id);
+        console.log(`[Firestore] Broadcast target size: ${showTo.length} users`);
+
+        const notificationWithShowTo = {
+            ...data,
+            showTo
+        };
+
+        await db.collection('broadcasts').doc(String(data.id)).set(notificationWithShowTo);
+        return notificationWithShowTo;
     },
     delete: async (id: string): Promise<void> => {
         await db.collection('broadcasts').doc(id).delete();

@@ -234,3 +234,79 @@ async function autoCancelBooking(booking: Booking): Promise<void> {
     console.log(`[Expiry Checker] Auto-cancelled booking ${booking.id} - start time passed without supplier`);
 }
 
+/**
+ * Check for bookings that are past their end time + 24 hours and mark them as Completed
+ * This ensures items become "Available" again
+ */
+export async function checkAutoCompleteBookings(): Promise<void> {
+    try {
+        console.log('[Auto Complete] Running booking auto-complete check...');
+        const now = new Date();
+        const allBookings = await BookingService.getAll();
+
+        // Filter for active bookings
+        const activeBookings = allBookings.filter(b =>
+            ['Confirmed', 'Arrived', 'In Process'].includes(b.status)
+        );
+
+        for (const booking of activeBookings) {
+            // Determine end time
+            let endTime: Date | null = null;
+
+            if (booking.endTime && booking.date) {
+                // Parse date + endTime
+                try {
+                    const [h, m] = booking.endTime.split(':').map(Number);
+                    endTime = new Date(booking.date);
+                    endTime.setHours(h, m, 0, 0);
+                } catch (e) { console.error('Error parsing end time', e); }
+            } else if (booking.startTime && booking.estimatedDuration && booking.date) {
+                // Calculate from start + duration
+                try {
+                    const [h, m] = booking.startTime.split(':').map(Number);
+                    endTime = new Date(booking.date);
+                    endTime.setHours(h + booking.estimatedDuration, m, 0, 0);
+                } catch (e) { console.error('Error calculating end time', e); }
+            }
+
+            if (!endTime) continue;
+
+            // Check if 24 hours have passed since end time
+            const hoursSinceEnd = (now.getTime() - endTime.getTime()) / (1000 * 60 * 60);
+
+            if (hoursSinceEnd >= 24) {
+                await BookingService.update(booking.id, { status: 'Completed' });
+
+                // Notify
+                await NotificationService.create({
+                    id: Date.now() + Math.random(),
+                    userId: booking.farmerId,
+                    message: `Your booking for ${booking.itemCategory} has been auto-completed after 24 hours.`,
+                    type: 'booking',
+                    category: 'booking',
+                    priority: 'medium',
+                    read: false,
+                    timestamp: new Date().toISOString()
+                });
+
+                if (booking.supplierId) {
+                    await NotificationService.create({
+                        id: Date.now() + Math.random() + 1,
+                        userId: booking.supplierId,
+                        message: `Booking for ${booking.itemCategory} has been auto-completed after 24 hours. payment should be settled.`,
+                        type: 'booking',
+                        category: 'booking',
+                        priority: 'medium',
+                        read: false,
+                        timestamp: new Date().toISOString()
+                    });
+                }
+
+                console.log(`[Auto Complete] Auto-completed booking ${booking.id}`);
+            }
+        }
+    } catch (error) {
+        console.error('[Auto Complete] Error:', error);
+    }
+}
+

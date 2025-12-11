@@ -112,7 +112,8 @@ function getCategoryTitle(category: NotificationCategory): string {
         booking: '📅 Booking Update',
         promotional: '🎉 Special Offer',
         performance: '📊 Account Alert',
-        system: '🔔 System Update'
+        system: '🔔 System Update',
+        alert: '⚠️ Critical Alert'
     };
     return titles[category] || 'Notification';
 }

@@ -8,19 +8,19 @@ import { WORK_PURPOSES } from '../types';
 import { useLanguage } from '../context/LanguageContext';
 
 const apiKey = typeof process !== 'undefined' && process.env && process.env.API_KEY
-  ? process.env.API_KEY
-  : undefined;
+    ? process.env.API_KEY
+    : undefined;
 
 const ai = apiKey ? new GoogleGenAI({ apiKey }) : null;
 
 // Audio helper functions
 function encode(bytes: Uint8Array) {
-  let binary = '';
-  const len = bytes.byteLength;
-  for (let i = 0; i < len; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-  return btoa(binary);
+    let binary = '';
+    const len = bytes.byteLength;
+    for (let i = 0; i < len; i++) {
+        binary += String.fromCharCode(bytes[i]);
+    }
+    return btoa(binary);
 }
 
 function decode(base64: string) {
@@ -53,24 +53,24 @@ async function decodeAudioData(
 }
 
 const createBookingFunctionDeclaration: FunctionDeclaration = {
-  name: 'createBooking',
-  description: 'Starts the process of booking a farm service or equipment by navigating to the booking form.',
-  parameters: {
-    type: Type.OBJECT,
-    properties: {
-      itemCategory: {
-        type: Type.STRING,
-        description: 'The category of the item to book.',
-        enum: Object.values(ItemCategory),
-      },
-      workPurpose: {
-        type: Type.STRING,
-        description: 'The specific task for the booking.',
-        enum: [...WORK_PURPOSES],
-      }
+    name: 'createBooking',
+    description: 'Starts the process of booking a farm service or equipment by navigating to the booking form.',
+    parameters: {
+        type: Type.OBJECT,
+        properties: {
+            itemCategory: {
+                type: Type.STRING,
+                description: 'The category of the item to book.',
+                enum: Object.values(ItemCategory),
+            },
+            workPurpose: {
+                type: Type.STRING,
+                description: 'The specific task for the booking.',
+                enum: [...WORK_PURPOSES],
+            }
+        },
+        required: ['itemCategory'],
     },
-    required: ['itemCategory'],
-  },
 };
 
 const getCurrentLocationFunctionDeclaration: FunctionDeclaration = {
@@ -93,7 +93,7 @@ const VoiceAssistantScreen: React.FC<VoiceAssistantScreenProps> = ({ navigate, g
     const [status, setStatus] = useState<'idle' | 'listening' | 'speaking' | 'connecting' | 'error'>('idle');
     const [transcription, setTranscription] = useState<{ user: string, ai: string }[]>([]);
     const [currentTranscription, setCurrentTranscription] = useState({ user: '', ai: '' });
-    
+
     const sessionPromiseRef = useRef<Promise<any> | null>(null);
     const audioContextRef = useRef<{ input: AudioContext; output: AudioContext; scriptProcessor?: ScriptProcessorNode } | null>(null);
     const streamRef = useRef<MediaStream | null>(null);
@@ -142,7 +142,7 @@ const VoiceAssistantScreen: React.FC<VoiceAssistantScreenProps> = ({ navigate, g
         sourcesRef.current.forEach(source => source.stop());
         sourcesRef.current.clear();
     };
-    
+
     const startSession = async () => {
         if (!ai) {
             showToast("AI Voice Assistant is not configured.", "error");
@@ -165,20 +165,20 @@ const VoiceAssistantScreen: React.FC<VoiceAssistantScreenProps> = ({ navigate, g
         setTranscription([]);
         setCurrentTranscription({ user: '', ai: '' });
         nextStartTimeRef.current = 0;
-        
+
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             streamRef.current = stream;
 
             const inputAudioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
             const outputAudioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
-            
+
             await inputAudioContext.resume();
             await outputAudioContext.resume();
             audioContextRef.current = { input: inputAudioContext, output: outputAudioContext };
 
             sessionPromiseRef.current = ai.live.connect({
-                model: 'gemini-2.5-flash-native-audio-preview-09-2025',
+                model: 'gemini-2.5-flash-native-audio-latest',
                 callbacks: {
                     onopen: () => {
                         setStatus('listening');
@@ -212,11 +212,11 @@ const VoiceAssistantScreen: React.FC<VoiceAssistantScreenProps> = ({ navigate, g
                             setCurrentTranscription(prev => ({ ...prev, ai: message.serverContent.outputTranscription.text }));
                         }
                         if (message.serverContent?.turnComplete) {
-                            setTranscription(prev => [...prev, {user: currentTranscription.user, ai: currentTranscription.ai}]);
+                            setTranscription(prev => [...prev, { user: currentTranscription.user, ai: currentTranscription.ai }]);
                             setCurrentTranscription({ user: '', ai: '' });
                         }
-                        
-                         if (message.toolCall?.functionCalls) {
+
+                        if (message.toolCall?.functionCalls) {
                             for (const fc of message.toolCall.functionCalls) {
                                 if (fc.name === 'createBooking') {
                                     navigate({ view: 'BOOKING_FORM', category: fc.args.itemCategory as ItemCategory, workPurpose: fc.args.workPurpose as WorkPurpose });
@@ -233,14 +233,14 @@ const VoiceAssistantScreen: React.FC<VoiceAssistantScreenProps> = ({ navigate, g
                         if (base64Audio) {
                             setStatus('speaking');
                             const audioBuffer = await decodeAudioData(decode(base64Audio), outputAudioContext, 24000, 1);
-                            
+
                             nextStartTimeRef.current = Math.max(nextStartTimeRef.current, outputAudioContext.currentTime);
                             const source = outputAudioContext.createBufferSource();
                             source.buffer = audioBuffer;
                             source.connect(outputAudioContext.destination);
                             source.start(nextStartTimeRef.current);
                             nextStartTimeRef.current += audioBuffer.duration;
-                            
+
                             sourcesRef.current.add(source);
                             source.onended = () => {
                                 sourcesRef.current.delete(source);
@@ -306,7 +306,7 @@ const VoiceAssistantScreen: React.FC<VoiceAssistantScreenProps> = ({ navigate, g
         setShowLocationPrompt(false);
         pendingLocationFcRef.current = null;
     };
-    
+
     useEffect(() => {
         return () => stopSession();
     }, []);
@@ -317,14 +317,14 @@ const VoiceAssistantScreen: React.FC<VoiceAssistantScreenProps> = ({ navigate, g
 
     const StatusIndicator = () => {
         let colorClass = 'bg-primary';
-        let icon = <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="M19 11a7 7 0 01-14 0m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v3a3 3 0 01-3 3z"/></svg>;
+        let icon = <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="M19 11a7 7 0 01-14 0m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v3a3 3 0 01-3 3z" /></svg>;
         let animationContent = null;
 
         switch (status) {
             case 'listening': colorClass = 'bg-green-500'; animationContent = <div className="absolute w-full h-full rounded-full bg-green-500 animate-listening"></div>; break;
-            case 'speaking': colorClass = 'bg-blue-500'; icon=<svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.683 3.902 11 4.146 11 4.707v14.586c0 .56-.317.805-.707.414L5.586 15z"/></svg>; animationContent = <div className="speaking-wave text-blue-500"></div>; break;
-            case 'connecting': colorClass = 'bg-yellow-500'; icon=<div className="w-12 h-12 border-4 border-white border-t-transparent rounded-full animate-spin"></div>; break;
-            case 'error': colorClass = 'bg-red-500'; icon=<svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>; break;
+            case 'speaking': colorClass = 'bg-blue-500'; icon = <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.683 3.902 11 4.146 11 4.707v14.586c0 .56-.317.805-.707.414L5.586 15z" /></svg>; animationContent = <div className="speaking-wave text-blue-500"></div>; break;
+            case 'connecting': colorClass = 'bg-yellow-500'; icon = <div className="w-12 h-12 border-4 border-white border-t-transparent rounded-full animate-spin"></div>; break;
+            case 'error': colorClass = 'bg-red-500'; icon = <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>; break;
         }
 
         return (
@@ -334,7 +334,7 @@ const VoiceAssistantScreen: React.FC<VoiceAssistantScreenProps> = ({ navigate, g
             </div>
         );
     };
-    
+
     const statusText: Record<typeof status, string> = {
         idle: t('statusIdle'),
         connecting: t('statusConnecting'),
@@ -358,7 +358,7 @@ const VoiceAssistantScreen: React.FC<VoiceAssistantScreenProps> = ({ navigate, g
                         <p className="text-right text-primary/70 font-semibold">{currentTranscription.user}</p>
                         <p className="text-left text-neutral-700/70 dark:text-neutral-200/70">{currentTranscription.ai}</p>
                     </div>
-                     <div ref={messagesEndRef} />
+                    <div ref={messagesEndRef} />
                 </div>
                 <div className="flex-shrink-0 flex flex-col items-center justify-center space-y-4 pt-4">
                     <button onClick={status === 'idle' || status === 'error' ? startSession : stopSession} className="focus:outline-none focus:ring-4 focus:ring-primary/50 rounded-full">

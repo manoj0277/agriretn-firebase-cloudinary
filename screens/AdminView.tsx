@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { AppView } from '../types';
 import Header from '../components/Header';
 import BottomNav, { NavItemConfig } from '../components/BottomNav';
@@ -13,23 +13,119 @@ import FraudDetectionScreen from './FraudDetectionScreen';
 import SupplierKycScreen from './SupplierKycScreen';
 import AdminItemApprovalScreen from './AdminItemApprovalScreen';
 import NotificationManagerScreen from './NotificationManagerScreen';
+import AdminVerificationManager from './admin/AdminVerificationManager';
 import NotificationBell from '../components/NotificationBell';
 import { useAuth } from '../context/AuthContext';
+import { useBooking } from '../context/BookingContext';
+import { useItem } from '../context/ItemContext';
 import Button from '../components/Button';
 import { useLanguage } from '../context/LanguageContext';
 import { TranslationKey } from '../translations';
 import { useToast } from '../context/ToastContext';
 
+const API_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3001/api';
 
 interface AdminViewProps {
     navigate: (view: AppView) => void;
 }
 
+interface HighPriorityAlert {
+    id: string;
+    type: 'booking_timeout' | 'pending_kyc' | 'pending_item' | 'booking_conflict';
+    message: string;
+    severity: 'high' | 'medium';
+    timestamp: string;
+    action?: () => void;
+}
+
 const AdminView: React.FC<AdminViewProps> = ({ navigate }) => {
     const [activeTab, setActiveTab] = useState('dashboard');
-    const { logout } = useAuth();
+    const [showAlerts, setShowAlerts] = useState(false);
+    const [alerts, setAlerts] = useState<HighPriorityAlert[]>([]);
+    const alertRef = useRef<HTMLDivElement>(null);
+    const { logout, allUsers } = useAuth();
+    const { bookings } = useBooking();
+    const { items } = useItem();
     const { t } = useLanguage();
     const { showToast } = useToast();
+
+    // Calculate high-priority alerts
+    useEffect(() => {
+        const newAlerts: HighPriorityAlert[] = [];
+
+        // 1. Bookings exceeding 6 hours search time
+        const pendingBookings = bookings.filter(b =>
+            b.status === 'Searching' || b.status === 'Pending'
+        );
+        pendingBookings.forEach(booking => {
+            const createdAt = new Date(booking.createdAt || booking.date);
+            const hoursElapsed = (Date.now() - createdAt.getTime()) / (1000 * 60 * 60);
+            if (hoursElapsed >= 6) {
+                newAlerts.push({
+                    id: `booking-timeout-${booking.id}`,
+                    type: 'booking_timeout',
+                    message: `Booking ${booking.id.slice(-8)} waiting ${Math.round(hoursElapsed)}+ hours`,
+                    severity: 'high',
+                    timestamp: new Date().toISOString(),
+                    action: () => setActiveTab('bookings')
+                });
+            }
+        });
+
+        // 2. Pending item approvals
+        const pendingItems = items.filter(i => i.status === 'pending');
+        if (pendingItems.length > 0) {
+            newAlerts.push({
+                id: 'pending-items',
+                type: 'pending_item',
+                message: `${pendingItems.length} item(s) awaiting approval`,
+                severity: 'medium',
+                timestamp: new Date().toISOString(),
+                action: () => setActiveTab('items')
+            });
+        }
+
+        // 3. Check for pending KYC
+        const fetchKycAlerts = async () => {
+            try {
+                const suppliers = allUsers.filter(u => u.role === 'Supplier');
+                let pendingCount = 0;
+                for (const s of suppliers.slice(0, 10)) { // Limit to avoid too many requests
+                    const res = await fetch(`${API_URL}/kyc/${s.id}`);
+                    if (res.ok) {
+                        const data = await res.json();
+                        if (data.status === 'Pending') pendingCount++;
+                    }
+                }
+                if (pendingCount > 0) {
+                    setAlerts(prev => [...prev.filter(a => a.type !== 'pending_kyc'), {
+                        id: 'pending-kyc',
+                        type: 'pending_kyc',
+                        message: `${pendingCount} KYC submission(s) pending review`,
+                        severity: 'medium',
+                        timestamp: new Date().toISOString(),
+                        action: () => setActiveTab('kyc')
+                    }]);
+                }
+            } catch (e) {
+                console.error('Error fetching KYC alerts:', e);
+            }
+        };
+        fetchKycAlerts();
+
+        setAlerts(newAlerts);
+    }, [bookings, items, allUsers]);
+
+    // Close dropdown on outside click
+    useEffect(() => {
+        const handleClickOutside = (e: MouseEvent) => {
+            if (alertRef.current && !alertRef.current.contains(e.target as Node)) {
+                setShowAlerts(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
 
     const adminNavItems: NavItemConfig[] = [
         {
@@ -111,12 +207,6 @@ const AdminView: React.FC<AdminViewProps> = ({ navigate }) => {
                 return <FraudDetectionScreen />;
             case 'kyc':
                 return <SupplierKycScreen />;
-            case 'notification-manager':
-                return <NotificationManagerScreen onBack={() => setActiveTab('more')} />;
-            case 'more':
-                return <MoreScreen />;
-            default:
-                return <AdminOverviewDashboard setActiveTab={setActiveTab as any} />;
         }
     };
 
@@ -138,14 +228,63 @@ const AdminView: React.FC<AdminViewProps> = ({ navigate }) => {
     return (
         <div className="pb-20">
             <Header title={headerTitle}>
-                <button
-                    className="relative p-2 text-neutral-700 dark:text-neutral-300 hover:text-primary rounded-full hover:bg-neutral-100 dark:hover:bg-neutral-700"
-                    aria-label="Alerts"
-                >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                    </svg>
-                </button>
+                {/* High-Priority Alerts Button */}
+                <div className="relative" ref={alertRef}>
+                    <button
+                        className="relative p-2 text-neutral-700 dark:text-neutral-300 hover:text-primary rounded-full hover:bg-neutral-100 dark:hover:bg-neutral-700"
+                        aria-label="Alerts"
+                        onClick={() => setShowAlerts(!showAlerts)}
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                        </svg>
+                        {alerts.length > 0 && (
+                            <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center">
+                                {alerts.length}
+                            </span>
+                        )}
+                    </button>
+
+                    {/* Alert Dropdown */}
+                    {showAlerts && (
+                        <div className="absolute right-0 top-full mt-2 w-80 bg-white dark:bg-neutral-800 rounded-lg shadow-xl border border-neutral-200 dark:border-neutral-700 z-[9999] max-h-96 overflow-y-auto">
+                            <div className="p-3 border-b border-neutral-200 dark:border-neutral-700">
+                                <h4 className="font-bold text-neutral-800 dark:text-neutral-100 flex items-center gap-2">
+                                    <svg className="w-5 h-5 text-orange-500" fill="currentColor" viewBox="0 0 20 20">
+                                        <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                                    </svg>
+                                    High Priority Alerts
+                                </h4>
+                            </div>
+                            {alerts.length === 0 ? (
+                                <div className="p-4 text-center text-neutral-500 dark:text-neutral-400">
+                                    <p className="text-sm">✅ No urgent alerts</p>
+                                </div>
+                            ) : (
+                                <div className="divide-y divide-neutral-100 dark:divide-neutral-700">
+                                    {alerts.map(alert => (
+                                        <button
+                                            key={alert.id}
+                                            onClick={() => {
+                                                if (alert.action) alert.action();
+                                                setShowAlerts(false);
+                                            }}
+                                            className="w-full text-left p-3 hover:bg-neutral-50 dark:hover:bg-neutral-700/50 transition-colors"
+                                        >
+                                            <div className="flex items-start gap-2">
+                                                <span className={`flex-shrink-0 w-2 h-2 rounded-full mt-1.5 ${alert.severity === 'high' ? 'bg-red-500' : 'bg-yellow-500'}`} />
+                                                <div>
+                                                    <p className="text-sm font-medium text-neutral-800 dark:text-neutral-100">{alert.message}</p>
+                                                    <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">Click to view</p>
+                                                </div>
+                                            </div>
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
                 <NotificationBell />
             </Header>
             {renderContent()}
@@ -154,3 +293,4 @@ const AdminView: React.FC<AdminViewProps> = ({ navigate }) => {
     );
 };
 export default AdminView;
+

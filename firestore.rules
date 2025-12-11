@@ -1,0 +1,205 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ============================================
+    // HELPER FUNCTIONS
+    // ============================================
+    
+    // Check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Check if the authenticated user owns this document
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    // Check if user has admin role (stored in custom claims or user doc)
+    function isAdmin() {
+      return isAuthenticated() && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'Admin';
+    }
+    
+    // Check if user is a supplier
+    function isSupplier() {
+      return isAuthenticated() && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'Supplier';
+    }
+
+    // ============================================
+    // USERS COLLECTION
+    // ============================================
+    match /users/{userId} {
+      // Anyone can read user profiles (needed for public listings)
+      allow read: if true;
+      
+      // Users can only create their own document
+      allow create: if isAuthenticated() && request.auth.uid == userId;
+      
+      // Users can only update their own document, admins can update anyone
+      allow update: if isOwner(userId) || isAdmin();
+      
+      // Only admins can delete users
+      allow delete: if isAdmin();
+    }
+
+    // ============================================
+    // ITEMS COLLECTION
+    // ============================================
+    match /items/{itemId} {
+      // Anyone can read items (public marketplace)
+      allow read: if true;
+      
+      // Only authenticated users can create items
+      allow create: if isAuthenticated();
+      
+      // Only item owner or admin can update
+      allow update: if isAuthenticated() && 
+        (resource.data.ownerId == request.auth.uid || isAdmin());
+      
+      // Only item owner or admin can delete
+      allow delete: if isAuthenticated() && 
+        (resource.data.ownerId == request.auth.uid || isAdmin());
+    }
+
+    // ============================================
+    // BOOKINGS COLLECTION
+    // ============================================
+    match /bookings/{bookingId} {
+      // Users can read their own bookings (as farmer or supplier)
+      allow read: if isAuthenticated() && (
+        resource.data.farmerId == request.auth.uid ||
+        resource.data.supplierId == request.auth.uid ||
+        isAdmin()
+      );
+      
+      // Authenticated users can create bookings
+      allow create: if isAuthenticated();
+      
+      // Involved parties or admin can update
+      allow update: if isAuthenticated() && (
+        resource.data.farmerId == request.auth.uid ||
+        resource.data.supplierId == request.auth.uid ||
+        isAdmin()
+      );
+      
+      // Only admin can delete bookings
+      allow delete: if isAdmin();
+    }
+
+    // ============================================
+    // NOTIFICATIONS COLLECTION
+    // ============================================
+    match /notifications/{notificationId} {
+      // Users can read their own notifications
+      allow read: if isAuthenticated() && 
+        (resource.data.userId == request.auth.uid || isAdmin());
+      
+      // System/backend creates notifications (use Admin SDK)
+      allow create: if isAdmin();
+      
+      // Users can update their own notifications (mark as read)
+      allow update: if isAuthenticated() && 
+        (resource.data.userId == request.auth.uid || isAdmin());
+      
+      // Users can delete their own notifications
+      allow delete: if isAuthenticated() && 
+        (resource.data.userId == request.auth.uid || isAdmin());
+    }
+
+    // ============================================
+    // REVIEWS COLLECTION
+    // ============================================
+    match /reviews/{reviewId} {
+      // Anyone can read reviews
+      allow read: if true;
+      
+      // Authenticated users can create reviews
+      allow create: if isAuthenticated();
+      
+      // Only review author can update
+      allow update: if isAuthenticated() && 
+        resource.data.reviewerId == request.auth.uid;
+      
+      // Only admin can delete reviews
+      allow delete: if isAdmin();
+    }
+
+    // ============================================
+    // CHATS COLLECTION
+    // ============================================
+    match /chats/{chatId} {
+      // Participants can read chat
+      allow read: if isAuthenticated() && (
+        resource.data.participants.hasAny([request.auth.uid])
+      );
+      
+      // Authenticated users can create chats
+      allow create: if isAuthenticated();
+      
+      // Participants can update (send messages)
+      allow update: if isAuthenticated() && (
+        resource.data.participants.hasAny([request.auth.uid])
+      );
+      
+      // Don't allow delete
+      allow delete: if false;
+    }
+
+    // ============================================
+    // POSTS COLLECTION (Community Forum)
+    // ============================================
+    match /posts/{postId} {
+      // Anyone can read posts
+      allow read: if true;
+      
+      // Authenticated users can create posts
+      allow create: if isAuthenticated();
+      
+      // Only post author or admin can update
+      allow update: if isAuthenticated() && 
+        (resource.data.authorId == request.auth.uid || isAdmin());
+      
+      // Only post author or admin can delete
+      allow delete: if isAuthenticated() && 
+        (resource.data.authorId == request.auth.uid || isAdmin());
+    }
+
+    // ============================================
+    // SUPPORT TICKETS
+    // ============================================
+    match /tickets/{ticketId} {
+      // User can read their own tickets, admin can read all
+      allow read: if isAuthenticated() && 
+        (resource.data.userId == request.auth.uid || isAdmin());
+      
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated() && 
+        (resource.data.userId == request.auth.uid || isAdmin());
+      allow delete: if isAdmin();
+    }
+
+    // ============================================
+    // DAMAGE REPORTS
+    // ============================================
+    match /damage_reports/{reportId} {
+      allow read: if isAuthenticated() && (
+        resource.data.reporterId == request.auth.uid ||
+        resource.data.supplierId == request.auth.uid ||
+        isAdmin()
+      );
+      allow create: if isAuthenticated();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // ============================================
+    // DEFAULT DENY
+    // ============================================
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

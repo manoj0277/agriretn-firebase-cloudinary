@@ -53,6 +53,8 @@ export function getRoleDisplayName(role: UserRole): string {
             return 'Supplier';
         case UserRole.Admin:
             return 'Admin';
+        case UserRole.AgentPro:
+            return 'Agent Pro';
         case UserRole.Agent:
             return 'Agent';
         default:
@@ -67,6 +69,8 @@ export function getRoleDisplayName(role: UserRole): string {
  */
 export function getDefaultRouteForRole(role: UserRole): string {
     switch (role) {
+        case UserRole.AgentPro:
+            return '/agent-pro/dashboard';
         case UserRole.Agent:
             return '/agent/dashboard';
         case UserRole.Farmer:

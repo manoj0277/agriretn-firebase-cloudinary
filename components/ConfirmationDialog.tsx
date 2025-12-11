@@ -21,7 +21,7 @@ const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
     cancelText = 'Cancel'
 }) => {
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4" role="dialog" aria-modal="true" aria-labelledby="dialog-title">
+        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-[9999] p-4" role="dialog" aria-modal="true" aria-labelledby="dialog-title">
             <div className="bg-white p-6 rounded-lg shadow-xl max-w-sm w-full">
                 <h3 id="dialog-title" className="text-lg font-bold text-neutral-800 mb-2">{title}</h3>
                 <p className="text-neutral-700 mb-4">{message}</p>

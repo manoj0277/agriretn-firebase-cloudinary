@@ -5,7 +5,7 @@ import { useToast } from './ToastContext';
 import { auth } from '../src/lib/firebase';
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile, updatePassword, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth';
 
-const API_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3001/api';
+const API_URL = (import.meta as any).env?.VITE_API_URL || '/api';
 
 interface AuthContextType {
     user: User | null | undefined;
@@ -40,14 +40,53 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                     const controller = new AbortController();
                     const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
 
-                    const response = await fetch(`${API_URL}/users/profile?email=${encodeURIComponent(firebaseUser.email || '')}`, {
-                        signal: controller.signal
-                    });
+                    let response;
+                    let foundUser = null;
+
+                    // Try email-based lookup first if email exists
+                    if (firebaseUser.email) {
+                        response = await fetch(`${API_URL}/users/profile?email=${encodeURIComponent(firebaseUser.email)}`, {
+                            signal: controller.signal
+                        });
+                        if (response.ok) {
+                            foundUser = await response.json();
+                        }
+                    }
+
+                    // Fallback to phone-based lookup if email didn't work
+                    if (!foundUser && firebaseUser.phoneNumber) {
+                        console.log('Email lookup failed or no email, trying phone lookup:', firebaseUser.phoneNumber);
+                        const phoneResponse = await fetch(`${API_URL}/users/phone?phone=${encodeURIComponent(firebaseUser.phoneNumber)}`, {
+                            signal: controller.signal
+                        });
+                        if (phoneResponse.ok) {
+                            const phoneData = await phoneResponse.json();
+                            if (phoneData.exists && phoneData.email) {
+                                // Found user by phone, now get full profile
+                                const profileResponse = await fetch(`${API_URL}/users/profile?email=${encodeURIComponent(phoneData.email)}`, {
+                                    signal: controller.signal
+                                });
+                                if (profileResponse.ok) {
+                                    foundUser = await profileResponse.json();
+                                }
+                            }
+                        }
+                    }
+
+                    // Fallback to Firebase UID lookup
+                    if (!foundUser && firebaseUser.uid) {
+                        console.log('Trying UID-based lookup:', firebaseUser.uid);
+                        const uidResponse = await fetch(`${API_URL}/users/${firebaseUser.uid}`, {
+                            signal: controller.signal
+                        });
+                        if (uidResponse.ok) {
+                            foundUser = await uidResponse.json();
+                        }
+                    }
 
                     clearTimeout(timeoutId);
 
-                    if (response.ok) {
-                        const foundUser = await response.json();
+                    if (foundUser) {
                         console.log('User profile loaded successfully:', foundUser.name, 'Role:', foundUser.role);
                         console.log('Full user object:', foundUser);
 
@@ -56,25 +95,60 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                         console.log('Setting user state with:', foundUser);
                         setUser(foundUser);
                     } else {
-                        console.error('Backend returned non-OK status:', response.status);
-                        const errorText = await response.text();
-                        console.error('Error response:', errorText);
+                        console.error('User not found in database via any lookup method');
 
-                        // User exists in Auth but not in DB? Might be a new signup that hasn't synced yet.
-                        console.warn('User in Auth but not in DB yet or fetch failed');
-                        // Don't show error toast here - could be a new signup still syncing
-                        setUser(null);
-                        await signOut(auth);
+                        // User exists in Firebase Auth but not in Database - Auto-sync
+                        console.warn('User exists in Auth but not in DB - attempting auto-sync...');
+
+                        try {
+                            // Attempt to create user record in database
+                            const attemptedRole = sessionStorage.getItem('attemptedRole');
+                            const newUserData = {
+                                id: firebaseUser.uid,
+                                firebaseUid: firebaseUser.uid,
+                                email: firebaseUser.email || '',
+                                name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User',
+                                phone: firebaseUser.phoneNumber || '',
+                                role: (attemptedRole as UserRole) || UserRole.Farmer,
+                                userStatus: 'approved',
+                                kycStatus: 'not_submitted',
+                            };
+
+                            console.log('Creating missing user record:', newUserData);
+                            const createRes = await fetch(`${API_URL}/users`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify(newUserData),
+                            });
+
+                            if (createRes.ok) {
+                                const createdUser = await createRes.json();
+                                console.log('User record created successfully:', createdUser);
+                                setUser(createdUser);
+                                showToast('Account synced successfully! Welcome to AgriRent.', 'success');
+                                sessionStorage.removeItem('attemptedRole');
+                            } else {
+                                console.error('Failed to create user record');
+                                showToast('Unable to sync account. Please contact support.', 'error');
+                                setUser(null);
+                                await signOut(auth);
+                            }
+                        } catch (syncError) {
+                            console.error('Auto-sync failed:', syncError);
+                            showToast('Account sync failed. Please contact support.', 'error');
+                            setUser(null);
+                            await signOut(auth);
+                        }
                     }
                 } catch (error: any) {
                     if (error.name === 'AbortError') {
                         console.error('Profile fetch timed out - backend might be slow or unresponsive');
-                        showToast('Connection timeout. Please check if backend server is running and try again.', 'error');
+                        showToast('Connection timeout. Backend server might be down.', 'error');
                         setUser(null);
                         await signOut(auth);
                     } else {
                         console.error('Failed to fetch user profile:', error);
-                        // Don't show error for network errors during normal login flow
+                        showToast(`Login failed: Unable to connect to backend (${error.message}).`, 'error');
                         setUser(null);
                         await signOut(auth);
                     }
@@ -114,19 +188,32 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
             if (isPhone) {
                 console.log('Identifier is phone number, fetching email...');
-                // Fetch email associated with this phone
-                const response = await fetch(`${API_URL}/users/phone?phone=${encodeURIComponent(identifier)}`);
-                if (response.ok) {
-                    const user = await response.json();
-                    if (user && user.email) {
-                        emailToUse = user.email;
-                        console.log('Found email for phone:', emailToUse);
+                // Remove spaces/dashes
+                let phoneToCheck = identifier.replace(/[\s-]/g, '');
+
+                try {
+                    const res = await fetch(`${API_URL}/users/phone?phone=${encodeURIComponent(phoneToCheck)}`);
+                    if (res.ok) {
+                        const data = await res.json();
+                        if (data.exists && data.email && data.email.trim() !== '') {
+                            emailToUse = data.email;
+                            console.log('Found email for phone:', emailToUse);
+                        } else if (data.exists) {
+                            // Phone-only account - try using phone-based email format
+                            // Firebase accounts may use phone@domain format
+                            emailToUse = `${phoneToCheck}@agrirent.local`;
+                            console.log('Phone-only account, trying phone-based email:', emailToUse);
+                        } else {
+                            showToast("Phone number not registered. Please Sign Up.", 'error');
+                            return false;
+                        }
                     } else {
-                        showToast('Phone number not registered. Please create an account.', 'error');
+                        showToast("Phone number not registered. Please Sign Up.", 'error');
                         return false;
                     }
-                } else {
-                    showToast('Phone number not registered. Please create an account.', 'error');
+                } catch (err) {
+                    console.error("Phone lookup failed", err);
+                    showToast("Unable to verify phone number. Please try again.", 'error');
                     return false;
                 }
             }
@@ -202,6 +289,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const signup = async (details: Omit<User, 'id' | 'userStatus'>): Promise<boolean> => {
         try {
             // 1. Create User in Firebase Auth
+            // We removed the pre-checks because they inevitably fail if a partial signup exists.
+            // Instead, we catch the "email-already-in-use" error and attempt to recover.
+
             const userCredential = await createUserWithEmailAndPassword(auth, details.email, details.password || '');
 
             // 2. Update Profile (Display Name)
@@ -210,7 +300,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             });
 
             // 3. Create User in Backend (Firestore)
-            // We need to send the details to the backend to store in 'users' collection
             const response = await fetch(`${API_URL}/auth/signup`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -221,25 +310,69 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             });
 
             if (!response.ok) {
-                // If backend creation fails, we might want to delete the auth user?
-                // For now, just show error.
+                // If backend creation fails, delete the auth user to prevent orphaned accounts
+                // BUT only if it wasn't a recovery attempt. Here it's fresh, so we delete.
+                try {
+                    await userCredential.user.delete();
+                } catch (deleteError) {
+                    console.error('Failed to cleanup Firebase Auth user after backend failure:', deleteError);
+                }
                 const err = await response.json();
                 throw new Error(err.message || 'Failed to create user profile');
             }
 
             const newUser = await response.json();
-            setUser(newUser); // Optimistic update, though onAuthStateChanged will also fire
-
-            if (newUser.userStatus === 'pending') {
-                showToast('Account created! Your supplier account is now pending admin approval.', 'success');
-            } else {
-                showToast('Account created successfully!', 'success');
-            }
+            setUser(newUser);
+            showToast('Account created successfully!', 'success');
             return true;
+
         } catch (error: any) {
-            console.error(error);
+            console.error('Signup error:', error);
+
+            // RECOVERY LOGIC for "Half-Created" Accounts
             if (error.code === 'auth/email-already-in-use') {
-                showToast('Email already exists. Please login.', 'error');
+                try {
+                    console.log('User exists in Firebase. Attempting recovery login...');
+                    // Attempt to login with the provided password
+                    const userCredential = await signInWithEmailAndPassword(auth, details.email, details.password || '');
+
+                    // If login works, check if backend profile exists
+                    const profileRes = await fetch(`${API_URL}/users/profile?email=${encodeURIComponent(details.email)}`);
+
+                    if (profileRes.ok) {
+                        // Profile exists - they should just login
+                        showToast('Account already exists. Please login.', 'info');
+                        return false;
+                    } else {
+                        // Profile MISSING - This is the "stuck" state. Fix it now.
+                        console.log('Profile missing for existing Auth user. Completing registration...');
+                        const response = await fetch(`${API_URL}/auth/signup`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                ...details,
+                                firebaseUid: userCredential.user.uid
+                            })
+                        });
+
+                        if (response.ok) {
+                            const newUser = await response.json();
+                            setUser(newUser);
+                            showToast('Account recovered and verified successfully!', 'success');
+                            return true;
+                        } else {
+                            throw new Error('Failed to recover user profile');
+                        }
+                    }
+                } catch (recoveryError: any) {
+                    console.error('Recovery failed:', recoveryError);
+                    if (recoveryError.code === 'auth/wrong-password') {
+                        showToast('Email already in use. Please login.', 'error');
+                    } else {
+                        showToast('Account exists but could not be recovered. Please contact support.', 'error');
+                    }
+                    return false;
+                }
             } else {
                 showToast(error.message || 'Signup failed', 'error');
             }

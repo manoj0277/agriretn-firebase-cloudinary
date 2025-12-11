@@ -8,6 +8,7 @@ interface CommunityContextType {
     posts: ForumPost[];
     addPost: (post: Omit<ForumPost, 'id' | 'replies' | 'timestamp'>) => Promise<void>;
     addReply: (postId: number, reply: Omit<CommunityReply, 'id' | 'timestamp'>) => Promise<void>;
+    deletePost: (postId: number) => Promise<void>;
 }
 
 const CommunityContext = createContext<CommunityContextType | undefined>(undefined);
@@ -26,8 +27,8 @@ export const CommunityProvider: React.FC<{ children: ReactNode }> = ({ children 
                 rows.sort((a, b) => (b.timestamp?.localeCompare?.(a.timestamp || '') || 0));
                 setPosts(rows);
             } catch (error) {
-                console.error(error);
-                showToast('Could not load community posts.', 'error');
+                // Silently log error - don't show toast on login page
+                console.error('Failed to load community posts:', error);
             }
         };
         fetchPosts();
@@ -79,7 +80,21 @@ export const CommunityProvider: React.FC<{ children: ReactNode }> = ({ children 
         }
     };
 
-    const value = useMemo(() => ({ posts, addPost, addReply }), [posts]);
+    const deletePost = async (postId: number) => {
+        try {
+            const response = await fetch(`${API_URL}/posts/${postId}`, {
+                method: 'DELETE'
+            });
+            if (!response.ok) throw new Error('Failed to delete post');
+            setPosts(prev => prev.filter(post => post.id !== postId));
+            showToast('Post deleted successfully!', 'success');
+        } catch (error) {
+            console.error(error);
+            showToast('Failed to delete post.', 'error');
+        }
+    };
+
+    const value = useMemo(() => ({ posts, addPost, addReply, deletePost }), [posts]);
 
     return (
         <CommunityContext.Provider value={value}>

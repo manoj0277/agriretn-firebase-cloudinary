@@ -4,7 +4,7 @@ import { AppView } from '../types';
 import Header from '../components/Header';
 import Button from '../components/Button';
 import { useToast } from '../context/ToastContext';
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, HarmCategory, HarmBlockThreshold } from "@google/genai";
 import { useLanguage } from '../context/LanguageContext';
 
 const apiKey = typeof process !== 'undefined' && process.env && process.env.API_KEY
@@ -26,7 +26,14 @@ const AiScanScreen: React.FC<AiScanScreenProps> = ({ navigate, goBack }) => {
     const [error, setError] = useState<string | null>(null);
     const [showCamera, setShowCamera] = useState(false);
     const { showToast } = useToast();
-    const { t } = useLanguage();
+    const { t, language } = useLanguage();
+
+    const languageNames: Record<string, string> = {
+        'en': 'English',
+        'hi': 'Hindi',
+        'te': 'Telugu'
+    };
+    const languageName = languageNames[language] || 'English';
 
     const fileInputRef = useRef<HTMLInputElement>(null);
     const videoRef = useRef<HTMLVideoElement>(null);
@@ -140,19 +147,71 @@ const AiScanScreen: React.FC<AiScanScreenProps> = ({ navigate, goBack }) => {
             const base64Data = imageSrc.split(',')[1];
 
             const imagePart = { inlineData: { mimeType, data: base64Data } };
-            const textPart = { text: "You are an expert agronomist. Analyze the attached image, which is a frame from a crop video. Identify any pests, diseases, or nutritional deficiencies. Provide a detailed remedy including: 1. A clear diagnosis of the problem. 2. A list of suggested organic and chemical pesticides or treatments. 3. Step-by-step instructions on how to apply the recommended treatment, including dosage and safety precautions. If you identify an insect pest, also describe its lifecycle (e.g., egg, larva, pupa, adult) and, based on the image, try to determine what stage the infestation is in. Format the entire response in a way that is very easy for a farmer to understand. Use simple language. Use markdown to highlight key terms, such as the names of pests/diseases and the recommended treatments, by making them bold (e.g., **Aphids** or **Neem Oil**)." };
+            const textPart = { text: `You are an expert agronomist. Analyze the attached image, which is a frame from a crop video. Identify any pests, diseases, or nutritional deficiencies. Provide a detailed remedy including: 1. A clear diagnosis of the problem. 2. A list of suggested organic and chemical pesticides or treatments. 3. Step-by-step instructions on how to apply the recommended treatment, including dosage and safety precautions. If you identify an insect pest, also describe its lifecycle (e.g., egg, larva, pupa, adult) and, based on the image, try to determine what stage the infestation is in. Format the entire response in a way that is very easy for a farmer to understand.  IMPORTANT: Provide the diagnosis and remedy in ${languageName} language only. Use simple language. Use markdown to highlight key terms, such as the names of pests/diseases and the recommended treatments, by making them bold (e.g., **Aphids** or **Neem Oil**).` };
 
-            const response = await ai.models.generateContent({
-                model: 'gemini-2.5-flash',
-                contents: { parts: [imagePart, textPart] },
-            });
+            // Helper for retrying on 503
+            const generateWithRetry = async (maxRetries = 3) => {
+                for (let i = 0; i < maxRetries; i++) {
+                    try {
+                        return await ai.models.generateContent({
+                            model: 'gemini-2.5-flash',
+                            contents: [
+                                {
+                                    role: 'user',
+                                    parts: [textPart, imagePart]
+                                }
+                            ],
+                            config: {
+                                safetySettings: [
+                                    { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+                                    { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
+                                    { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
+                                    { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+                                ],
+                            },
+                        });
+                    } catch (err: any) {
+                        const isOverloaded = err?.message?.includes('503') || err?.message?.includes('overloaded');
+                        if (isOverloaded && i < maxRetries - 1) {
+                            console.warn(`Gemini 503/Overloaded. Retrying in ${(i + 1) * 1000}ms...`);
+                            await new Promise(r => setTimeout(r, (i + 1) * 1000));
+                            continue;
+                        }
+                        throw err;
+                    }
+                }
+                throw new Error("Failed after corrections"); // Should likely not reach here
+            };
 
-            setAiResponse(response.text);
+            const response = await generateWithRetry();
+
+            // Handle response safely
+            let responseText = "";
+            try {
+                if (response && typeof response.text === 'function') {
+                    responseText = response.text();
+                } else if (response && (response as any).text) {
+                    responseText = (response as any).text;
+                }
+            } catch (textErr) {
+                console.warn("Could not retrieve text via function, checking generic prop", textErr);
+                // Fallback if the SDK structure is different
+                if (response && (response as any).text) {
+                    responseText = String((response as any).text);
+                }
+            }
+
+            if (!responseText) {
+                throw new Error("Empty response from AI model.");
+            }
+
+            setAiResponse(responseText);
 
         } catch (err) {
             console.error("Gemini API error:", err);
-            setError(t('failedToAnalyzeImage'));
-            showToast(t('failedToAnalyzeImage'), "error");
+            const rawError = err instanceof Error ? err.message : String(err);
+            setError(`Failed to analyze: ${rawError}`);
+            showToast(`Error: ${rawError}`, "error");
         } finally {
             setIsLoading(false);
         }

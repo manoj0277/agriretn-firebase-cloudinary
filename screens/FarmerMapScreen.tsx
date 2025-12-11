@@ -1,8 +1,9 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { AppView, Item, ItemCategory } from '../types';
 import { MapContainer, TileLayer, Marker, useMap, Circle } from 'react-leaflet';
 import L from 'leaflet';
+import 'leaflet/dist/leaflet.css'; // CRITICAL: This must be imported for the map to render
 import ItemCard from '../components/ItemCard';
 
 interface FarmerMapScreenProps {
@@ -60,6 +61,21 @@ const getImageIconForItem = (item: Item) => {
 };
 
 
+const MapInvalidator = () => {
+    const map = useMap();
+    useEffect(() => {
+        // Multiple invalidation attempts to ensure it catches layout changes
+        const timeouts = [
+            setTimeout(() => map.invalidateSize(), 100),
+            setTimeout(() => map.invalidateSize(), 500),
+            setTimeout(() => map.invalidateSize(), 1000),
+            setTimeout(() => map.invalidateSize(), 2000)
+        ];
+        return () => timeouts.forEach(t => clearTimeout(t));
+    }, [map]);
+    return null;
+}
+
 const FarmerMapScreen: React.FC<FarmerMapScreenProps> = ({ items, navigate, userLocation }) => {
     const [selectedItem, setSelectedItem] = useState<Item | null>(null);
     const heatData = useMemo(() => {
@@ -90,15 +106,16 @@ const FarmerMapScreen: React.FC<FarmerMapScreenProps> = ({ items, navigate, user
 
 
     return (
-        <div className="relative w-full h-full bg-neutral-200">
+        <div style={{ width: '100%', height: '100%', minHeight: '400px', backgroundColor: '#e5e5e5' }}>
             <MapContainer
                 center={center}
                 zoom={12}
                 scrollWheelZoom={true}
-                style={{ height: '100%', width: '100%' }}
+                style={{ height: '100%', width: '100%', minHeight: '400px' }}
                 onClick={() => setSelectedItem(null)}
             >
                 <ChangeView center={center} zoom={selectedItem ? 14 : 12} />
+                <MapInvalidator />
                 <TileLayer
                     attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
                     url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -131,7 +148,7 @@ const FarmerMapScreen: React.FC<FarmerMapScreenProps> = ({ items, navigate, user
             </MapContainer>
 
             {selectedItem && (
-                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 w-[90%] max-w-sm z-[1000]">
+                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 w-[90%] max-w-sm" style={{ zIndex: 99999 }}>
                     <div className="relative">
                         <button onClick={() => setSelectedItem(null)} className="absolute -top-2 -right-2 z-10 bg-white dark:bg-neutral-600 rounded-full p-1 shadow-md text-neutral-600 dark:text-neutral-200 hover:text-red-500 dark:hover:text-red-400">
                             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>

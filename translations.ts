@@ -51,6 +51,8 @@ export const translations = {
   fullName: { en: 'Full Name', hi: 'पूरा नाम', te: 'పూర్తి పేరు' },
   phoneNumber: { en: 'Phone Number', hi: 'फ़ोन नंबर', te: 'ఫోన్ నంబర్' },
   signupAs: { en: 'Sign up as', hi: 'इस रूप में साइन अप करें', te: 'ఇలా సైన్ అప్ చేయండి' },
+  emailOrPhone: { en: 'Email or Phone Number', hi: 'ईमेल या फ़ोन नंबर', te: 'ఇమెయిల్ లేదా ఫోన్ నంబర్' },
+
 
   // FarmerView
   marketplace: { en: 'AgriRent Marketplace', hi: 'एग्रीरेंट मार्केटप्लेस', te: 'అగ్రిరెంట్ మార్కెట్‌ప్లేస్' },

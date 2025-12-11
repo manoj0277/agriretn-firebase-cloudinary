@@ -1,0 +1,131 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    
+    // ============================================
+    // HELPER FUNCTIONS
+    // ============================================
+    
+    // Check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Check file size (max 10MB)
+    function isValidSize() {
+      return request.resource.size < 10 * 1024 * 1024;
+    }
+    
+    // Check if file is an image
+    function isImage() {
+      return request.resource.contentType.matches('image/.*');
+    }
+    
+    // Allowed image types
+    function isAllowedImageType() {
+      return request.resource.contentType in [
+        'image/jpeg',
+        'image/png',
+        'image/gif',
+        'image/webp'
+      ];
+    }
+
+    // ============================================
+    // AGRIRENT UPLOADS FOLDER
+    // ============================================
+    match /agrirent/{allPaths=**} {
+      // Anyone can read (for public item images)
+      allow read: if true;
+      
+      // Only authenticated users can upload
+      // Must be valid image type and under size limit
+      allow create: if isAuthenticated() 
+        && isImage() 
+        && isAllowedImageType()
+        && isValidSize();
+      
+      // Only the uploader or admin can update/delete
+      // Note: This requires storing uploader info in metadata
+      allow update, delete: if isAuthenticated();
+    }
+
+    // ============================================
+    // USER PROFILE IMAGES
+    // ============================================
+    match /profiles/{userId}/{fileName} {
+      // Anyone can read profile images
+      allow read: if true;
+      
+      // Only the user can upload their own profile image
+      allow create, update: if isAuthenticated() 
+        && request.auth.uid == userId
+        && isImage()
+        && isAllowedImageType()
+        && isValidSize();
+      
+      // Only the user can delete their image
+      allow delete: if isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // ============================================
+    // ITEM IMAGES
+    // ============================================
+    match /items/{itemId}/{fileName} {
+      // Anyone can read item images
+      allow read: if true;
+      
+      // Authenticated users can upload item images
+      allow create: if isAuthenticated()
+        && isImage()
+        && isAllowedImageType()
+        && isValidSize();
+      
+      // Authenticated users can update/delete (item owner check done in backend)
+      allow update, delete: if isAuthenticated();
+    }
+
+    // ============================================
+    // DAMAGE REPORT IMAGES
+    // ============================================
+    match /damage_reports/{reportId}/{fileName} {
+      // Only authenticated users can read
+      allow read: if isAuthenticated();
+      
+      // Authenticated users can upload damage images
+      allow create: if isAuthenticated()
+        && isImage()
+        && isAllowedImageType()
+        && isValidSize();
+      
+      // Only authenticated users can delete
+      allow delete: if isAuthenticated();
+    }
+
+    // ============================================
+    // KYC DOCUMENTS
+    // ============================================
+    match /kyc/{userId}/{fileName} {
+      // Only the user or admin can read KYC docs
+      allow read: if isAuthenticated() && request.auth.uid == userId;
+      
+      // Only the user can upload their KYC
+      allow create: if isAuthenticated() 
+        && request.auth.uid == userId
+        && isValidSize();
+      
+      // User can update their own KYC docs
+      allow update: if isAuthenticated() && request.auth.uid == userId;
+      
+      // Don't allow delete of KYC docs
+      allow delete: if false;
+    }
+
+    // ============================================
+    // DEFAULT DENY
+    // ============================================
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

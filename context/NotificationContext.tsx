@@ -167,11 +167,11 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
             await fetch(`${API_URL}/notifications/${notificationId}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ read: true })
+                body: JSON.stringify({ read: true, userId: user?.id })
             });
             setNotifications(prev => prev.map(n => n.id === notificationId ? { ...n, read: true } : n));
         } catch { }
-    }, []);
+    }, [user]);
 
     const markAsSeen = useCallback(async (notificationId: number) => {
         try {

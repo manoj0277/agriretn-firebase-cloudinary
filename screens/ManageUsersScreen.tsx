@@ -41,6 +41,36 @@ const UserCard: React.FC<{ user: User, onApprove: (id: number) => void, onSuspen
                 {user.userStatus !== 'blocked' && (
                     <button onClick={() => {/* TODO: Implement Block */ }} className="text-sm bg-red-600 text-white font-semibold py-1 px-3 rounded-md hover:bg-red-700">Block</button>
                 )}
+                {user.role === UserRole.Supplier && (
+                    <button
+                        onClick={async () => {
+                            try {
+                                const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3001/api';
+                                const res = await fetch(`${apiUrl}/admin/suppliers/${user.id}/toggle-verified`, {
+                                    method: 'POST',
+                                    headers: {
+                                        'Authorization': `Bearer ${localStorage.getItem('token')}`,
+                                        'Content-Type': 'application/json'
+                                    }
+                                });
+                                if (res.ok) {
+                                    alert('Verified status toggled!');
+                                    // Ideally, we should reload the users list here or update the local state.
+                                    // For now, reload the page.
+                                    window.location.reload();
+                                } else {
+                                    alert('Failed to toggle verified status');
+                                }
+                            } catch (e) {
+                                console.error(e);
+                                alert('Error toggling status');
+                            }
+                        }}
+                        className={`text-sm font-semibold py-1 px-3 rounded-md text-white ${user.isVerifiedAccount ? 'bg-purple-600 hover:bg-purple-700' : 'bg-gray-500 hover:bg-gray-600'}`}
+                    >
+                        {user.isVerifiedAccount ? 'Unverify' : 'Verify Badge'}
+                    </button>
+                )}
             </div>
         </div>
     );

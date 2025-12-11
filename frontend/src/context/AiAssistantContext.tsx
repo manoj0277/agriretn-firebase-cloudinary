@@ -1,14 +1,14 @@
 import React, { createContext, useState, useContext, ReactNode, useMemo, useCallback } from 'react';
-import { GoogleGenAI, Type, FunctionDeclaration, Content } from "@google/genai";
+import { GoogleGenAI, Type, FunctionDeclaration, Content, HarmCategory, HarmBlockThreshold } from "@google/genai";
+import { useNavigate } from 'react-router-dom';
+import { useLanguage } from './LanguageContext';
 import { useAuth } from './AuthContext';
-import { useToast } from './ToastContext';
-import { AiChatMessage, ItemCategory, WORK_PURPOSES, AppView } from '../types';
 import { useItem } from './ItemContext';
 
 // This guard is necessary for environments where process.env is not defined.
 const apiKey = typeof process !== 'undefined' && process.env && process.env.API_KEY
-  ? process.env.API_KEY
-  : undefined;
+    ? process.env.API_KEY
+    : undefined;
 
 if (!apiKey) {
     console.warn("API_KEY environment variable not set. AI Assistant will not function.");
@@ -27,36 +27,36 @@ interface AiAssistantContextType {
 const AiAssistantContext = createContext<AiAssistantContextType | undefined>(undefined);
 
 const createBookingFunctionDeclaration: FunctionDeclaration = {
-  name: 'createBooking',
-  description: 'Starts the process of booking a farm service or equipment by navigating to the booking form.',
-  parameters: {
-    type: Type.OBJECT,
-    properties: {
-      itemCategory: {
-        type: Type.STRING,
-        description: 'The category of the item to book. Must be one of the available categories.',
-        enum: Object.values(ItemCategory),
-      },
-      quantity: {
-        type: Type.INTEGER,
-        description: 'The number of items or workers needed. Defaults to 1 if not specified by the user.',
-      },
-      workPurpose: {
-        type: Type.STRING,
-        description: 'The specific task the user wants to perform, e.g., "Harvesting", "Ploughing". Must be one of the available work purposes.',
-        enum: [...WORK_PURPOSES],
-      }
+    name: 'createBooking',
+    description: 'Starts the process of booking a farm service or equipment by navigating to the booking form.',
+    parameters: {
+        type: Type.OBJECT,
+        properties: {
+            itemCategory: {
+                type: Type.STRING,
+                description: 'The category of the item to book. Must be one of the available categories.',
+                enum: Object.values(ItemCategory),
+            },
+            quantity: {
+                type: Type.INTEGER,
+                description: 'The number of items or workers needed. Defaults to 1 if not specified by the user.',
+            },
+            workPurpose: {
+                type: Type.STRING,
+                description: 'The specific task the user wants to perform, e.g., "Harvesting", "Ploughing". Must be one of the available work purposes.',
+                enum: [...WORK_PURPOSES],
+            }
+        },
+        required: ['itemCategory'],
     },
-    required: ['itemCategory'],
-  },
 };
 
 const connectToSupportFunctionDeclaration: FunctionDeclaration = {
     name: 'connectToSupport',
     description: "Connects the user to the human support team by navigating to the support page. Use this function if the user expresses frustration, is not satisfied with the AI's help, or explicitly asks to speak to a human, person, agent, or officer.",
     parameters: {
-      type: Type.OBJECT,
-      properties: {},
+        type: Type.OBJECT,
+        properties: {},
     },
 };
 
@@ -89,6 +89,15 @@ export const AiAssistantProvider: React.FC<{ children: ReactNode }> = ({ childre
         setSupportCallTriggered(false);
     }, []);
 
+    const { language } = useLanguage();
+
+    const languageNames: Record<string, string> = {
+        'en': 'English',
+        'hi': 'Hindi',
+        'te': 'Telugu'
+    };
+    const languageName = languageNames[language] || 'English';
+
     const sendMessage = useCallback(async (prompt: string, navigate: (view: AppView) => void) => {
         if (!ai) {
             showToast("AI Assistant is not configured. Missing API Key.", "error");
@@ -102,108 +111,122 @@ export const AiAssistantProvider: React.FC<{ children: ReactNode }> = ({ childre
             text: prompt,
             timestamp: new Date().toISOString()
         };
-        
+
         const currentHistory = [...chatHistory, userMessage];
         setChatHistory(currentHistory);
 
         try {
             const systemInstruction = `You are an expert AI assistant for AgriRent. Your primary goal is to help farmers. You are chatting with ${user?.name}. Address them by their name when appropriate.
-            1.  Answer farming-related questions clearly and concisely.
+            IMPORTANT: Respond entirely in ${languageName} language.
+            1.  Answer farming-related questions clearly and concisely in ${languageName}.
             2.  If a user expresses intent to book equipment or a service, you MUST use the 'createBooking' function.
-            3.  Before calling the booking function, ensure you have the required 'itemCategory'. If it's missing, ask the user for it. You can also ask for optional details like quantity or work purpose.
-            4.  Do not guess the item category. If the user's request is ambiguous (e.g., "I need a machine"), ask for clarification (e.g., "What kind of machine do you need? A tractor, harvester, or something else?").
+            3.  Before calling the booking function, ensure you have the required 'itemCategory'. If it's missing, ask the user for it in ${languageName}. You can also ask for optional details like quantity or work purpose.
+            4.  Do not guess the item category. If the user's request is ambiguous (e.g., "I need a machine"), ask for clarification (e.g., "What kind of machine do you need? A tractor, harvester, or something else?") in ${languageName}.
             5.  If the user is unsatisfied, frustrated, or asks to speak to a person, human, officer, or support, you MUST use the 'connectToSupport' function.
             6.  If the user asks a location-based question without specifying a location (e.g., "what's nearby?"), you MUST use the 'getCurrentLocation' function to get their coordinates first.
-            7.  After calling a function, also provide a short confirmation message to the user, like "Okay, let's start that booking for you." or "Okay, connecting you to support."`;
-            
-            const historyForAPI: Content[] = currentHistory.map(msg => ({
-                role: msg.role === 'ai' ? 'model' : 'user',
-                parts: [{ text: msg.text }],
-            }));
+            7.  After calling a function, also provide a short confirmation message to the user in ${languageName}, like "Okay, let's start that booking for you." or "Okay, connecting you to support."`;
 
-            const response = await ai.models.generateContent({
+            // Filter out the initial AI greeting from the history sent to the API to avoid confusion
+            const historyForAPI: Content[] = currentHistory
+                .filter(msg => msg.id !== chatHistory[0]?.id || msg.role !== 'ai') // Basic check, better relies on index if IDs unstable
+                .map(msg => ({
+                    role: msg.role === 'ai' ? 'model' : 'user',
+                    parts: [{ text: msg.text }],
+                }));
+
+            return null;
+        }
+            };
+
+    if (aiResponseContent?.parts[0]?.functionCall) {
+        const fc = aiResponseContent.parts[0].functionCall;
+        let functionResponse: any = null;
+
+        if (fc.name === 'createBooking') {
+            navigate({ view: 'BOOKING_FORM', category: fc.args.itemCategory as ItemCategory, quantity: fc.args.quantity as number, workPurpose: fc.args.workPurpose as any });
+            functionResponse = { result: "OK, navigating to booking form." };
+        } else if (fc.name === 'connectToSupport') {
+            setSupportCallTriggered(true);
+            functionResponse = { result: "OK, connecting to support." };
+        } else if (fc.name === 'getCurrentLocation') {
+            functionResponse = await new Promise((resolve) => {
+                navigator.geolocation.getCurrentPosition(
+                    (position) => resolve({ latitude: position.coords.latitude, longitude: position.coords.longitude }),
+                    (error) => resolve({ error: error.message })
+                );
+            });
+        }
+
+        // If there's partial text alongside function call
+        const initialText = getResponseText(response);
+        if (initialText) {
+            setChatHistory(prev => [...prev, { id: Date.now() + 1, role: 'ai', text: initialText, timestamp: new Date().toISOString() }]);
+        }
+
+        if (functionResponse) {
+            const secondResponse = await ai.models.generateContent({
                 model: 'gemini-2.5-flash',
-                contents: historyForAPI,
+                contents: [
+                    ...historyForAPI,
+                    aiResponseContent,
+                    {
+                        role: 'user',
+                        parts: [{ functionResponse: { name: fc.name, response: functionResponse } }]
+                    }
+                ],
                 config: {
                     systemInstruction,
                     tools: [{ functionDeclarations: [createBookingFunctionDeclaration, connectToSupportFunctionDeclaration, getCurrentLocationFunctionDeclaration] }],
+                    safetySettings: [
+                        { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+                        { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
+                        { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
+                        { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+                    ],
                 },
             });
-
-            const aiResponseContent = response.candidates?.[0]?.content;
-            if (aiResponseContent?.parts[0]?.functionCall) {
-                const fc = aiResponseContent.parts[0].functionCall;
-                let functionResponse: any = null;
-
-                if (fc.name === 'createBooking') {
-                    navigate({ view: 'BOOKING_FORM', category: fc.args.itemCategory as ItemCategory, quantity: fc.args.quantity as number, workPurpose: fc.args.workPurpose as any });
-                    functionResponse = { result: "OK, navigating to booking form." };
-                } else if (fc.name === 'connectToSupport') {
-                    setSupportCallTriggered(true);
-                    functionResponse = { result: "OK, connecting to support." };
-                } else if (fc.name === 'getCurrentLocation') {
-                     functionResponse = await new Promise((resolve) => {
-                        navigator.geolocation.getCurrentPosition(
-                            (position) => resolve({ latitude: position.coords.latitude, longitude: position.coords.longitude }),
-                            (error) => resolve({ error: error.message })
-                        );
-                    });
-                }
-                
-                // Add the AI's function call turn to history for the UI
-                 if (response.text) {
-                    setChatHistory(prev => [...prev, { id: Date.now() + 1, role: 'ai', text: response.text, timestamp: new Date().toISOString() }]);
-                }
-
-                if (functionResponse) {
-                    // FIX: Corrected a typo in the model name from `gemini-2.asideflash` to `gemini-2.5-flash`.
-                    const secondResponse = await ai.models.generateContent({
-                        model: 'gemini-2.5-flash',
-                        contents: [
-                            ...historyForAPI,
-                            aiResponseContent,
-                            {
-                                role: 'user',
-                                parts: [{ functionResponse: { name: fc.name, response: functionResponse } }]
-                            }
-                        ],
-                         config: {
-                            systemInstruction,
-                            tools: [{ functionDeclarations: [createBookingFunctionDeclaration, connectToSupportFunctionDeclaration, getCurrentLocationFunctionDeclaration] }],
-                        },
-                    });
-                    setChatHistory(prev => [...prev, { id: Date.now() + 2, role: 'ai', text: secondResponse.text, timestamp: new Date().toISOString() }]);
-                }
-
-            } else if (response.text) {
-                 const aiMessage: AiChatMessage = { id: Date.now() + 1, role: 'ai', text: response.text, timestamp: new Date().toISOString() };
-                 setChatHistory(prev => [...prev, aiMessage]);
+            const secondText = getResponseText(secondResponse);
+            if (secondText) {
+                setChatHistory(prev => [...prev, { id: Date.now() + 2, role: 'ai', text: secondText, timestamp: new Date().toISOString() }]);
             }
-
-        } catch (error) {
-            console.error("Error calling Gemini API:", error);
-            showToast("Sorry, I couldn't process that request. Please try again.", "error");
-             const errorMessage: AiChatMessage = {
-                id: Date.now() + 1,
-                role: 'ai',
-                text: "I'm having a little trouble connecting right now. Please check the configuration or try again in a moment.",
-                timestamp: new Date().toISOString()
-            };
-            setChatHistory(prev => [...prev, errorMessage]);
-        } finally {
-            setIsLoading(false);
         }
+
+    } else {
+        const text = getResponseText(response);
+        if (text) {
+            const aiMessage: AiChatMessage = { id: Date.now() + 1, role: 'ai', text: text, timestamp: new Date().toISOString() };
+            setChatHistory(prev => [...prev, aiMessage]);
+        } else {
+            // Empty response but no function call?
+            const aiMessage: AiChatMessage = { id: Date.now() + 1, role: 'ai', text: "(I'm thinking, but I have nothing to say right now.)", timestamp: new Date().toISOString() };
+            setChatHistory(prev => [...prev, aiMessage]);
+        }
+    }
+
+} catch (error) {
+    console.error("Error calling Gemini API:", error);
+    showToast("Sorry, I couldn't process that request. Please try again.", "error");
+    const errorMessage: AiChatMessage = {
+        id: Date.now() + 1,
+        role: 'ai',
+        text: "I'm having a little trouble connecting right now. Please check the configuration or try again in a moment.",
+        timestamp: new Date().toISOString()
+    };
+    setChatHistory(prev => [...prev, errorMessage]);
+} finally {
+    setIsLoading(false);
+}
 
     }, [showToast, items, chatHistory, user]);
 
 
-    const value = useMemo(() => ({ chatHistory, sendMessage, isLoading, supportCallTriggered, clearSupportCall }), [chatHistory, sendMessage, isLoading, supportCallTriggered, clearSupportCall]);
+const value = useMemo(() => ({ chatHistory, sendMessage, isLoading, supportCallTriggered, clearSupportCall }), [chatHistory, sendMessage, isLoading, supportCallTriggered, clearSupportCall]);
 
-    return (
-        <AiAssistantContext.Provider value={value}>
-            {children}
-        </AiAssistantContext.Provider>
-    );
+return (
+    <AiAssistantContext.Provider value={value}>
+        {children}
+    </AiAssistantContext.Provider>
+);
 };
 
 export const useAiAssistant = (): AiAssistantContextType => {

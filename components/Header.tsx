@@ -15,7 +15,7 @@ const Header: React.FC<HeaderProps> = ({ title, onBack, children, navigate }) =>
     const { unreadCount } = useAdminAlert();
 
     return (
-        <header className="bg-white border-b border-gray-200 p-4 sticky top-0 z-10 flex items-center h-16">
+        <header className="bg-white border-b border-gray-200 p-4 sticky top-0 flex items-center h-16" style={{ zIndex: 10000 }}>
             {onBack && (
                 <button onClick={onBack} className="mr-2 text-primary p-2 rounded-full hover:bg-gray-100">
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">

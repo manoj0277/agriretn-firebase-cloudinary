@@ -12,7 +12,37 @@ interface AiSuggestionsModalProps {
     navigate: (view: AppView) => void;
 }
 
+import { useAuth } from '../context/AuthContext';
+
 const AiSuggestionsModal: React.FC<AiSuggestionsModalProps> = ({ onClose, navigate }) => {
+    const { user } = useAuth();
+    const isRestricted = user?.userStatus === 'suspended' || user?.userStatus === 'blocked';
+
+    if (isRestricted) {
+        return (
+            <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-4">
+                <div className="bg-white dark:bg-neutral-800 rounded-lg shadow-xl w-full max-w-md p-6 relative">
+                    <button onClick={onClose} className="absolute top-2 right-2 p-2 text-neutral-500 dark:text-neutral-300 hover:text-neutral-800 dark:hover:text-neutral-100">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                    </button>
+                    <div className="text-center py-6">
+                        <div className="bg-red-100 dark:bg-red-900/30 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-red-600 dark:text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                            </svg>
+                        </div>
+                        <h2 className="text-xl font-bold text-neutral-800 dark:text-neutral-100 mb-2">Access Denied</h2>
+                        <p className="text-neutral-600 dark:text-neutral-300 mb-4">
+                            Your account is currently {user?.userStatus}. You cannot use AI tools at this time.
+                        </p>
+                        {user?.userStatus === 'blocked' && <p className="text-sm text-red-500 font-semibold mb-2">Please contact Admin to raise a complaint.</p>}
+                        <Button onClick={onClose} className="w-full">Close</Button>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
     const { items } = useItem();
     const { bookings } = useBooking();
     const { summary } = useWeather();

@@ -37,7 +37,20 @@ const NotificationManagerScreen: React.FC<NotificationManagerProps> = ({ onBack 
     // Fetch notification stats
     useEffect(() => {
         fetchStats();
+        fetchHistory();
     }, []);
+
+    const fetchHistory = async () => {
+        try {
+            const res = await fetch(`${API_URL}/admin/notifications/history`);
+            if (res.ok) {
+                const data = await res.json();
+                setNotificationHistory(data);
+            }
+        } catch (error) {
+            console.error('Error fetching history:', error);
+        }
+    };
 
     const fetchStats = async () => {
         try {
@@ -328,7 +341,7 @@ const NotificationManagerScreen: React.FC<NotificationManagerProps> = ({ onBack 
                                         <select
                                             multiple
                                             value={targetAudience.districts}
-                                            onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setTargetAudience({ ...targetAudience, districts: Array.from(e.target.selectedOptions, option => option.value) })}
+                                            onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setTargetAudience({ ...targetAudience, districts: Array.from(e.target.selectedOptions, (option: any) => option.value) })}
                                             className="w-full px-3 py-2 border border-neutral-300 dark:border-neutral-600 rounded-md bg-white dark:bg-neutral-900"
                                             size={4}
                                         >
@@ -439,6 +452,53 @@ const NotificationManagerScreen: React.FC<NotificationManagerProps> = ({ onBack 
                 <Button onClick={handleSend} disabled={sending || !message.trim()} variant="primary">
                     {sending ? 'Sending...' : scheduledFor ? 'Schedule Notification' : 'Send Notification'}
                 </Button>
+            </div>
+
+            {/* Notification History */}
+            <div className="bg-white dark:bg-neutral-800 rounded-lg border border-neutral-200 dark:border-neutral-700 p-4">
+                <div className="flex justify-between items-center mb-4">
+                    <h2 className="text-lg font-semibold text-neutral-800 dark:text-neutral-100">Recent Notifications</h2>
+                    <button onClick={fetchStats} className="text-sm text-primary hover:underline">Refresh</button>
+                </div>
+
+                <div className="overflow-x-auto">
+                    <table className="min-w-full text-left text-sm whitespace-nowrap">
+                        <thead>
+                            <tr className="border-b border-gray-200 dark:border-gray-700">
+                                <th className="px-4 py-2 font-medium text-gray-900 dark:text-white">Message</th>
+                                <th className="px-4 py-2 font-medium text-gray-900 dark:text-white">Category</th>
+                                <th className="px-4 py-2 font-medium text-gray-900 dark:text-white">Sent Via</th>
+                                <th className="px-4 py-2 font-medium text-gray-900 dark:text-white">Date</th>
+                                <th className="px-4 py-2 font-medium text-gray-900 dark:text-white">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                            {notificationHistory.length === 0 ? (
+                                <tr>
+                                    <td colSpan={5} className="px-4 py-8 text-center text-gray-500">No notifications found</td>
+                                </tr>
+                            ) : (
+                                notificationHistory.map((notif: any) => (
+                                    <tr key={notif.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                                        <td className="px-4 py-2 max-w-xs truncate" title={notif.message}>{notif.message}</td>
+                                        <td className="px-4 py-2">
+                                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
+                                                {getCategoryIcon(notif.category)} {notif.category}
+                                            </span>
+                                        </td>
+                                        <td className="px-4 py-2 text-gray-500">{notif.sentVia?.join(', ') || 'app'}</td>
+                                        <td className="px-4 py-2 text-gray-500">{new Date(notif.timestamp).toLocaleDateString()}</td>
+                                        <td className="px-4 py-2">
+                                            <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${notif.read ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
+                                                {notif.read ? 'Read' : 'Unread'}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                ))
+                            )}
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
     );

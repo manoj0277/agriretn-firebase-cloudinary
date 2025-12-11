@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { MapContainer, TileLayer, Marker } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import { useAuth } from '../context/AuthContext';
 import { useItem } from '../context/ItemContext';
@@ -20,7 +20,7 @@ import { useBooking } from '../context/BookingContext';
 import { useReview } from '../context/ReviewContext';
 import SupplierScheduleScreen from './SupplierScheduleScreen';
 import { uploadImage } from '../src/lib/upload';
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, HarmCategory, HarmBlockThreshold } from "@google/genai";
 import { useLanguage } from '../context/LanguageContext';
 
 
@@ -29,13 +29,26 @@ const apiKey = typeof process !== 'undefined' && process.env && process.env.API_
     : undefined;
 const ai = apiKey ? new GoogleGenAI({ apiKey }) : null;
 
+import VerifiedBadge from '../components/VerifiedBadge';
 
 interface SupplierViewProps {
     navigate: (view: AppView) => void;
+    onSwitchMode?: () => void;
+    roleBadge?: string;
 }
 
 const HEAVY_MACHINERY_CATEGORIES = [ItemCategory.Tractors, ItemCategory.Harvesters, ItemCategory.JCB, ItemCategory.Borewell];
 const EQUIPMENT_CATEGORIES = [ItemCategory.Drones, ItemCategory.Sprayers];
+
+// Helper component to handle map click events
+const MapClickHandler: React.FC<{ onMapClick: (lat: number, lng: number) => void }> = ({ onMapClick }) => {
+    useMapEvents({
+        click(e) {
+            onMapClick(e.latlng.lat, e.latlng.lng);
+        },
+    });
+    return null;
+};
 
 const AddItemScreen: React.FC<{ itemToEdit: Item | null, onBack: () => void }> = ({ itemToEdit, onBack }) => {
     const { user } = useAuth();
@@ -44,6 +57,14 @@ const AddItemScreen: React.FC<{ itemToEdit: Item | null, onBack: () => void }> =
     const { showToast } = useToast();
     const { bookings } = useBooking();
     const { items } = useItem();
+    const { language } = useLanguage();
+
+    const languageNames: Record<string, string> = {
+        'en': 'English',
+        'hi': 'Hindi',
+        'te': 'Telugu'
+    };
+    const languageName = languageNames[language] || 'English';
 
     const [name, setName] = useState('');
     const [purposes, setPurposes] = useState<{ name: WorkPurpose, price: string }[]>([{ name: WORK_PURPOSES[0], price: '' }]);
@@ -72,6 +93,7 @@ const AddItemScreen: React.FC<{ itemToEdit: Item | null, onBack: () => void }> =
     const [supplierPhone, setSupplierPhone] = useState('');
     const [supplierEmail, setSupplierEmail] = useState('');
     const [currentLocation, setCurrentLocation] = useState<{ lat: number; lng: number } | null>(null);
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
     const isWorker = useMemo(() => category === ItemCategory.Workers, [category]);
     const isHeavyMachinery = useMemo(() => HEAVY_MACHINERY_CATEGORIES.includes(category), [category]);
@@ -194,29 +216,75 @@ const AddItemScreen: React.FC<{ itemToEdit: Item | null, onBack: () => void }> =
                 - Recent booking prices for similar items (price per hour): ${itemPrices.join(', ')}
                 
                 Based on this data, provide a suggested price range and a very brief justification.
+                IMPORTANT: Respond with the suggested range and justification in ${languageName} language only.
                 Respond with ONLY the suggested range and justification. For example: 'Suggested range: ₹1500 - ₹1800. This is competitive for your area.'
-                If there is not enough data, just say 'Not enough data for a suggestion.'
+                If there is not enough data, just say 'Not enough data for a suggestion.' (Translate this phrase to ${languageName} if responding in that language).
             `;
 
-            const response = await ai.models.generateContent({
-                model: 'gemini-2.5-flash',
-                contents: prompt,
-            });
-            setPriceSuggestion(response.text);
+            // Helper for retrying on 503
+            const generateWithRetry = async (maxRetries = 3) => {
+                for (let i = 0; i < maxRetries; i++) {
+                    try {
+                        return await ai.models.generateContent({
+                            model: 'gemini-2.5-flash',
+                            contents: [{ role: 'user', parts: [{ text: prompt }] }],
+                            config: {
+                                safetySettings: [
+                                    { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+                                    { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
+                                    { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
+                                    { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+                                ],
+                            },
+                        });
+                    } catch (err: any) {
+                        const isOverloaded = err?.message?.includes('503') || err?.message?.includes('overloaded');
+                        if (isOverloaded && i < maxRetries - 1) {
+                            console.warn(`Gemini 503/Overloaded. Retrying in ${(i + 1) * 1000}ms...`);
+                            await new Promise(r => setTimeout(r, (i + 1) * 1000));
+                            continue;
+                        }
+                        throw err;
+                    }
+                }
+                throw new Error("Failed after 3 retries");
+            };
 
-        } catch (error) {
-            console.error("Error getting price suggestion:", error);
-            setPriceSuggestion("Could not get a suggestion at this time.");
+            const result = await generateWithRetry();
+
+            let suggestionText = "";
+            try {
+                const r = result as any;
+                if (typeof r.text === 'function') {
+                    suggestionText = r.text();
+                } else if (r.text) {
+                    suggestionText = r.text;
+                }
+            } catch (textErr) {
+                if ((result as any).text) {
+                    suggestionText = String((result as any).text);
+                }
+            }
+
+            if (suggestionText) {
+                setPriceSuggestion(suggestionText);
+            } else {
+                setPriceSuggestion('Could not generate a suggestion.');
+            }
+
+        } catch (error: any) {
+            console.error("Error generating price suggestion:", error);
+            setPriceSuggestion("Error: " + (error.message || "Failed to generate suggestion."));
         } finally {
             setIsSuggestingPrice(false);
         }
     };
 
 
-    const handlePurposeChange = (index: number, field: 'name' | 'price', value: string) => {
-        const newPurposes = [...purposes];
-        newPurposes[index] = { ...newPurposes[index], [field]: value };
-        setPurposes(newPurposes);
+    const handlePurposeChange = (index: number, key: string, value: string) => {
+        const updated = [...purposes];
+        updated[index] = { ...updated[index], [key]: value };
+        setPurposes(updated);
     };
 
     const addPurpose = () => {
@@ -255,9 +323,12 @@ const AddItemScreen: React.FC<{ itemToEdit: Item | null, onBack: () => void }> =
 
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!user) return;
+        if (!user || isSubmitting) return;
+        setIsSubmitting(true);
 
-        if (imagePreviews.length === 0 && category !== ItemCategory.Workers) {
+        // When editing, allow using existing images if no new images were uploaded
+        const hasImages = imagePreviews.length > 0 || (itemToEdit && itemToEdit.images && itemToEdit.images.length > 0);
+        if (!hasImages && category !== ItemCategory.Workers) {
             showToast('Please upload an image for the item.', 'error');
             return;
         }
@@ -289,9 +360,9 @@ const AddItemScreen: React.FC<{ itemToEdit: Item | null, onBack: () => void }> =
                     }
                 }
             }
-        } catch (error) {
+        } catch (error: any) {
             console.error(error);
-            showToast('Failed to upload images', 'error');
+            showToast(error.message || 'Failed to upload images', 'error');
             return;
         }
 
@@ -299,7 +370,14 @@ const AddItemScreen: React.FC<{ itemToEdit: Item | null, onBack: () => void }> =
             Male: 'https://images.unsplash.com/photo-1591181825852-f4a45a6c3a81?q=80&w=800&auto=format&fit=crop',
             Female: 'https://images.unsplash.com/photo-1601758123926-4cf339f4c278?q=80&w=800&auto=format&fit=crop'
         };
-        const itemImages = category === ItemCategory.Workers ? [defaultImages[gender]] : uploadedImages;
+        // Use uploaded images, or preserve existing images when editing, or fallback
+        const itemImages = category === ItemCategory.Workers
+            ? [defaultImages[gender]]
+            : (uploadedImages.length > 0
+                ? uploadedImages
+                : (itemToEdit?.images && itemToEdit.images.length > 0
+                    ? itemToEdit.images
+                    : ['https://res.cloudinary.com/demo/image/upload/v1/samples/placeholder']));
 
         const itemData: Omit<Item, 'id'> = {
             name,
@@ -336,8 +414,35 @@ const AddItemScreen: React.FC<{ itemToEdit: Item | null, onBack: () => void }> =
             }
         } else {
             addItem(itemData as Omit<Item, 'id'>);
+            showToast('Item submitted for approval!', 'success');
         }
+        // Note: isSubmitting stays true to prevent re-submission even if onBack fails
         onBack();
+    };
+
+    const fetchAddress = async (lat: number, lng: number) => {
+        try {
+            const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`);
+            const data = await response.json();
+            if (data && data.address) {
+                const parts = [];
+                if (data.address.village) parts.push(data.address.village);
+                else if (data.address.town) parts.push(data.address.town);
+                else if (data.address.city) parts.push(data.address.city);
+                else if (data.address.suburb) parts.push(data.address.suburb);
+
+                if (data.address.county) parts.push(data.address.county);
+                if (data.address.state_district) parts.push(data.address.state_district);
+
+                const addressStr = parts.length > 0 ? parts.join(', ') : (data.display_name ? data.display_name.split(',')[0] : `${lat.toFixed(5)}, ${lng.toFixed(5)}`);
+                setLocation(addressStr);
+            } else {
+                setLocation(`${lat.toFixed(5)}, ${lng.toFixed(5)}`);
+            }
+        } catch (error) {
+            console.error("Error fetching address:", error);
+            setLocation(`${lat.toFixed(5)}, ${lng.toFixed(5)}`);
+        }
     };
 
     return (
@@ -378,16 +483,12 @@ const AddItemScreen: React.FC<{ itemToEdit: Item | null, onBack: () => void }> =
                 <div>
                     <label className="block text-neutral-700 dark:text-neutral-300 text-sm font-bold mb-2">Select Item Location on Map <span className="text-red-600">*</span></label>
                     <div className="rounded overflow-hidden border border-neutral-200 dark:border-neutral-600">
-                        <MapContainer center={itemMapCenter} zoom={12} scrollWheelZoom={true} style={{ height: '220px', width: '100%' }}
-                            whenCreated={(map) => {
-                                itemMapRef.current = map;
-                                map.on('click', (e: any) => {
-                                    const { lat, lng } = e.latlng;
-                                    setItemGeo({ lat, lng });
-                                    setLocation(`${lat.toFixed(5)}, ${lng.toFixed(5)}`);
-                                });
-                            }}>
+                        <MapContainer center={itemMapCenter} zoom={12} scrollWheelZoom={true} style={{ height: '220px', width: '100%' }}>
                             <TileLayer attribution='&copy; OpenStreetMap contributors' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                            <MapClickHandler onMapClick={(lat, lng) => {
+                                setItemGeo({ lat, lng });
+                                fetchAddress(lat, lng);
+                            }} />
                             {currentLocation && (
                                 <Marker
                                     position={[currentLocation.lat, currentLocation.lng]}
@@ -399,34 +500,53 @@ const AddItemScreen: React.FC<{ itemToEdit: Item | null, onBack: () => void }> =
                                     })}
                                 />
                             )}
-                            <Marker
-                                position={itemGeo ? [itemGeo.lat, itemGeo.lng] : itemMapCenter}
-                                icon={L.icon({
-                                    iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
-                                    iconSize: [25, 41],
-                                    iconAnchor: [12, 41],
-                                    popupAnchor: [1, -34],
-                                    shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-                                    shadowSize: [41, 41]
-                                })}
-                                draggable
-                                eventHandlers={{
-                                    dragend: (e: any) => {
-                                        const latlng = e.target.getLatLng();
-                                        setItemGeo({ lat: latlng.lat, lng: latlng.lng });
-                                        setLocation(`${latlng.lat.toFixed(5)}, ${latlng.lng.toFixed(5)}`);
-                                    }
-                                }}
-                            />
+                            {itemGeo && (
+                                <Marker
+                                    position={[itemGeo.lat, itemGeo.lng]}
+                                    icon={L.icon({
+                                        iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+                                        iconSize: [25, 41],
+                                        iconAnchor: [12, 41],
+                                        popupAnchor: [1, -34],
+                                        shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+                                        shadowSize: [41, 41]
+                                    })}
+                                    draggable
+                                    eventHandlers={{
+                                        dragend: (e: any) => {
+                                            const latlng = e.target.getLatLng();
+                                            setItemGeo({ lat: latlng.lat, lng: latlng.lng });
+                                            fetchAddress(latlng.lat, latlng.lng);
+                                        }
+                                    }}
+                                />
+                            )}
                         </MapContainer>
                     </div>
                     <p className="text-xs text-neutral-600 dark:text-neutral-400 mt-1">Tap the map or drag the pin to set location.</p>
                     <p className="text-xs text-neutral-600 dark:text-neutral-400">This makes the supplier listing location selection intuitive: tap or drag the pin to choose the exact point on the map, and the item save enforces having a selected location</p>
-                    {itemGeo && <p className="text-xs text-neutral-600 dark:text-neutral-400">Selected: {itemGeo.lat.toFixed(5)}, {itemGeo.lng.toFixed(5)}</p>}
+                    {itemGeo && <p className="text-xs text-neutral-600 dark:text-neutral-400 font-medium text-primary mt-1">Selected Coordinates: {itemGeo.lat.toFixed(4)}, {itemGeo.lng.toFixed(4)}</p>}
+                </div>
+                {/* Location Address Field */}
+                <div>
+                    <label className="block text-neutral-700 dark:text-neutral-300 text-sm font-bold mb-2">
+                        Location Address <span className="text-red-600">*</span>
+                    </label>
+                    <input
+                        type="text"
+                        value={location}
+                        onChange={(e) => setLocation(e.target.value)}
+                        placeholder="Enter location address (e.g., Village, Mandal, District)"
+                        className="shadow appearance-none border border-neutral-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg w-full py-3 px-4 text-neutral-800 dark:text-white leading-tight focus:outline-none focus:ring-2 focus:ring-primary/50"
+                        required
+                    />
+                    <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
+                        This address will be shown to farmers when they view your equipment
+                    </p>
                 </div>
                 <div>
                     <label className="block text-neutral-700 dark:text-neutral-300 text-sm font-bold mb-2">Category</label>
-                    <select value={category} onChange={e => setCategory(e.target.value as ItemCategory)} className="shadow border border-neutral-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg w-full py-3 px-4 pr-10 text-neutral-800 dark:text-white leading-tight focus:outline-none focus:ring-2 focus:ring-primary/50" style={{ backgroundImage: "url('data:image/svg+xml;charset=UTF-8,%3csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27 fill=%27none%27 stroke=%27currentColor%27 stroke-width=%272%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27%3e%3cpolyline points=%276 9 12 15 18 9%27%3e%3c/polyline%3e%3c/svg%3e')", backgroundPosition: 'right 0.75rem center', backgroundRepeat: 'no-repeat', backgroundSize: '1.5em 1.5em' }}>
+                    <select value={category} onChange={e => setCategory(e.target.value as ItemCategory)} className="appearance-none shadow border border-neutral-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg w-full py-3 px-4 pr-10 text-neutral-800 dark:text-white leading-tight focus:outline-none focus:ring-2 focus:ring-primary/50" style={{ backgroundImage: "url('data:image/svg+xml;charset=UTF-8,%3csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27 fill=%27none%27 stroke=%27currentColor%27 stroke-width=%272%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27%3e%3cpolyline points=%276 9 12 15 18 9%27%3e%3c/polyline%3e%3c/svg%3e')", backgroundPosition: 'right 0.75rem center', backgroundRepeat: 'no-repeat', backgroundSize: '1.5em 1.5em' }}>
                         {Object.values(ItemCategory).map(t => <option key={t} value={t}>{t}</option>)}
                     </select>
                 </div>
@@ -480,7 +600,7 @@ const AddItemScreen: React.FC<{ itemToEdit: Item | null, onBack: () => void }> =
                 {isWorker && (
                     <div>
                         <label className="block text-neutral-700 dark:text-neutral-300 text-sm font-bold mb-2">Gender</label>
-                        <select value={gender} onChange={e => setGender(e.target.value as 'Male' | 'Female')} className="shadow border border-neutral-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg w-full py-3 px-4 pr-10 text-neutral-800 dark:text-white leading-tight focus:outline-none focus:ring-2 focus:ring-primary/50" style={{ backgroundImage: "url('data:image/svg+xml;charset=UTF-8,%3csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27 fill=%27none%27 stroke=%27currentColor%27 stroke-width=%272%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27%3e%3cpolyline points=%276 9 12 15 18 9%27%3e%3c/polyline%3e%3c/svg%3e')", backgroundPosition: 'right 0.75rem center', backgroundRepeat: 'no-repeat', backgroundSize: '1.5em 1.5em' }}>
+                        <select value={gender} onChange={e => setGender(e.target.value as 'Male' | 'Female')} className="appearance-none shadow border border-neutral-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg w-full py-3 px-4 pr-10 text-neutral-800 dark:text-white leading-tight focus:outline-none focus:ring-2 focus:ring-primary/50" style={{ backgroundImage: "url('data:image/svg+xml;charset=UTF-8,%3csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27 fill=%27none%27 stroke=%27currentColor%27 stroke-width=%272%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27%3e%3cpolyline points=%276 9 12 15 18 9%27%3e%3c/polyline%3e%3c/svg%3e')", backgroundPosition: 'right 0.75rem center', backgroundRepeat: 'no-repeat', backgroundSize: '1.5em 1.5em' }}>
                             <option value="Male">Male</option>
                             <option value="Female">Female</option>
                         </select>
@@ -505,7 +625,7 @@ const AddItemScreen: React.FC<{ itemToEdit: Item | null, onBack: () => void }> =
                 {(isHeavyMachinery || isEquipment) && (
                     <div>
                         <label className="block text-neutral-700 dark:text-neutral-300 text-sm font-bold mb-2">Condition</label>
-                        <select value={condition} onChange={e => setCondition(e.target.value as 'New' | 'Good' | 'Fair')} className="shadow border border-neutral-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg w-full py-3 px-4 pr-10 text-neutral-800 dark:text-white leading-tight focus:outline-none focus:ring-2 focus:ring-primary/50" style={{ backgroundImage: "url('data:image/svg+xml;charset=UTF-8,%3csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27 fill=%27none%27 stroke=%27currentColor%27 stroke-width=%272%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27%3e%3cpolyline points=%276 9 12 15 18 9%27%3e%3c/polyline%3e%3c/svg%3e')", backgroundPosition: 'right 0.75rem center', backgroundRepeat: 'no-repeat', backgroundSize: '1.5em 1.5em' }}>
+                        <select value={condition} onChange={e => setCondition(e.target.value as 'New' | 'Good' | 'Fair')} className="appearance-none shadow border border-neutral-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg w-full py-3 px-4 pr-10 text-neutral-800 dark:text-white leading-tight focus:outline-none focus:ring-2 focus:ring-primary/50" style={{ backgroundImage: "url('data:image/svg+xml;charset=UTF-8,%3csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27 fill=%27none%27 stroke=%27currentColor%27 stroke-width=%272%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27%3e%3cpolyline points=%276 9 12 15 18 9%27%3e%3c/polyline%3e%3c/svg%3e')", backgroundPosition: 'right 0.75rem center', backgroundRepeat: 'no-repeat', backgroundSize: '1.5em 1.5em' }}>
                             <option value="New">New</option>
                             <option value="Good">Good</option>
                             <option value="Fair">Fair</option>
@@ -520,7 +640,7 @@ const AddItemScreen: React.FC<{ itemToEdit: Item | null, onBack: () => void }> =
                     disabled={true}
                     className="bg-gray-100 dark:bg-neutral-800 cursor-not-allowed opacity-70"
                 />
-                <div className="flex items-center justify-between p-3 bg-neutral-50 dark:bg-neutral-900/40 rounded-lg border border-neutral-200 dark:border-neutral-600">
+                <div className="flex items-center justify-between p-4 bg-white dark:bg-neutral-800 rounded-xl border border-neutral-200 dark:border-neutral-700 shadow-sm">
                     <div>
                         <p className="text-sm font-bold text-neutral-800 dark:text-neutral-100">Auto Price Optimization</p>
                         <p className="text-xs text-neutral-600 dark:text-neutral-300">Adjust prices based on demand and season</p>
@@ -538,7 +658,22 @@ const AddItemScreen: React.FC<{ itemToEdit: Item | null, onBack: () => void }> =
                 {isWorker && (
                     <Input label="Available Quantity" type="number" value={quantityAvailable} onChange={e => setQuantityAvailable(e.target.value)} placeholder="e.g., 10" required min="0" />
                 )}
-                <Button type="submit">{itemToEdit ? 'Save Changes' : 'Submit for Approval'}</Button>
+                <div className="flex justify-center pt-4">
+                    <Button
+                        type="submit"
+                        className="w-full md:w-auto px-8"
+                        disabled={isSubmitting}
+                    >
+                        {isSubmitting ? (
+                            <span className="flex items-center gap-2">
+                                <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" /></svg>
+                                Submitting...
+                            </span>
+                        ) : (
+                            itemToEdit ? 'Save Changes' : 'Submit for Approval'
+                        )}
+                    </Button>
+                </div>
             </form>
         </div>
     );
@@ -550,6 +685,26 @@ const SupplierListingsScreen: React.FC<{ onAddItem: () => void, onEditItem: (m: 
     const { bookings } = useBooking();
     const myItems = items.filter(m => m.ownerId === user?.id);
     const [itemToDelete, setItemToDelete] = useState<Item | null>(null);
+    const [statusFilter, setStatusFilter] = useState<'all' | 'approved' | 'pending' | 'reupload'>('all');
+
+    // Filter items based on status
+    const filteredItems = useMemo(() => {
+        return myItems.filter(item => {
+            if (statusFilter === 'all') return true;
+            if (statusFilter === 'approved') return item.status === 'approved';
+            if (statusFilter === 'pending') return item.status === 'pending' && !(item as any).reuploadRequested;
+            if (statusFilter === 'reupload') return (item as any).reuploadRequested || item.status === 'rejected';
+            return true;
+        });
+    }, [myItems, statusFilter]);
+
+    // Count items by status
+    const statusCounts = useMemo(() => ({
+        all: myItems.length,
+        approved: myItems.filter(i => i.status === 'approved').length,
+        pending: myItems.filter(i => i.status === 'pending' && !(i as any).reuploadRequested).length,
+        reupload: myItems.filter(i => (i as any).reuploadRequested || i.status === 'rejected').length,
+    }), [myItems]);
 
     const handleConfirmDelete = () => {
         if (itemToDelete) {
@@ -602,62 +757,176 @@ const SupplierListingsScreen: React.FC<{ onAddItem: () => void, onEditItem: (m: 
     return (
         <div className="dark:text-neutral-200">
             <div className="p-4">
-                <div className="flex justify-between items-center mb-4">
-                    <h2 className="text-xl font-bold text-neutral-800 dark:text-neutral-100">My Items & Services</h2>
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
+                    {/* Status Filters - Compact Icons */}
+                    <div className="flex space-x-2 bg-gray-100 dark:bg-neutral-700 p-1.5 rounded-lg">
+                        <style>{`
+                            .hide-scrollbar::-webkit-scrollbar { display: none; }
+                        `}</style>
+                        {[
+                            { id: 'all', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>, label: 'All' },
+                            { id: 'pending', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>, label: 'Pending' },
+                            { id: 'approved', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>, label: 'Approved' },
+                            { id: 'reupload', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>, label: 'Re-upload' }
+                        ].map((item) => (
+                            <button
+                                key={item.id}
+                                onClick={() => setStatusFilter(item.id as any)}
+                                title={item.label}
+                                className={`relative p-2 rounded-md transition-all ${statusFilter === item.id
+                                    ? 'bg-white dark:bg-neutral-600 text-primary shadow-sm ring-1 ring-black/5'
+                                    : 'text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 hover:bg-white/50 dark:hover:bg-neutral-600/50'
+                                    }`}
+                            >
+                                {item.icon}
+                                {statusCounts[item.id as keyof typeof statusCounts] > 0 && (
+                                    <span className={`absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full text-[10px] font-bold ${statusFilter === item.id ? 'bg-primary text-white' : 'bg-neutral-200 dark:bg-neutral-600 text-neutral-600 dark:text-neutral-300'}`}>
+                                        {statusCounts[item.id as keyof typeof statusCounts]}
+                                    </span>
+                                )}
+                            </button>
+                        ))}
+                    </div>
+
                     <div className="flex flex-col items-end">
-                        <button onClick={handleAddItemClick} disabled={!(kycStatus === 'Pending' || kycStatus === 'Submitted' || kycStatus === 'Approved')} className="bg-primary text-white font-bold py-2 px-4 rounded-lg hover:bg-primary-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:blur-sm">+ Add Item</button>
+                        <button onClick={handleAddItemClick} disabled={!(kycStatus === 'Pending' || kycStatus === 'Submitted' || kycStatus === 'Approved')} className="bg-green-600 text-white font-bold py-2 px-6 rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-md flex items-center gap-2">
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" />
+                            </svg>
+                            Add Item
+                        </button>
                         {(!kycStatus || kycStatus === 'Rejected') && (
-                            <button onClick={openKycForm} className="mt-1 text-xs text-yellow-800 bg-yellow-100 px-2 py-1 rounded">Do KYC to add items</button>
+                            <button onClick={openKycForm} className="mt-2 text-xs text-yellow-800 bg-yellow-100 px-3 py-1 rounded-full font-medium">⚠️ Complete KYC to add items</button>
                         )}
                     </div>
                 </div>
 
                 {/* Re-upload Alert */}
                 {myItems.some(i => (i as any).reuploadRequested) && (
-                    <div className="mb-4 p-4 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-lg">
-                        <div className="flex items-center gap-2 mb-2">
+                    <div className="mb-6 p-4 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-xl shadow-sm">
+                        <div className="flex items-center gap-3 mb-2">
                             <svg className="w-6 h-6 text-orange-600 dark:text-orange-400" fill="currentColor" viewBox="0 0 20 20">
                                 <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
                             </svg>
-                            <h3 className="font-semibold text-orange-800 dark:text-orange-200">Action Required - Re-upload Item</h3>
+                            <h3 className="font-bold text-orange-800 dark:text-orange-200 text-lg">Action Required</h3>
                         </div>
-                        <p className="text-sm text-orange-700 dark:text-orange-300">Admin has requested you to re-upload some items. Please check below and update the required items.</p>
+                        <p className="text-sm text-orange-700 dark:text-orange-300 ml-9">Admin has requested you to re-upload some items. Please check below and update the required items.</p>
                     </div>
                 )}
 
-                <div className="space-y-3">
-                    {myItems.length > 0 ? (
-                        [...myItems].reverse().map(item => {
-                            const minPrice = Math.min(...item.purposes.map(p => p.price));
-                            return (
-                                <div key={item.id} className="bg-white dark:bg-neutral-700 p-4 rounded-lg border border-neutral-200 dark:border-neutral-600">
-                                    <div className="flex items-center justify-between">
-                                        <div>
-                                            <h3 className="font-bold text-neutral-800 dark:text-neutral-100">{item.name}</h3>
-                                            <p className="text-sm text-neutral-700 dark:text-neutral-300">Starting from ₹{minPrice}/hr</p>
-                                            {(item as any).reuploadRequested && (
-                                                <span className="text-xs bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-200 px-2 py-1 rounded-full mt-1 inline-block animate-pulse">
-                                                    🔄 Re-upload Requested
-                                                </span>
-                                            )}
+                <div className="space-y-4">
+                    {filteredItems.length > 0 ? (
+                        [...filteredItems]
+                            .sort((a, b) => {
+                                // Re-upload requested items first
+                                const aReupload = (a as any).reuploadRequested || a.status === 'rejected' ? 1 : 0;
+                                const bReupload = (b as any).reuploadRequested || b.status === 'rejected' ? 1 : 0;
+                                return bReupload - aReupload;
+                            })
+                            .map(item => {
+                                const minPrice = Math.min(...item.purposes.map(p => p.price));
+                                const isReuploadRequested = (item as any).reuploadRequested;
+                                return (
+                                    <div key={item.id} className="bg-white dark:bg-neutral-800 rounded-xl border border-neutral-200 dark:border-neutral-700 shadow-sm hover:shadow-md transition-all overflow-hidden">
+                                        {/* Card Header with Image and Details */}
+                                        <div className="flex gap-4 p-4">
+                                            {/* Item Image */}
+                                            <div className="flex-shrink-0">
+                                                {item.images && item.images[0] ? (
+                                                    <img
+                                                        src={item.images[0]}
+                                                        alt={item.name}
+                                                        className="w-20 h-20 object-cover rounded-lg border border-neutral-200 dark:border-neutral-600"
+                                                    />
+                                                ) : (
+                                                    <div className="w-20 h-20 bg-neutral-100 dark:bg-neutral-700 rounded-lg flex items-center justify-center">
+                                                        <svg className="w-8 h-8 text-neutral-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                                        </svg>
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            {/* Item Details */}
+                                            <div className="flex-1 min-w-0">
+                                                <div className="flex items-start justify-between gap-2">
+                                                    <div className="flex-1">
+                                                        <h3 className="text-lg font-bold text-neutral-900 dark:text-white truncate">{item.name || '--'}</h3>
+                                                        <p className="text-sm text-neutral-600 dark:text-neutral-400 mt-0.5">
+                                                            <span className="text-neutral-500">Starting from</span> <span className="font-bold text-neutral-800 dark:text-neutral-200">₹{minPrice}/hr</span>
+                                                        </p>
+                                                        <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">{item.category}</p>
+                                                    </div>
+                                                    <span className={`flex-shrink-0 text-xs font-bold px-3 py-1.5 rounded-full ${getStatusClasses(item.status)}`}>
+                                                        {item.status.charAt(0).toUpperCase() + item.status.slice(1)}
+                                                    </span>
+                                                </div>
+
+                                                {/* Re-upload Badge */}
+                                                {isReuploadRequested && (
+                                                    <div className="mt-2 inline-flex items-center gap-1.5 text-xs bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300 px-2.5 py-1 rounded-full font-medium">
+                                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                                                        Re-upload Requested
+                                                    </div>
+                                                )}
+                                            </div>
                                         </div>
-                                        <span className={`text-xs font-semibold px-3 py-1 rounded-full ${getStatusClasses(item.status)}`}>
-                                            {item.status.charAt(0).toUpperCase() + item.status.slice(1)}
-                                        </span>
+
+                                        {/* Action Buttons - Left aligned with equal width */}
+                                        <div className="px-4 pb-4 pt-2 border-t border-neutral-100 dark:border-neutral-700">
+                                            <div className="flex items-center justify-between">
+                                                <div className="grid grid-cols-3 gap-2 flex-1 max-w-md">
+                                                    <button
+                                                        onClick={() => onEditItem(item)}
+                                                        className={`font-semibold py-2 px-3 rounded-lg text-sm transition-colors shadow-sm flex items-center justify-center gap-1.5 bg-green-500 hover:bg-green-600 text-white ${isReuploadRequested || item.status === 'rejected' ? 'animate-pulse ring-2 ring-green-300 ring-offset-2' : ''
+                                                            }`}
+                                                    >
+                                                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                            {isReuploadRequested || item.status === 'rejected' ? (
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                                                            ) : (
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                                            )}
+                                                        </svg>
+                                                        {isReuploadRequested || item.status === 'rejected' ? 'Re-upload' : 'Edit'}
+                                                    </button>
+                                                    <button
+                                                        onClick={() => setItemToDelete(item)}
+                                                        className="bg-red-500 hover:bg-red-600 text-white font-semibold py-2 px-3 rounded-lg text-sm transition-colors shadow-sm flex items-center justify-center gap-1.5"
+                                                    >
+                                                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                                        </svg>
+                                                        Delete
+                                                    </button>
+                                                    <button
+                                                        onClick={() => optimizePrices(item)}
+                                                        className="bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-3 rounded-lg text-sm transition-colors shadow-sm flex items-center justify-center gap-1.5"
+                                                    >
+                                                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                                                        </svg>
+                                                        Optimize
+                                                    </button>
+                                                </div>
+                                                <span className={`ml-3 text-xs font-medium px-2 py-1 rounded-full ${item.autoPriceOptimization ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-neutral-100 text-neutral-500 dark:bg-neutral-700 dark:text-neutral-400'}`}>
+                                                    {item.autoPriceOptimization ? '✓ Auto-Opt' : 'Auto-Opt Off'}
+                                                </span>
+                                            </div>
+                                        </div>
                                     </div>
-                                    <div className="text-right mt-4 border-t border-neutral-100 dark:border-neutral-600 pt-3 flex justify-end space-x-2">
-                                        <button onClick={() => onEditItem(item)} className="bg-primary text-white font-bold py-1 px-3 rounded-lg text-sm hover:bg-primary-dark transition-colors">
-                                            {(item.status === 'rejected' || (item as any).reuploadRequested) ? 'Re-upload Item' : 'Edit'}
-                                        </button>
-                                        <button onClick={() => setItemToDelete(item)} className="bg-red-600 text-white font-bold py-1 px-3 rounded-lg text-sm hover:bg-red-700 transition-colors">Delete</button>
-                                        <button onClick={() => optimizePrices(item)} className="bg-blue-600 text-white font-bold py-1 px-3 rounded-lg text-sm hover:bg-blue-700 transition-colors">Optimize Now</button>
-                                        <span className={`text-xs px-2 py-1 rounded-md ${item.autoPriceOptimization ? 'bg-green-100 text-green-700' : 'bg-neutral-100 text-neutral-600'}`}>{item.autoPriceOptimization ? 'Auto Opt: On' : 'Auto Opt: Off'}</span>
-                                    </div>
-                                </div>
-                            )
-                        })
+                                )
+                            })
                     ) : (
-                        <p className="text-center text-neutral-700 dark:text-neutral-300 py-8">You haven't added any items yet.</p>
+                        <div className="text-center py-12 bg-neutral-50 dark:bg-neutral-800/50 rounded-xl border border-dashed border-neutral-300 dark:border-neutral-700">
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 mx-auto text-neutral-400 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                            </svg>
+                            <p className="text-neutral-600 dark:text-neutral-400 font-medium">You haven't added any items yet.</p>
+                            <button onClick={handleAddItemClick} disabled={!(kycStatus === 'Pending' || kycStatus === 'Submitted' || kycStatus === 'Approved')} className="mt-3 text-primary font-semibold hover:underline disabled:opacity-50 disabled:no-underline">
+                                Add your first item
+                            </button>
+                        </div>
                     )}
                 </div>
             </div>
@@ -921,28 +1190,26 @@ export const SupplierKycInlineForm: React.FC<{ onSubmitted: () => void }> = ({ o
             <div>
                 <label className="block text-neutral-700 dark:text-neutral-300 text-sm font-bold mb-2">Select Location on Map <span className="text-red-600">*</span></label>
                 <div className="rounded overflow-hidden border border-neutral-200 dark:border-neutral-600">
-                    <MapContainer center={center} zoom={12} scrollWheelZoom={true} style={{ height: '220px', width: '100%' }}
-                        whenCreated={(map) => {
-                            mapRef.current = map;
-                            map.on('click', (e: any) => {
-                                const { lat, lng } = e.latlng;
-                                setGeo({ lat, lng });
-                                setLocation(`${lat.toFixed(5)}, ${lng.toFixed(5)}`);
-                            });
-                        }}>
+                    <MapContainer center={center} zoom={12} scrollWheelZoom={true} style={{ height: '220px', width: '100%' }}>
                         <TileLayer attribution='&copy; OpenStreetMap contributors' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-                        <Marker
-                            position={geo ? [geo.lat, geo.lng] : center}
-                            icon={itemIcon}
-                            draggable
-                            eventHandlers={{
-                                dragend: (e: any) => {
-                                    const latlng = e.target.getLatLng();
-                                    setGeo({ lat: latlng.lat, lng: latlng.lng });
-                                    setLocation(`${latlng.lat.toFixed(5)}, ${latlng.lng.toFixed(5)}`);
-                                }
-                            }}
-                        />
+                        <MapClickHandler onMapClick={(lat, lng) => {
+                            setGeo({ lat, lng });
+                            setLocation(`${lat.toFixed(5)}, ${lng.toFixed(5)}`);
+                        }} />
+                        {geo && (
+                            <Marker
+                                position={[geo.lat, geo.lng]}
+                                icon={itemIcon}
+                                draggable
+                                eventHandlers={{
+                                    dragend: (e: any) => {
+                                        const latlng = e.target.getLatLng();
+                                        setGeo({ lat: latlng.lat, lng: latlng.lng });
+                                        setLocation(`${latlng.lat.toFixed(5)}, ${latlng.lng.toFixed(5)}`);
+                                    }
+                                }}
+                            />
+                        )}
                     </MapContainer>
                 </div>
                 <p className="text-xs text-neutral-600 dark:text-neutral-400 mt-1">Drag the pin or tap the map to set location.</p>
@@ -985,18 +1252,25 @@ export const SupplierKycInlineForm: React.FC<{ onSubmitted: () => void }> = ({ o
         </form>
     );
 };
+// Minimal Professional StatCard
 const StatCard: React.FC<{ title: string; value: string | number; icon: React.ReactElement }> = ({ title, value, icon }) => (
-    <div className="bg-white dark:bg-neutral-700 p-4 rounded-lg border border-neutral-200 dark:border-neutral-600 flex items-center space-x-3">
-        <div className="flex-shrink-0 bg-primary/10 p-3 rounded-full">{icon}</div>
-        <div>
-            <p className="text-sm text-neutral-600 dark:text-neutral-300">{title}</p>
-            <p className="text-xl font-bold text-neutral-800 dark:text-neutral-100">{value}</p>
+    <div className="bg-gray-50 dark:bg-neutral-800 p-6 rounded-xl border border-gray-200 dark:border-neutral-700 hover:shadow-md transition-shadow">
+        <div className="flex flex-col space-y-3">
+            <div className="flex items-center justify-between">
+                <div className="p-2 bg-green-50 dark:bg-green-900/20 rounded-lg">
+                    {icon}
+                </div>
+            </div>
+            <div>
+                <p className="text-3xl font-bold text-gray-900 dark:text-white">{value}</p>
+                <p className="text-sm font-medium text-gray-500 dark:text-gray-400 mt-1">{title}</p>
+            </div>
         </div>
     </div>
 );
 
 
-const SupplierDashboardScreen: React.FC<SupplierViewProps & { goToTab?: (name: string) => void, kycStatus?: string | null }> = ({ navigate, goToTab, kycStatus }) => {
+const SupplierDashboardScreen: React.FC<SupplierViewProps & { goToTab?: (name: string) => void, kycStatus?: string | null }> = ({ navigate, goToTab, kycStatus, onSwitchMode, roleBadge }) => {
     const { user, logout } = useAuth();
     const { bookings, damageReports } = useBooking();
     const { items } = useItem();
@@ -1116,42 +1390,58 @@ const SupplierDashboardScreen: React.FC<SupplierViewProps & { goToTab?: (name: s
     );
 
     return (
-        <div className="p-4 space-y-6 dark:text-neutral-200">
-            <div className="bg-white dark:bg-neutral-700 p-6 rounded-lg border border-neutral-200 dark:border-neutral-600 flex items-center space-x-4">
-                <div className="w-16 h-16 rounded-full bg-primary text-white flex items-center justify-center text-3xl font-bold flex-shrink-0">
-                    {user?.name.charAt(0)}
-                </div>
-                <div>
-                    <h2 className="text-xl font-bold text-neutral-800 dark:text-neutral-100">{t('welcome')}, {user?.name}!</h2>
-                    <p className="text-neutral-700 dark:text-neutral-300 text-sm">{user?.email}</p>
+        <div className="p-6 space-y-6 dark:text-neutral-200 bg-white dark:bg-neutral-900">
+            {/* Minimal Welcome Card */}
+            <div className="bg-gray-50 dark:bg-neutral-800 p-6 rounded-xl border border-gray-200 dark:border-neutral-700">
+                {/* Removed gradient decorative elements */}
 
-                    {kycStatus && (kycStatus === 'Submitted' || kycStatus === 'Pending') && (
-                        <p className="text-yellow-700 mt-2 text-xs p-2 bg-yellow-100 rounded-md">KYC submitted. Verification pending.</p>
-                    )}
-                    {reuploadTypes.length > 0 && (
-                        <div className="mt-2 flex items-center gap-2">
-                            <p className="text-yellow-700 text-xs p-2 bg-yellow-100 rounded-md">Admin requested re-upload: {reuploadTypes.join(', ')}</p>
-                            <button onClick={() => navigate({ view: 'MY_ACCOUNT' })} className="text-xs px-2 py-1 rounded bg-primary text-white">Re-upload now</button>
+                <div className="flex items-center justify-between flex-wrap gap-4">
+                    <div className="flex items-center space-x-4">
+                        <div className="w-16 h-16 rounded-full bg-green-600 flex items-center justify-center text-white text-2xl font-bold flex-shrink-0">
+                            {user?.name.charAt(0)}
                         </div>
+                        <div>
+                            <h2 className="text-2xl font-semibold text-gray-900 dark:text-white">
+                                {t('welcome')}, {user?.name}!
+                            </h2>
+                            <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{user?.email}</p>
+
+                            {kycStatus && (kycStatus === 'Submitted' || kycStatus === 'Pending') && (
+                                <p className="text-yellow-700 dark:text-yellow-300 mt-2 text-sm">⏳ KYC verification pending...</p>
+                            )}
+                            {reuploadTypes.length > 0 && (
+                                <div className="mt-2 flex items-center gap-2">
+                                    <p className="text-red-700 dark:text-red-300 text-sm">⚠️ Re-upload: {reuploadTypes.join(', ')}</p>
+                                    <button onClick={() => navigate({ view: 'MY_ACCOUNT' })} className="text-xs px-3 py-1 rounded-lg bg-red-600 text-white hover:bg-red-700">Fix now</button>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    {roleBadge && (
+                        <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300">
+                            {roleBadge}
+                        </span>
                     )}
                 </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            {/* Key Stats Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <StatCard
                     title={t('totalEarnings')}
                     value={`₹${totalEarnings.toLocaleString()}`}
-                    icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v.01" /></svg>}
+                    icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
                 />
                 <StatCard
                     title={t('avgRating')}
                     value={avgRating > 0 ? `${avgRating.toFixed(1)}/5` : 'N/A'}
-                    icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.783-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" /></svg>}
+                    icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-yellow-500 dark:text-yellow-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.783-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" /></svg>}
                 />
                 <StatCard
                     title="Performance Score"
                     value={`${performance.score}/100`}
-                    icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 17a1 1 0 100 2h2a1 1 0 100-2h-2zM12 3l7 7-7 11-7-11 7-7z" /></svg>}
+                    icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-blue-600 dark:text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 00-2-2m0 0h2a2 2 0 012 2v0a2 2 0 01-2 2h-2a2 2 0 01-2-2v0a2 2 0 012-2z" /></svg>}
                 />
             </div>
 
@@ -1222,42 +1512,63 @@ const SupplierDashboardScreen: React.FC<SupplierViewProps & { goToTab?: (name: s
                 <div className="bg-white dark:bg-neutral-700 rounded-lg border border-neutral-200 dark:border-neutral-600 overflow-hidden divide-y divide-neutral-200 dark:divide-neutral-600">
                     <h3 className="p-4 text-lg font-bold text-neutral-800 dark:text-neutral-100">{t('profile')}</h3>
                     <ProfileLink label={t('myAccount')} onClick={() => navigate({ view: 'MY_ACCOUNT' })} />
+
                     <ProfileLink label={t('paymentHistory')} onClick={() => navigate({ view: 'PAYMENT_HISTORY' })} />
                     <ProfileLink label={t('bookingHistory')} onClick={() => navigate({ view: 'BOOKING_HISTORY' })} />
                     <ProfileLink label={t('settings')} onClick={() => navigate({ view: 'SETTINGS' })} />
                     <ProfileLink label={t('raiseAComplaint')} onClick={() => navigate({ view: 'SUPPORT' })} />
                     <ProfileLink label={t('privacyPolicy')} onClick={() => navigate({ view: 'POLICY' })} />
+                    <ProfileLink label={t('privacyPolicy')} onClick={() => navigate({ view: 'POLICY' })} />
                 </div>
+                {/* Switch Mode Button */}
+                {onSwitchMode && (
+                    <button
+                        onClick={onSwitchMode}
+                        className="w-full p-4 bg-white dark:bg-neutral-700 flex items-center justify-between hover:bg-neutral-50 dark:hover:bg-neutral-600 transition-colors rounded-lg border border-orange-200 dark:border-orange-800 shadow-sm"
+                    >
+                        <div className="flex items-center gap-3">
+                            <div className="bg-orange-100 dark:bg-orange-900/40 p-2 rounded-full text-orange-600 dark:text-orange-400">
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" /></svg>
+                            </div>
+                            <span className="font-semibold text-neutral-800 dark:text-neutral-100">
+                                Switch to {roleBadge?.includes('Farmer') ? 'Supplier' : 'Farmer'} View
+                            </span>
+                        </div>
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-neutral-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                    </button>
+                )}
                 <Button onClick={() => {
                     if (window.confirm('Are you sure you want to logout?')) {
                         logout();
                     }
                 }} variant="secondary" className="w-full">{t('logout')}</Button>
             </div>
-            {showWeeklyTrend && (
-                <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
-                    <div className="bg-white dark:bg-neutral-800 rounded-lg border border-neutral-200 dark:border-neutral-700 w-[90%] max-w-xl p-4">
-                        <div className="flex justify-between items-center mb-2">
-                            <h4 className="font-semibold">Weekly Revenue Trend</h4>
-                            <button onClick={() => setShowWeeklyTrend(false)} className="p-2 rounded hover:bg-neutral-100 dark:hover:bg-neutral-700">✕</button>
-                        </div>
-                        <div style={{ width: '100%', height: 300 }}>
-                            <ResponsiveContainer width="100%" height={300}>
-                                <LineChart data={finance.weeklyTrend}>
-                                    <CartesianGrid strokeDasharray="3 3" />
-                                    <XAxis dataKey="date" />
-                                    <YAxis />
-                                    <Tooltip />
-                                    <Line type="monotone" dataKey="amount" stroke="#10b981" />
-                                </LineChart>
-                            </ResponsiveContainer>
+            {
+                showWeeklyTrend && (
+                    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
+                        <div className="bg-white dark:bg-neutral-800 rounded-lg border border-neutral-200 dark:border-neutral-700 w-[90%] max-w-xl p-4">
+                            <div className="flex justify-between items-center mb-2">
+                                <h4 className="font-semibold">Weekly Revenue Trend</h4>
+                                <button onClick={() => setShowWeeklyTrend(false)} className="p-2 rounded hover:bg-neutral-100 dark:hover:bg-neutral-700">✕</button>
+                            </div>
+                            <div style={{ width: '100%', height: 300 }}>
+                                <ResponsiveContainer width="100%" height={300}>
+                                    <LineChart data={finance.weeklyTrend}>
+                                        <CartesianGrid strokeDasharray="3 3" />
+                                        <XAxis dataKey="date" />
+                                        <YAxis />
+                                        <Tooltip />
+                                        <Line type="monotone" dataKey="amount" stroke="#10b981" />
+                                    </LineChart>
+                                </ResponsiveContainer>
+                            </div>
                         </div>
                     </div>
-                </div>
-            )}
+                )
+            }
         </div>
-    )
-}
+    );
+};
 
 
 const supplierNavItems: NavItemConfig[] = [
@@ -1268,7 +1579,7 @@ const supplierNavItems: NavItemConfig[] = [
     { name: 'dashboard', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg> },
 ];
 
-const SupplierView: React.FC<SupplierViewProps> = ({ navigate }) => {
+const SupplierView: React.FC<SupplierViewProps> = ({ navigate, onSwitchMode, roleBadge }) => {
     const [view, setView] = useState<'TABS' | 'ADD_ITEM'>('TABS');
     const [activeTab, setActiveTab] = useState('dashboard');
     const [itemToEdit, setItemToEdit] = useState<Item | null>(null);
@@ -1331,7 +1642,7 @@ const SupplierView: React.FC<SupplierViewProps> = ({ navigate }) => {
 
     const renderContent = () => {
         switch (activeTab) {
-            case 'dashboard': return <SupplierDashboardScreen navigate={navigate} goToTab={setActiveTab} kycStatus={kycStatus} />;
+            case 'dashboard': return <SupplierDashboardScreen navigate={navigate} goToTab={setActiveTab} kycStatus={kycStatus} onSwitchMode={onSwitchMode} roleBadge={roleBadge} />;
             case 'requests': return <SupplierRequestsScreen />;
             case 'bookings': return <SupplierBookingsScreen navigate={navigate} />;
             case 'schedule': return <SupplierScheduleScreen />;
@@ -1347,7 +1658,7 @@ const SupplierView: React.FC<SupplierViewProps> = ({ navigate }) => {
 
     return (
         <div className="pb-20">
-            <Header title={t(activeTab as any)}>
+            <Header title={activeTab === 'listings' ? 'My Items & Services' : t(activeTab as any)}>
                 {hasActiveBookings && (
                     <button onClick={() => navigate({ view: 'CONVERSATIONS' })} className="relative p-2 text-neutral-700 dark:text-neutral-300 hover:text-primary rounded-full hover:bg-neutral-100 dark:hover:bg-neutral-700" aria-label="Open Chats">
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>

@@ -97,7 +97,11 @@ const AcceptJobModal: React.FC<{
                     ) : (
                         <div className="text-center py-4 px-2 bg-yellow-50 dark:bg-yellow-900/20 text-yellow-800 dark:text-yellow-200 rounded-lg">
                             <p className="font-semibold">No Available Items</p>
-                            <p className="text-sm">You have no available items that match this specific request.</p>
+                            <p className="text-sm mt-1">
+                                {availableItems.length === 0
+                                    ? "You don't have any items that match this category and work purpose."
+                                    : "Your items in this category are currently marked as unavailable or don't match the specific requirements."}
+                            </p>
                         </div>
                     )}
                 </div>
@@ -179,7 +183,26 @@ export const SupplierRequestsScreen: React.FC = () => {
                 return hasMatchingItem;
             }
 
-            return false;
+            // Filter out expired bookings
+            const bookingDate = new Date(b.date);
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+
+            if (bookingDate < today) return false;
+
+            if (bookingDate.getTime() === today.getTime()) {
+                const [hours, minutes] = b.startTime.split(':').map(Number);
+                const durationInMinutes = (b.estimatedDuration || 1) * 60;
+                const bookingEndTime = hours * 60 + minutes + durationInMinutes;
+
+                const currentHours = new Date().getHours();
+                const currentMinutes = new Date().getMinutes();
+                const currentTime = currentHours * 60 + currentMinutes;
+
+                if (currentTime > bookingEndTime) return false;
+            }
+
+            return true; // Show valid requests that passed all checks
         });
     }, [bookings, user, items]);
 
@@ -276,8 +299,16 @@ export const SupplierRequestsScreen: React.FC = () => {
             {/* Header removed as it's provided by SupplierView */}
 
             {/* Category Filters - Styled as sub-header */}
-            <div className="bg-white dark:bg-neutral-800 sticky top-0 z-10 shadow-sm px-4 py-3">
-                <div className="overflow-x-auto flex space-x-2 no-scrollbar">
+            <div className="bg-white dark:bg-neutral-800 sticky top-0 z-10 border-b border-gray-200 dark:border-neutral-700 px-4 py-3">
+                <style>{`
+                    .hide-scrollbar::-webkit-scrollbar {
+                        display: none;
+                    }
+                `}</style>
+                <div
+                    className="overflow-x-auto flex space-x-2 hide-scrollbar"
+                    style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+                >
                     {categories.map(cat => (
                         <button
                             key={cat}
@@ -311,8 +342,8 @@ export const SupplierRequestsScreen: React.FC = () => {
                         const tagColor = isPendingConfirmation ? 'bg-green-100 text-green-800' : isOperatorRequest ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800';
 
                         const farmer = allUsers.find(u => u.id === booking.farmerId);
-                        const distance = userLocation && farmer?.locationCoords
-                            ? calculateDistance(userLocation.lat, userLocation.lng, farmer.locationCoords.lat, farmer.locationCoords.lng)
+                        const distance = userLocation && booking.locationCoords
+                            ? calculateDistance(userLocation.lat, userLocation.lng, booking.locationCoords.lat, booking.locationCoords.lng)
                             : null;
 
                         // Dynamic Icon Logic
@@ -429,7 +460,7 @@ export const SupplierRequestsScreen: React.FC = () => {
                                     </div>
                                 </div>
                             </div>
-                        )
+                        );
                     })
                 ) : (
                     <div className="text-center py-16">
@@ -444,6 +475,25 @@ export const SupplierRequestsScreen: React.FC = () => {
                 )}
             </div>
 
+            {/* Suspension / Blocked Banner */}
+            {(user?.userStatus === 'suspended' || user?.userStatus === 'blocked') && (
+                <div className={`mx-4 mt-4 ${user.userStatus === 'blocked' ? 'bg-red-700' : 'bg-red-500'} text-white p-4 rounded-lg flex items-center shadow-lg animate-pulse`}>
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 mr-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                    <div>
+                        <p className="font-bold text-lg uppercase">Account {user.userStatus}</p>
+                        <p className="text-sm font-medium mb-1">
+                            Your account is {user.userStatus} until {user.suspendedUntil ? new Date(user.suspendedUntil).toLocaleString() : 'further notice'}. You cannot accept new requests.
+                        </p>
+                        {user.userStatus === 'blocked' && (
+                            <p className="text-xs font-bold underline cursor-pointer" onClick={() => {/* Simple alert or nav to complaint */ alert('Please email admin@agrirent.com to raise a complaint.'); }}>
+                                Contact Admin to Raise a Complaint
+                            </p>
+                        )}
+                    </div>
+                </div>
+            )}
             {bookingToAccept && (
                 <AcceptJobModal
                     booking={bookingToAccept}
