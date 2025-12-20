@@ -6,6 +6,7 @@ export enum UserRole {
     Admin = 'Admin',
     AgentPro = 'AgentPro',
     Agent = 'Agent',
+    Founder = 'Founder',
 }
 
 export interface User {
@@ -55,6 +56,16 @@ export interface User {
     warLastCalculated?: string; // When the WAR was last recalculated
     warBaseScore?: number; // Base score before penalties (for debugging)
     warFinalRating?: number; // Final calculated WAR rating (displayed as avgRating)
+    // Gamification & Streak System
+    streak?: {
+        currentCount: number;
+        lastLoginDate: string; // YYYY-MM-DD
+        guards: number;
+        maxGuards: number; // Max 5 usually
+        points?: number; // Accumulated points (0-99)
+        lastWorkDate?: string; // YYYY-MM-DD
+    };
+    gamificationScore?: number;
 }
 
 export enum ItemCategory {

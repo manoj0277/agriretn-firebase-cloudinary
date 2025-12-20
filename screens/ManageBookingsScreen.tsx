@@ -72,7 +72,7 @@ const BookingDetailsModal: React.FC<{
     };
 
     return (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[10001] flex items-center justify-center p-4" onClick={onClose}>
             <div className="bg-white dark:bg-neutral-800 rounded-2xl max-w-lg w-full shadow-2xl overflow-hidden transform transition-all" onClick={(e) => e.stopPropagation()}>
                 {/* Header */}
                 <div className="bg-white dark:bg-neutral-800 p-6 border-b border-neutral-100 dark:border-neutral-700 flex justify-between items-start">
@@ -125,7 +125,7 @@ const BookingDetailsModal: React.FC<{
 
                     {/* Price Section */}
                     {booking.finalPrice && (
-                        <div className="bg-neutral-50 dark:bg-neutral-700/50 rounded-xl p-4 flex justify-between items-center border border-neutral-100 dark:border-neutral-700">
+                        <div className="bg-white dark:bg-neutral-700/50 rounded-xl p-4 flex justify-between items-center border border-neutral-100 dark:border-neutral-700">
                             <span className="text-sm font-medium text-neutral-600 dark:text-neutral-300">Total Price</span>
                             <span className="text-xl font-bold text-primary">₹{booking.finalPrice.toLocaleString()}</span>
                         </div>
@@ -152,7 +152,7 @@ const BookingDetailsModal: React.FC<{
 
                     {/* Additional Instructions */}
                     {booking.additionalInstructions && (
-                        <div className="bg-neutral-50 dark:bg-neutral-700/30 p-3 rounded-lg border border-neutral-100 dark:border-neutral-700">
+                        <div className="bg-white dark:bg-neutral-700/30 p-3 rounded-lg border border-neutral-100 dark:border-neutral-700">
                             <p className="text-xs font-semibold text-neutral-700 dark:text-neutral-300 mb-1">Instructions</p>
                             <p className="text-sm text-neutral-600 dark:text-neutral-400">{booking.additionalInstructions}</p>
                         </div>
@@ -227,7 +227,7 @@ const ManageBookingsScreen: React.FC = () => {
     const [filter, setFilter] = useState<'all' | 'disputed' | Booking['status']>('all');
     const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
 
-    const getUserName = (id: number) => allUsers.find(u => u.id === id)?.name || 'Unknown';
+    const getUserName = (id: string) => allUsers.find(u => u.id === id)?.name || 'Unknown';
     const getItemName = (id?: number) => items.find(m => m.id === id)?.name || 'N/A';
 
     const filteredBookings = useMemo(() => {
@@ -240,14 +240,14 @@ const ManageBookingsScreen: React.FC = () => {
     }, [bookings, filter, damageReports]);
 
     return (
-        <div className="dark:text-neutral-200 bg-neutral-50 dark:bg-neutral-900 min-h-screen">
+        <div className="dark:text-neutral-200 bg-green-50 dark:bg-neutral-900 min-h-screen">
             <div className="p-4 space-y-3">
                 <div className="flex space-x-2 mb-4 overflow-x-auto pb-2 hide-scrollbar">
                     {(['all', 'disputed', 'Searching', 'Confirmed', 'Completed', 'Cancelled'] as const).map(status => (
                         <button
                             key={status}
                             onClick={() => setFilter(status)}
-                            className={`px-4 py-2 text-sm font-semibold rounded-full capitalize whitespace-nowrap transition-colors ${filter === status ? 'bg-primary text-white' : 'bg-neutral-200 dark:bg-neutral-600 text-neutral-700 dark:text-neutral-200'}`}
+                            className={`px-4 py-2 text-sm font-semibold rounded-full capitalize whitespace-nowrap transition-colors ${filter === status ? 'bg-primary text-white' : 'bg-white border border-neutral-200 dark:bg-neutral-600 text-neutral-700 dark:text-neutral-200'}`}
                         >
                             {status}
                         </button>

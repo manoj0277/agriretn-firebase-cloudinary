@@ -570,19 +570,68 @@ app.get('/api/users/phone', async (req: Request, res: Response) => {
         const { phone } = req.query;
         if (!phone) return res.status(400).json({ message: 'Phone is required' });
 
-        const user = await UserService.getByPhone(phone as string);
-        if (user) res.json(user);
-        else res.status(404).json({ message: 'User not found' });
+        const phoneStr = phone as string;
+        // Try exact match first
+        let user = await UserService.getByPhone(phoneStr);
+
+        // Try with +91 if not found and input doesn't have it
+        if (!user && !phoneStr.startsWith('+91')) {
+            user = await UserService.getByPhone(`+91${phoneStr}`);
+        }
+
+        // Try without +91 if not found and input has it
+        if (!user && phoneStr.startsWith('+91')) {
+            user = await UserService.getByPhone(phoneStr.replace('+91', ''));
+        }
+
+        // Try removing spaces/dashes
+        if (!user) {
+            const cleaned = phoneStr.replace(/[\s-]/g, '');
+            user = await UserService.getByPhone(cleaned);
+            if (!user && !cleaned.startsWith('+91')) {
+                user = await UserService.getByPhone(`+91${cleaned}`);
+            }
+        }
+
+        if (user) res.json({ ...user, exists: true });
+        else res.status(404).json({ message: 'User not found', exists: false });
     } catch (e) { res.status(500).json({ error: (e as Error).message }); }
 });
 
-// Get Google Sheets URL from environment
-app.get('/api/config/google-sheets-url', (req: Request, res: Response) => {
-    const url = process.env.GOOGLE_SHEETS_BULK_BOOKING_URL;
-    if (url) {
-        res.json({ url });
-    } else {
-        res.status(404).json({ message: 'Google Sheets URL not configured in backend' });
+// Sync User Endpoint (Create/Update based on Firebase Auth)
+app.post('/api/users', async (req: Request, res: Response) => {
+    try {
+        const { id, firebaseUid, email, phone, ...rest } = req.body;
+
+        // Check if user already exists
+        let existingUser = await UserService.getById(id);
+
+        if (existingUser) {
+            // Update existing
+            const updated = await UserService.update(id, rest);
+            return res.json(updated);
+        }
+
+        // Create new user
+        const newUser: User = {
+            id,
+            firebaseUid: firebaseUid || id,
+            email,
+            phone,
+            ...rest,
+            userStatus: rest.userStatus || 'approved',
+            signupDate: new Date().toISOString()
+        };
+
+        const created = await UserService.create(newUser);
+
+        // Send welcome notification if it's a new signup
+        sendWelcomeNotification(created.id).catch(console.error);
+
+        res.status(201).json(created);
+    } catch (e) {
+        console.error('Error syncing user:', e);
+        res.status(500).json({ error: (e as Error).message });
     }
 });
 
@@ -887,6 +936,48 @@ app.delete('/api/items/:id', async (req: Request, res: Response) => {
     } catch (e) { res.status(500).json({ error: (e as Error).message }); }
 });
 
+// Helper to apply streak penalty
+async function applyStreakPenalty(userId: string, reason: string) {
+    const user = await UserService.getById(parseInt(userId));
+    if (!user || user.role !== 'Supplier') return;
+
+    const streak = user.streak || { currentCount: 0, lastLoginDate: '', guards: 0, maxGuards: 5, points: 0 };
+    let points = streak.points || 0;
+    let count = streak.currentCount;
+
+    // Deduct 50 points
+    points -= 50;
+
+    // Borrow from Streak Count if negative
+    if (points < 0) {
+        if (count > 0) {
+            count -= 1;
+            points += 100;
+            // e.g., 20 pts - 50 = -30. Need 30 more. Borrow 1 streak (100). Points become 70.
+        } else {
+            points = 0; // Floor at 0 if no streak to borrow
+        }
+    }
+
+    await UserService.update(parseInt(userId), {
+        streak: { ...streak, currentCount: count, points }
+    });
+
+    console.log(`[Penalty] Applied -50 pts to Supplier ${userId} for ${reason}. New: ${count} / ${points} pts`);
+
+    // Notify Supplier
+    await NotificationService.create({
+        id: Date.now() + Math.random(),
+        userId: userId,
+        message: `Penalty applied: -50 Streak Points due to ${reason}. Current Score: ${points}/100.`,
+        type: 'system',
+        category: 'performance',
+        priority: 'high',
+        read: false,
+        timestamp: new Date().toISOString()
+    });
+}
+
 // --- BOOKINGS ---
 app.post('/api/bookings', async (req: Request, res: Response) => {
     try {
@@ -1022,6 +1113,11 @@ app.put('/api/bookings/:id', async (req: Request, res: Response) => {
 
                         // 5. Handle Sequential Cancellations & Suspension/Blocking
                         const currentStreak = (supplier.cancelledStreak || 0) + 1;
+
+                        // --- STREAK PENALTY (Cancellation) ---
+                        // Deduct 50 points for cancellation
+                        await applyStreakPenalty(existingBooking.supplierId, 'Cancellation');
+
                         const blockThreshold = 5;
                         const suspendThreshold = 3;
                         let userUpdates: Partial<User> = { cancelledStreak: currentStreak };
@@ -1220,17 +1316,132 @@ app.put('/api/bookings/:id', async (req: Request, res: Response) => {
             if (existingBooking && existingBooking.supplierId) {
                 const supplier = await UserService.getById(parseInt(existingBooking.supplierId));
                 if (supplier) {
-                    const currentRating = supplier.avgRating || 0; // If 0 (new), maybe start at 5? or 0? user said "increase".
-                    // If new user has 0, increasing 0 by 4% is 0.
-                    // Let's assume default start is 4.0 if undefined or 0.
+                    const currentRating = supplier.avgRating || 0;
                     const base = currentRating > 0 ? currentRating : 4.0;
-
-                    // Increase by 4%
                     const newRating = Math.min(5.0, parseFloat((base * 1.04).toFixed(2)));
-                    await UserService.update(parseInt(existingBooking.supplierId), {
+
+                    // --- STREAK & POINTS LOGIC START ---
+                    const dailyWorkStreakUpdate: Partial<User> = {
                         avgRating: newRating,
-                        cancelledStreak: 0 // Reset streak on success
-                    });
+                        cancelledStreak: 0
+                    };
+
+                    // Only apply if NO disputes and NO damage
+                    if (!existingBooking.disputeRaised && !existingBooking.damageReported) {
+                        const today = new Date().toISOString().split('T')[0];
+                        const currentStreak = supplier.streak || {
+                            currentCount: 0,
+                            lastLoginDate: '',
+                            guards: 0,
+                            maxGuards: 5,
+                            points: 0,
+                            lastWorkDate: ''
+                        };
+
+                        let newCount = currentStreak.currentCount;
+                        let newPoints = currentStreak.points || 0;
+                        let pointsAdded = 0;
+
+                        // 1. Daily Work Streak Calculation
+                        const lastWork = currentStreak.lastWorkDate ? new Date(currentStreak.lastWorkDate) : null;
+                        const currDate = new Date(today);
+
+                        // Normalize to midnight for accurate day difference
+                        if (lastWork) lastWork.setHours(0, 0, 0, 0);
+                        currDate.setHours(0, 0, 0, 0);
+
+                        let shouldIncrementStreak = false;
+                        let isStreakBroken = false;
+
+                        if (!lastWork) {
+                            shouldIncrementStreak = true; // First ever job
+                        } else {
+                            const diffTime = Math.abs(currDate.getTime() - lastWork.getTime());
+                            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+                            if (diffDays === 0) {
+                                shouldIncrementStreak = false; // Already worked today
+                            } else if (diffDays === 1) {
+                                shouldIncrementStreak = true; // Consecutive day
+                            } else {
+                                // Diff > 1: Potential Break. Check for "In-Progress" protection.
+                                // Logic: If workStartTime was on a valid day (diff <= 1 from last work), we bridge the gap.
+                                let protectedByWorkStart = false;
+                                if (existingBooking.workStartTime) {
+                                    const jobStart = new Date(existingBooking.workStartTime);
+                                    jobStart.setHours(0, 0, 0, 0);
+                                    const startDiffTime = Math.abs(jobStart.getTime() - lastWork.getTime());
+                                    const startDiffDays = Math.ceil(startDiffTime / (1000 * 60 * 60 * 24));
+
+                                    if (startDiffDays <= 1) {
+                                        protectedByWorkStart = true;
+                                        console.log(`[API] Streak Saved! Job started ${startDiffDays} days after last work (within Valid Window)`);
+                                    }
+                                }
+
+                                if (protectedByWorkStart) {
+                                    shouldIncrementStreak = true;
+                                    // Note: We don't "fill" the missing days in DB, but we keep the streak count alive and accumulating.
+                                    // Effectively: 10 -> [Gap] -> 11.
+                                } else {
+                                    isStreakBroken = true;
+                                }
+                            }
+                        }
+
+                        if (isStreakBroken) {
+                            newCount = 1; // Reset to 1 (Today is the new start)
+                            // TODO: Add Guard consumption logic here if desired in future
+                        } else if (shouldIncrementStreak) {
+                            newCount += 1;
+                        }
+
+                        // 2. Performance Points (5 points per hour)
+                        // Calculate hours
+                        let durationHours = existingBooking.estimatedDuration || 3; // Fallback
+                        if (existingBooking.workStartTime && existingBooking.workEndTime) {
+                            const start = new Date(existingBooking.workStartTime).getTime();
+                            const end = new Date(existingBooking.workEndTime).getTime();
+                            durationHours = (end - start) / (1000 * 60 * 60);
+                        } else if (existingBooking.startTime && existingBooking.endTime) {
+                            // Try scheduled times if actuals not available (fallback for testing/manual completion)
+                            const [startH, startM] = existingBooking.startTime.split(':').map(Number);
+                            const [endH, endM] = existingBooking.endTime.split(':').map(Number);
+                            durationHours = (endH + endM / 60) - (startH + startM / 60);
+                        }
+
+                        // Rounding logic? User said "for every hour add 5 points".
+                        // Let's Floor or Round? "completed work... no delay".
+                        // Assuming fractional hours count proportionally? Or just floor?
+                        // "for every hour" implies discrete, but usually points are better granular.
+                        // Let's use Math.floor(durationHours) * 5? Or duration * 5?
+                        // Let's do proportional to be fair: Math.round(duration * 5)
+                        pointsAdded = Math.round(durationHours * 5);
+                        if (pointsAdded < 0) pointsAdded = 0;
+
+                        newPoints += pointsAdded;
+
+                        // 3. Bonus Streak (Every 100 points)
+                        // "if points reach 100, add one more streak... points carry back if not 100"
+                        while (newPoints >= 100) {
+                            newCount += 1;
+                            newPoints -= 100;
+                        }
+
+                        // Construct updated Streak object
+                        dailyWorkStreakUpdate.streak = {
+                            ...currentStreak,
+                            currentCount: newCount,
+                            points: newPoints,
+                            lastWorkDate: today // Mark worked today
+                        };
+
+                        console.log(`[API] Supplier ${existingBooking.supplierId} Streak: Count ${currentStreak.currentCount}->${newCount}, Points ${currentStreak.points}->${newPoints} (+${pointsAdded})`);
+                    }
+
+                    await UserService.update(parseInt(existingBooking.supplierId), dailyWorkStreakUpdate);
+                    // --- STREAK & POINTS LOGIC END ---
+
                     console.log(`[API] Rewarded Supplier ${existingBooking.supplierId} rating: ${currentRating} -> ${newRating}`);
 
                     // Also reset Farmer streak? 
@@ -1242,7 +1453,7 @@ app.put('/api/bookings/:id', async (req: Request, res: Response) => {
                     await NotificationService.create({
                         id: Date.now(),
                         userId: existingBooking.supplierId,
-                        message: `Great job! Booking completed successfully. Your rating increased by 4% to ${newRating}.`,
+                        message: `Great job! Job completed flawlessly. Rating +4%. Points earned: 5/hr. Leaderboard updated!`,
                         type: 'system',
                         category: 'performance',
                         priority: 'medium',
@@ -1271,6 +1482,22 @@ app.put('/api/bookings/:id', async (req: Request, res: Response) => {
             }
         }
 
+
+
+        // --- STREAK PENALTY (Dispute / Damage) ---
+        if (updates.disputeRaised === true) {
+            const existing = await BookingService.getById(bookingId);
+            if (existing && existing.supplierId) {
+                await applyStreakPenalty(existing.supplierId, 'Dispute Raised');
+            }
+        }
+        if (updates.damageReported === true) {
+            const existing = await BookingService.getById(bookingId);
+            if (existing && existing.supplierId) {
+                await applyStreakPenalty(existing.supplierId, 'Damage Reported');
+            }
+        }
+
         // --- RE-BROADCAST & RATING & AVAILABILITY LOGIC END ---
 
         const updated = await BookingService.update(bookingId, updates);
@@ -1290,6 +1517,13 @@ app.put('/api/bookings/:id', async (req: Request, res: Response) => {
 });
 
 // --- POSTS ---
+app.get('/api/posts', async (req: Request, res: Response) => {
+    try {
+        const posts = await PostService.getAll();
+        res.json(posts);
+    } catch (e) { res.status(500).json({ error: (e as Error).message }); }
+});
+
 app.post('/api/posts', async (req: Request, res: Response) => {
     try {
         const newPost = { id: Date.now(), replies: [], ...req.body };
@@ -1300,7 +1534,7 @@ app.post('/api/posts', async (req: Request, res: Response) => {
 
 app.post('/api/posts/:id/replies', async (req: Request, res: Response) => {
     try {
-        const postId = parseInt(req.params.id);
+        const postId = req.params.id;
         const post = await PostService.getById(postId);
         if (post) {
             const newReply = { id: Date.now(), ...req.body };
@@ -1313,12 +1547,43 @@ app.post('/api/posts/:id/replies', async (req: Request, res: Response) => {
     } catch (e) { res.status(500).json({ error: (e as Error).message }); }
 });
 
-// Delete post (and all nested replies - they're stored in the same document)
-app.delete('/api/posts/:id', async (req: Request, res: Response) => {
+// Update post (e.g., close it)
+app.put('/api/posts/:id', verifyToken, requireRole(UserRole.Admin, UserRole.Founder), async (req: Request, res: Response) => {
     try {
-        const postId = parseInt(req.params.id);
-        await PostService.delete(postId);
+        const postId = req.params.id;
+        const updates = req.body;
+        await PostService.update(postId as any, updates);
+        res.status(200).json({ success: true, message: 'Post updated' });
+    } catch (e) { res.status(500).json({ error: (e as Error).message }); }
+});
+
+
+
+// GET ALL CHATS (Founder only - protected by frontend mainly, ideally middleware)
+app.get('/api/chats', async (req: Request, res: Response) => {
+    try {
+        // In a real app, verify admin/founder here
+        const chats = await ChatService.getAll();
+        res.json(chats);
+    } catch (e) { res.status(500).json({ error: (e as Error).message }); }
+});
+
+// Delete post (and all nested replies - they're stored in the same document)
+app.delete('/api/posts/:id', verifyToken, requireRole(UserRole.Admin, UserRole.Founder), async (req: Request, res: Response) => {
+    try {
+        const postId = req.params.id;
+        await PostService.delete(postId as any);
         res.status(200).json({ success: true, message: 'Post and all replies deleted' });
+    } catch (e) { res.status(500).json({ error: (e as Error).message }); }
+});
+
+// Delete a specific reply from a post
+app.delete('/api/posts/:postId/replies/:replyId', verifyToken, requireRole(UserRole.Admin, UserRole.Founder), async (req: Request, res: Response) => {
+    try {
+        const postId = req.params.postId;
+        const replyId = req.params.replyId;
+        await PostService.deleteReply(postId as any, replyId as any);
+        res.status(200).json({ success: true, message: 'Reply deleted' });
     } catch (e) { res.status(500).json({ error: (e as Error).message }); }
 });
 
@@ -2034,6 +2299,64 @@ app.post('/api/reviews', async (req: Request, res: Response) => {
     try {
         const newReview = { id: Date.now(), ...req.body };
         await ReviewService.create(newReview);
+
+        // --- STREAK ADJUSTMENT BASED ON RATING ---
+        if (newReview.ratedUserId && newReview.bookingId && newReview.rating !== undefined) {
+            const userId = newReview.ratedUserId;
+            const rating = parseFloat(newReview.rating);
+            const booking = await BookingService.getById(newReview.bookingId);
+
+            // Only for Suppliers and if booking exists
+            // (Check if userId matches booking supplierId for safety, or just trust ratedUserId)
+            if (booking && booking.supplierId === userId) {
+                const user = await UserService.getById(parseInt(userId));
+
+                // Logic: We awarded 5 pts/hr at completion (Optimistic).
+                // Adjustment = Hours * (Rating - 5.0).
+                // e.g. Rating 3.0 -> Adjustment = Hours * -2.0.
+                // e.g. Rating 5.0 -> Adjustment = 0.
+
+                // Calculate Hours (same logic as completion)
+                let durationHours = booking.estimatedDuration || 3;
+                if (booking.workStartTime && booking.workEndTime) {
+                    const start = new Date(booking.workStartTime).getTime();
+                    const end = new Date(booking.workEndTime).getTime();
+                    durationHours = (end - start) / (1000 * 60 * 60);
+                }
+
+                const adjustment = Math.round(durationHours * (rating - 5));
+
+                if (adjustment !== 0 && user && user.streak) {
+                    let { currentCount, points } = user.streak;
+                    points = (points || 0) + adjustment; // can be negative
+
+                    // Handle negative points (Borrow from Streak)
+                    while (points < 0) {
+                        if (currentCount > 0) {
+                            currentCount -= 1;
+                            points += 100;
+                        } else {
+                            points = 0; // Floor at 0 if no streak
+                            break;
+                        }
+                    }
+
+                    // Handle positive overflow (Bonus Streak) - Unlikely with Rating <= 5, but good for robustness
+                    while (points >= 100) {
+                        currentCount += 1;
+                        points -= 100;
+                    }
+
+                    await UserService.update(parseInt(userId), {
+                        streak: { ...user.streak, currentCount, points }
+                    });
+
+                    console.log(`[Review] Adjusted Streak for User ${userId}. Rating ${rating}/5. Adjustment: ${adjustment} pts. New: ${currentCount}/${points}`);
+                }
+            }
+        }
+        // --- END STREAK ADJUSTMENT ---
+
         res.status(201).json(newReview);
     } catch (e) { res.status(500).json({ error: (e as Error).message }); }
 });
@@ -2089,27 +2412,57 @@ app.put('/api/damage-reports/:id', async (req: Request, res: Response) => {
 });
 
 // --- ADMIN ACTIONS ---
-app.post('/api/admin/users/:id/approve', async (req: Request, res: Response) => {
+app.post('/api/admin/users/:id/approve', verifyToken, requireRole(UserRole.Admin, UserRole.Founder), async (req: Request, res: Response) => {
     try {
-        const userId = parseInt(req.params.id);
+        const userId = req.params.id;
         await UserService.update(userId, { userStatus: 'approved' });
         res.json({ message: 'User approved' });
     } catch (e) { res.status(500).json({ error: (e as Error).message }); }
 });
 
-app.post('/api/admin/users/:id/suspend', async (req: Request, res: Response) => {
+app.post('/api/admin/users/:id/suspend', verifyToken, requireRole(UserRole.Admin, UserRole.Founder), async (req: Request, res: Response) => {
     try {
-        const userId = parseInt(req.params.id);
+        const userId = req.params.id;
         await UserService.update(userId, { userStatus: 'suspended' });
         res.json({ message: 'User suspended' });
     } catch (e) { res.status(500).json({ error: (e as Error).message }); }
 });
 
-app.post('/api/admin/users/:id/reactivate', async (req: Request, res: Response) => {
+app.post('/api/admin/users/:id/reactivate', verifyToken, requireRole(UserRole.Admin, UserRole.Founder), async (req: Request, res: Response) => {
     try {
-        const userId = parseInt(req.params.id);
+        const userId = req.params.id;
         await UserService.update(userId, { userStatus: 'approved' });
         res.json({ message: 'User reactivated' });
+    } catch (e) { res.status(500).json({ error: (e as Error).message }); }
+});
+
+// --- FOUNDER SPECIFIC USER MANAGEMENT ---
+app.post('/api/founder/users/:id/role', verifyToken, requireRole(UserRole.Founder), async (req: Request, res: Response) => {
+    try {
+        const userId = req.params.id;
+        const { role } = req.body;
+        const updated = await UserService.update(userId, { role });
+        res.json(updated);
+    } catch (e) { res.status(500).json({ error: (e as Error).message }); }
+});
+
+app.post('/api/founder/users/:id/status', verifyToken, requireRole(UserRole.Founder), async (req: Request, res: Response) => {
+    try {
+        const userId = req.params.id;
+        const { status } = req.body;
+        const updated = await UserService.update(userId, { userStatus: status });
+        res.json(updated);
+    } catch (e) { res.status(500).json({ error: (e as Error).message }); }
+});
+
+app.delete('/api/founder/users/:id', verifyToken, requireRole(UserRole.Founder), async (req: Request, res: Response) => {
+    try {
+        const userId = req.params.id;
+        // 1. Delete from Firestore
+        await UserService.delete(userId);
+        // 2. Delete from Firebase Auth
+        await firebaseAuth.deleteUser(userId);
+        res.json({ message: 'User deleted successfully' });
     } catch (e) { res.status(500).json({ error: (e as Error).message }); }
 });
 

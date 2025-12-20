@@ -331,18 +331,18 @@ const AuthScreen: React.FC = () => {
 
                                         <div className="pt-2">
                                             <label className="block text-gray-700 dark:text-neutral-300 text-sm font-bold mb-2">Login as</label>
-                                            <div className="flex bg-gray-100 dark:bg-neutral-700 rounded-lg p-1 text-sm space-x-1">
+                                            <div className="grid grid-cols-2 gap-2 bg-gray-100 dark:bg-neutral-700 rounded-lg p-1 text-sm">
                                                 <button
                                                     type="button"
                                                     onClick={() => setLoginRole(UserRole.Farmer)}
-                                                    className={`flex-1 py-1 font-semibold text-center transition-all duration-200 rounded-md ${loginRole === UserRole.Farmer ? 'bg-white text-green-600 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:text-neutral-400'}`}
+                                                    className={`py-1 font-semibold text-center transition-all duration-200 rounded-md ${loginRole === UserRole.Farmer ? 'bg-white text-green-600 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:text-neutral-400'}`}
                                                 >
                                                     {t('farmer')}
                                                 </button>
                                                 <button
                                                     type="button"
                                                     onClick={() => setLoginRole(UserRole.Supplier)}
-                                                    className={`flex-1 py-1 font-semibold text-center transition-all duration-200 rounded-md ${loginRole === UserRole.Supplier ? 'bg-white text-green-600 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:text-neutral-400'}`}
+                                                    className={`py-1 font-semibold text-center transition-all duration-200 rounded-md ${loginRole === UserRole.Supplier ? 'bg-white text-green-600 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:text-neutral-400'}`}
                                                 >
                                                     {t('supplier')}
                                                 </button>

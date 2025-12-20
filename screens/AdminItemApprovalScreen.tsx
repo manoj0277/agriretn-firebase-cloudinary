@@ -296,7 +296,7 @@ const AdminItemApprovalScreen: React.FC = () => {
             {/* Enhanced Image Preview Modal */}
             {previewItem && (
                 <div
-                    className="fixed inset-0 bg-black/90 flex items-center justify-center z-[9999] p-4"
+                    className="fixed inset-0 bg-black/90 flex items-center justify-center z-[10001] p-4"
                     onClick={() => { setPreviewItem(null); setEditMode(false); }}
                 >
                     <div

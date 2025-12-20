@@ -20,7 +20,7 @@ interface BottomNavProps {
 const BottomNav: React.FC<BottomNavProps> = ({ activeTab, setActiveTab, navItems }) => {
     const { t } = useLanguage();
     return (
-        <div className="fixed bottom-0 left-0 right-0 max-w-lg mx-auto bg-white border-t border-gray-200 z-50">
+        <div className="fixed bottom-0 left-0 right-0 max-w-lg mx-auto bg-green-700 border-t border-green-800 z-50 md:hidden">
             <div className="flex justify-around items-center h-16">
                 {navItems.map((item) => {
                     if (item.isCenter) {
@@ -28,7 +28,7 @@ const BottomNav: React.FC<BottomNavProps> = ({ activeTab, setActiveTab, navItems
                             <button
                                 key={item.name}
                                 onClick={item.onClick}
-                                className="bg-primary text-white w-16 h-16 rounded-full shadow-lg flex items-center justify-center hover:bg-primary-dark transition-transform transform hover:scale-110 -translate-y-6 z-10 focus:outline-none"
+                                className="bg-green-600 text-white w-16 h-16 rounded-full shadow-lg flex items-center justify-center hover:bg-green-500 transition-transform transform hover:scale-110 -translate-y-6 z-10 focus:outline-none ring-4 ring-green-50 dark:ring-neutral-900"
                                 aria-label={t(item.name)}
                             >
                                 {item.icon}
@@ -39,9 +39,10 @@ const BottomNav: React.FC<BottomNavProps> = ({ activeTab, setActiveTab, navItems
                         <button
                             key={item.name}
                             onClick={() => setActiveTab(item.name)}
-                            className={`flex-1 flex flex-col items-center justify-center h-full text-sm transition-colors duration-200 ${activeTab === item.name ? 'text-primary' : 'text-gray-500'}`}
+                            className={`flex-1 flex flex-col items-center justify-center h-full text-sm transition-colors duration-200 ${activeTab === item.name ? 'text-white' : 'text-green-200/70 hover:text-white'}`}
                         >
-                            {item.icon}
+                            {/* Force SVG to inherit color */}
+                            {React.cloneElement(item.icon as React.ReactElement, { className: 'h-6 w-6 stroke-current' })}
                             <span className="mt-1">{t(item.name)}</span>
                         </button>
                     );

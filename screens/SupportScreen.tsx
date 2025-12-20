@@ -63,22 +63,22 @@ const SupportScreen: React.FC<SupportScreenProps> = ({ navigate, goBack }) => {
         });
         setReply('');
     };
-    
-    const getAuthorName = (authorId: number) => {
+
+    const getAuthorName = (authorId: number | string) => {
         const author = allUsers.find(u => u.id === authorId);
         if (author?.role === UserRole.Admin) return "Support Team";
         return author?.name || "You";
     };
 
     return (
-        <div className="dark:text-neutral-200">
+        <div className="dark:text-neutral-200 bg-green-50 dark:bg-neutral-900 min-h-screen">
             <Header title={t('helpAndSupport')} onBack={goBack} />
             <div className="p-6">
                 <div className="mb-8">
                     <h2 className="text-xl font-bold text-neutral-800 dark:text-neutral-100 mb-4">{t('myTickets')}</h2>
                     <div className="space-y-2">
                         {myTickets.length > 0 ? myTickets.map(ticket => (
-                            <details key={ticket.id} className="bg-neutral-100 dark:bg-neutral-700 p-4 rounded-lg group" onToggle={(e) => e.currentTarget.open ? setActiveTicketId(ticket.id) : setActiveTicketId(null)}>
+                            <details key={ticket.id} className="bg-white dark:bg-neutral-700 p-4 rounded-lg group border border-neutral-200 dark:border-neutral-600 shadow-sm" onToggle={(e) => e.currentTarget.open ? setActiveTicketId(ticket.id) : setActiveTicketId(null)}>
                                 <summary className="font-semibold text-neutral-800 dark:text-neutral-100 cursor-pointer flex justify-between items-center">
                                     <span>{ticket.message.substring(0, 30)}...</span>
                                     <span className={`text-xs px-2 py-1 rounded-full ${ticket.status === 'open' ? 'bg-yellow-200 text-yellow-800' : 'bg-green-200 text-green-800'}`}>{ticket.status}</span>
@@ -93,7 +93,7 @@ const SupportScreen: React.FC<SupportScreenProps> = ({ navigate, goBack }) => {
                                     ))}
                                     {ticket.status === 'open' && (
                                         <div className="flex space-x-2">
-                                            <input value={reply} onChange={e => setReply(e.target.value)} placeholder={t('writeAReply')} className="flex-grow p-2 border border-neutral-300 dark:border-neutral-500 rounded-lg text-sm bg-white dark:bg-neutral-800 text-black dark:text-white"/>
+                                            <input value={reply} onChange={e => setReply(e.target.value)} placeholder={t('writeAReply')} className="flex-grow p-2 border border-neutral-300 dark:border-neutral-500 rounded-lg text-sm bg-white dark:bg-neutral-800 text-black dark:text-white" />
                                             <Button onClick={() => handleReplySubmit(ticket.id)} className="w-auto px-4 py-1 text-sm">{t('send')}</Button>
                                         </div>
                                     )}
@@ -107,7 +107,7 @@ const SupportScreen: React.FC<SupportScreenProps> = ({ navigate, goBack }) => {
                     <h2 className="text-xl font-bold text-neutral-800 dark:text-neutral-100 mb-4">{t('faqs')}</h2>
                     <div className="space-y-4">
                         {faqs.map((faq, index) => (
-                            <details key={index} className="bg-neutral-100 dark:bg-neutral-700 p-4 rounded-lg">
+                            <details key={index} className="bg-white dark:bg-neutral-700 p-4 rounded-lg border border-neutral-200 dark:border-neutral-600 shadow-sm">
                                 <summary className="font-semibold text-neutral-800 dark:text-neutral-100 cursor-pointer">{faq.q}</summary>
                                 <p className="mt-2 text-neutral-700 dark:text-neutral-300">{faq.a}</p>
                             </details>
@@ -125,16 +125,16 @@ const SupportScreen: React.FC<SupportScreenProps> = ({ navigate, goBack }) => {
                             <p className="text-neutral-700 dark:text-neutral-300 mb-4">Fill out the form below to create a new ticket.</p>
                             <form onSubmit={handleSubmit} className="space-y-4">
                                 <Input label="Your Name" value={name} onChange={e => setName(e.target.value)} required readOnly={!!user} />
-                                <Input label={t('email')} type="email" value={email} onChange={e => setEmail(e.target.value)} required readOnly={!!user}/>
+                                <Input label={t('email')} type="email" value={email} onChange={e => setEmail(e.target.value)} required readOnly={!!user} />
                                 <div>
-                                <label className="block text-neutral-700 dark:text-neutral-300 text-sm font-bold mb-2">Message</label>
-                                <textarea value={message} onChange={e => setMessage(e.target.value)} rows={5} required className="shadow appearance-none border border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-700 rounded-lg w-full py-3 px-4 text-neutral-900 dark:text-neutral-100 placeholder-neutral-500 leading-tight focus:outline-none focus:ring-2 focus:ring-primary/50" />
+                                    <label className="block text-neutral-700 dark:text-neutral-300 text-sm font-bold mb-2">Message</label>
+                                    <textarea value={message} onChange={e => setMessage(e.target.value)} rows={5} required className="shadow appearance-none border border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-700 rounded-lg w-full py-3 px-4 text-neutral-900 dark:text-neutral-100 placeholder-neutral-500 leading-tight focus:outline-none focus:ring-2 focus:ring-primary/50" />
                                 </div>
                                 <Button type="submit">Submit New Ticket</Button>
                             </form>
                         </div>
                     ) : (
-                        <button onClick={() => setShowContactForm(true)} disabled={hasOpenTicket} className="w-full text-left p-4 bg-neutral-100 dark:bg-neutral-700 rounded-lg hover:bg-neutral-200 dark:hover:bg-neutral-600 transition-colors flex items-center space-x-4 disabled:opacity-50 disabled:cursor-not-allowed">
+                        <button onClick={() => setShowContactForm(true)} disabled={hasOpenTicket} className="w-full text-left p-4 bg-white dark:bg-neutral-700 rounded-lg hover:bg-neutral-50 dark:hover:bg-neutral-600 transition-colors flex items-center space-x-4 disabled:opacity-50 disabled:cursor-not-allowed border border-neutral-200 dark:border-neutral-600 shadow-sm">
                             <div className="p-2 bg-primary/10 rounded-full">
                                 <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                                     <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />

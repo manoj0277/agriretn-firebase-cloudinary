@@ -87,7 +87,7 @@ const EditDetailsScreen: React.FC<EditDetailsScreenProps> = ({ goBack }) => {
   };
 
   return (
-    <div className="dark:text-neutral-200">
+    <div className="dark:text-neutral-200 bg-green-50 dark:bg-neutral-900 min-h-screen">
       <Header title="Edit Details" onBack={goBack} />
       <div className="p-6 space-y-4">
         <Input label="Full Name" required value={name} onChange={e => setName(e.target.value)} />

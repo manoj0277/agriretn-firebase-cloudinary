@@ -2,8 +2,10 @@
 import React, { createContext, useState, useContext, ReactNode, useMemo, useEffect } from 'react';
 import { User, UserRole } from '../types';
 import { useToast } from './ToastContext';
-import { auth } from '../src/lib/firebase';
+import { calculateStreakUpdates } from '../utils/gamification';
+import { auth, db } from '../src/lib/firebase';
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile, updatePassword, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth';
+import { onSnapshot, collection } from 'firebase/firestore';
 
 const API_URL = (import.meta as any).env?.VITE_API_URL || '/api';
 
@@ -26,6 +28,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const [user, setUser] = useState<User | null | undefined>(undefined);
     const [allUsers, setAllUsers] = useState<User[]>([]);
     const { showToast } = useToast();
+    const isSigningUp = React.useRef(false); // Lock to prevent auto-sync race condition during signup
 
     // Listen to Firebase Auth state changes
     useEffect(() => {
@@ -34,6 +37,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 // User is signed in, fetch profile from backend (Firestore)
                 try {
                     console.log('Firebase user authenticated:', firebaseUser.email);
+
+                    // If signing up, delay the profile fetch slightly or skip auto-sync
+                    if (isSigningUp.current) {
+                        console.log('Signup in progress - pausing listener to allow manual creation...');
+                        await new Promise(resolve => setTimeout(resolve, 2000));
+                    }
+
                     console.log('Fetching user profile from backend...');
 
                     // Add timeout to prevent indefinite hang
@@ -86,16 +96,61 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
                     clearTimeout(timeoutId);
 
+
+
                     if (foundUser) {
                         console.log('User profile loaded successfully:', foundUser.name, 'Role:', foundUser.role);
                         console.log('Full user object:', foundUser);
 
-                        // Auto-detect and use the actual role from Firebase/Firestore
-                        // No need to validate against selected role - just log them in with their actual role
-                        console.log('Setting user state with:', foundUser);
-                        setUser(foundUser);
+                        // --- SESSION ROLE MASQUERADE ---
+                        const attemptedRole = sessionStorage.getItem('attemptedRole');
+                        let sessionUser = { ...foundUser };
+
+                        // If user selected a specific role (Farmer/Supplier), force the session to use that role
+                        // This allows a "Supplier" in DB to login as "Farmer" and see the Farmer Dashboard
+                        // BUT if the user is an Admin or Agent in DB, strictly enforce their dashboard.
+                        const privilegedRoles: UserRole[] = [UserRole.Admin, UserRole.Agent, UserRole.AgentPro, UserRole.Founder];
+                        const isPrivileged = privilegedRoles.includes(foundUser.role);
+
+                        if (!isPrivileged && attemptedRole && (attemptedRole === 'Farmer' || attemptedRole === 'Supplier')) {
+                            console.log(`Session Role Override: DB says ${foundUser.role}, User selected ${attemptedRole}. Switching context.`);
+                            sessionUser.role = attemptedRole as UserRole;
+                        } else if (isPrivileged && attemptedRole) {
+                            console.log(`Privileged Role Detected (${foundUser.role}). Ignoring masquerade attempt as ${attemptedRole}.`);
+                        }
+                        // -------------------------------
+
+                        // Calculate and apply streak updates
+                        // We use the sessionUser for calculation so the UI updates correctly,
+                        // but we must be careful not to persist the masquerade role.
+                        const userWithUpdatedStreak = calculateStreakUpdates(sessionUser);
+
+                        if (userWithUpdatedStreak) {
+                            console.log('Applying daily streak update:', userWithUpdatedStreak.streak);
+                            setUser(userWithUpdatedStreak); // Optimistic update (with Masquerade Role)
+
+                            // Persist to backend silently
+                            // CRITICAL: Restore the ORIGINAL DB role before saving
+                            const safeToSave = { ...userWithUpdatedStreak, role: foundUser.role };
+
+                            fetch(`${API_URL}/users/${userWithUpdatedStreak.id}`, {
+                                method: 'PUT',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify(safeToSave)
+                            }).catch(e => console.error('Failed to persist streak update:', e));
+
+                            showToast(`Daily Streak: ${userWithUpdatedStreak.streak?.currentCount} days! 🔥`, 'success');
+                        } else {
+                            setUser(sessionUser);
+                        }
                     } else {
                         console.error('User not found in database via any lookup method');
+
+                        // Check lock before Auto-Sync
+                        if (isSigningUp.current) {
+                            console.log('Signup lock active - Skipping Auto-Sync to prevent race condition.');
+                            return;
+                        }
 
                         // User exists in Firebase Auth but not in Database - Auto-sync
                         console.warn('User exists in Auth but not in DB - attempting auto-sync...');
@@ -288,10 +343,28 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     const signup = async (details: Omit<User, 'id' | 'userStatus'>): Promise<boolean> => {
         try {
-            // 1. Create User in Firebase Auth
-            // We removed the pre-checks because they inevitably fail if a partial signup exists.
-            // Instead, we catch the "email-already-in-use" error and attempt to recover.
+            // 0. Pre-check Availability in Backend to avoid Firebase-DB mismatch
+            // Check Phone
+            if (details.phone) {
+                const phoneCheckRes = await fetch(`${API_URL}/users/phone?phone=${encodeURIComponent(details.phone)}`);
+                if (phoneCheckRes.ok) {
+                    const phoneData = await phoneCheckRes.json();
+                    if (phoneData.exists) {
+                        showToast('Phone number already registered. Please login.', 'error');
+                        return false;
+                    }
+                }
+            }
 
+            // Check Email
+            const emailCheckRes = await fetch(`${API_URL}/users/profile?email=${encodeURIComponent(details.email)}`);
+            if (emailCheckRes.ok) { // Status 200 means user exists
+                showToast('Email address already registered. Please login.', 'error');
+                return false;
+            }
+
+            // 1. Create User in Firebase Auth
+            isSigningUp.current = true; // Lock auto-sync
             const userCredential = await createUserWithEmailAndPassword(auth, details.email, details.password || '');
 
             // 2. Update Profile (Display Name)
@@ -377,51 +450,73 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 showToast(error.message || 'Signup failed', 'error');
             }
             return false;
+        } finally {
+            // Delay unlocking to ensure listener has processed the event
+            setTimeout(() => {
+                isSigningUp.current = false;
+            }, 5000);
         }
     };
 
     const approveSupplier = async (userId: number) => {
+        // Optimistic Update: Update UI immediately
+        setAllUsers(prev => prev.map(u => u.id === userId ? { ...u, userStatus: 'approved' } : u));
         try {
             const response = await fetch(`${API_URL}/admin/users/${userId}/approve`, { method: 'POST' });
             if (response.ok) {
                 showToast('Supplier approved!', 'success');
-                const updatedUsers = await fetch(`${API_URL}/users`).then(res => res.json());
-                setAllUsers(updatedUsers);
+                // No need to re-fetch all users, optimistic update holds true
             } else {
                 throw new Error('Failed');
             }
         } catch {
+            // Revert on failure
             showToast('Failed to approve supplier.', 'error');
+            // Ideally we revert state here, but for simplicity in this optimization phase we'll just show error.
+            // A more robust revert would require storing previous state or re-fetching single user.
+            const res = await fetch(`${API_URL}/users/${userId}`);
+            if (res.ok) {
+                const original = await res.json();
+                setAllUsers(prev => prev.map(u => u.id === userId ? original : u));
+            }
         }
     };
 
     const suspendUser = async (userId: number) => {
+        setAllUsers(prev => prev.map(u => u.id === userId ? { ...u, userStatus: 'suspended' } : u));
         try {
             const response = await fetch(`${API_URL}/admin/users/${userId}/suspend`, { method: 'POST' });
             if (response.ok) {
                 showToast('User suspended.', 'warning');
-                const updatedUsers = await fetch(`${API_URL}/users`).then(res => res.json());
-                setAllUsers(updatedUsers);
             } else {
                 throw new Error('Failed');
             }
         } catch {
             showToast('Failed to suspend user.', 'error');
+            const res = await fetch(`${API_URL}/users/${userId}`);
+            if (res.ok) {
+                const original = await res.json();
+                setAllUsers(prev => prev.map(u => u.id === userId ? original : u));
+            }
         }
     };
 
     const reactivateUser = async (userId: number) => {
+        setAllUsers(prev => prev.map(u => u.id === userId ? { ...u, userStatus: 'approved' } : u));
         try {
             const response = await fetch(`${API_URL}/admin/users/${userId}/reactivate`, { method: 'POST' });
             if (response.ok) {
                 showToast('User reactivated.', 'success');
-                const updatedUsers = await fetch(`${API_URL}/users`).then(res => res.json());
-                setAllUsers(updatedUsers);
             } else {
                 throw new Error('Failed');
             }
         } catch {
             showToast('Failed to reactivate user.', 'error');
+            const res = await fetch(`${API_URL}/users/${userId}`);
+            if (res.ok) {
+                const original = await res.json();
+                setAllUsers(prev => prev.map(u => u.id === userId ? original : u));
+            }
         }
     };
 

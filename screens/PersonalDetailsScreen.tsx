@@ -71,7 +71,7 @@ const PersonalDetailsScreen: React.FC<PersonalDetailsScreenProps> = ({ goBack, n
   );
 
   return (
-    <div>
+    <div className="bg-green-50 dark:bg-neutral-900 min-h-screen">
       <Header title={t('personalDetails') || 'Personal Details'} onBack={goBack}>
         <button
           onClick={() => navigate({ view: 'EDIT_DETAILS' })}
@@ -223,10 +223,7 @@ const PersonalDetailsScreen: React.FC<PersonalDetailsScreenProps> = ({ goBack, n
           </div>
         )}
 
-        {/* Back Button */}
-        <div className="flex gap-2">
-          <Button variant="secondary" onClick={goBack}>{t('back') || 'Back'}</Button>
-        </div>
+
       </div>
     </div >
   );

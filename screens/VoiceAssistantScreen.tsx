@@ -238,12 +238,7 @@ const VoiceAssistantScreen: React.FC<VoiceAssistantScreenProps> = ({ navigate, g
                     outputAudioTranscription: {},
                     inputAudioTranscription: {},
                     tools: [{ functionDeclarations: [createBookingFunctionDeclaration] }],
-                    safetySettings: [
-                        { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
-                        { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
-                        { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
-                        { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
-                    ],
+
                 },
             });
         } catch (err) {
@@ -279,10 +274,10 @@ const VoiceAssistantScreen: React.FC<VoiceAssistantScreenProps> = ({ navigate, g
     };
 
     return (
-        <div className="flex flex-col h-screen bg-neutral-50 dark:bg-neutral-900">
+        <div className="flex flex-col h-screen bg-green-50 dark:bg-neutral-900">
             <Header title={t('aiVoiceAssistant')} onBack={goBack} />
             <div className="flex-grow flex flex-col p-4 space-y-4">
-                <div className="flex-grow bg-white dark:bg-neutral-800 rounded-lg p-4 space-y-3 overflow-y-auto hide-scrollbar">
+                <div className="flex-grow bg-white dark:bg-neutral-800 rounded-lg p-4 space-y-3 overflow-y-auto hide-scrollbar shadow-sm border border-neutral-100 dark:border-neutral-700">
                     {transcription.map((t, i) => (
                         <div key={i} className="space-y-1">
                             <p className="text-right text-primary font-semibold">{t.user}</p>

@@ -1,6 +1,6 @@
 import { GoogleGenAI, HarmCategory, HarmBlockThreshold } from "@google/genai";
 import dotenv from 'dotenv';
-dotenv.config();
+dotenv.config({ path: ['.env.local', '.env'] });
 
 const apiKey = process.env.VITE_API_KEY || process.env.API_KEY || process.env.GEMINI_API_KEY;
 
@@ -14,7 +14,8 @@ async function run() {
     }
     const ai = new GoogleGenAI({ apiKey });
 
-    // Replicate SupplierView Prompt
+    // Replicate SupplierView Prompt with Telugu
+    const languageName = "Telugu";
     const prompt = `
         As a market analysis expert for an agricultural equipment rental platform called AgriRent, suggest a competitive hourly price for a supplier.
         - Item Category: Tractors
@@ -23,6 +24,7 @@ async function run() {
         - Recent booking prices: 1200, 1400
         
         Based on this data, provide a suggested price range and a very brief justification.
+        IMPORTANT: Respond with the suggested range and justification in ${languageName} language only.
         Respond with ONLY the suggested range and justification.
     `;
 
@@ -37,9 +39,9 @@ async function run() {
     };
 
     try {
-        console.log("Sending Request...");
+        console.log("Sending Request to gemini-2.5-flash...");
         const response = await ai.models.generateContent({
-            model: 'gemini-1.5-flash',
+            model: 'gemini-2.5-flash',
             contents,
             config,
         });

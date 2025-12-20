@@ -127,10 +127,17 @@ export const PostService = {
         const posts = await getAll<ForumPost>(COLLECTIONS.POSTS);
         return posts.sort((a, b) => (b.timestamp?.localeCompare?.(a.timestamp || '') || 0));
     },
-    getById: (id: number) => getById<ForumPost>(COLLECTIONS.POSTS, id),
+    getById: (id: string | number) => getById<ForumPost>(COLLECTIONS.POSTS, id),
     create: (post: ForumPost) => create<ForumPost>(COLLECTIONS.POSTS, post),
-    update: (id: number, data: Partial<ForumPost>) => update<ForumPost>(COLLECTIONS.POSTS, id, data),
-    delete: (id: number) => remove(COLLECTIONS.POSTS, id),
+    update: (id: string | number, data: Partial<ForumPost>) => update<ForumPost>(COLLECTIONS.POSTS, id, data),
+    delete: (id: string | number) => remove(COLLECTIONS.POSTS, id),
+    deleteReply: async (postId: string | number, replyId: string | number) => {
+        const post = await getById<ForumPost>(COLLECTIONS.POSTS, postId);
+        if (post) {
+            const newReplies = post.replies.filter(r => String(r.id) !== String(replyId));
+            await update<ForumPost>(COLLECTIONS.POSTS, postId, { replies: newReplies });
+        }
+    }
 };
 
 

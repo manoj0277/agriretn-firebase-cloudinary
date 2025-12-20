@@ -187,317 +187,280 @@ const NotificationManagerScreen: React.FC<NotificationManagerProps> = ({ onBack 
         { name: 'System Update', message: '🔔 New feature available: AI Crop Calendar! Check it out in the app.' }
     ];
 
+    // State for Batch View
+    const [viewMode, setViewMode] = useState<'batches' | 'list'>('batches');
+    const [selectedBatch, setSelectedBatch] = useState<string | null>(null);
+
+    // Compute Batch Counts from History
+    const batchCounts = notificationHistory.reduce((acc: any, curr: any) => {
+        const cat = curr.category || 'system';
+        acc[cat] = (acc[cat] || 0) + 1;
+        return acc;
+    }, {});
+
+    const handleBatchClick = (category: string) => {
+        setSelectedBatch(category);
+        setViewMode('list');
+    };
+
+    const handleBackToBatches = () => {
+        setSelectedBatch(null);
+        setViewMode('batches');
+    };
+
+    const filteredHistory = selectedBatch
+        ? notificationHistory.filter((n: any) => n.category === selectedBatch)
+        : notificationHistory;
+
     return (
-        <div className="p-4 max-w-4xl mx-auto">
+        <div className="p-4 max-w-6xl mx-auto">
             {onBack && (
-                <button onClick={onBack} className="mb-4 text-primary flex items-center">
+                <button onClick={onBack} className="mb-4 text-primary flex items-center hover:underline">
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" viewBox="0 0 20 20" fill="currentColor">
                         <path fillRule="evenodd" d="M9.707 16.707a1 1 0 01-1.414 0l-6-6a1 1 0 010-1.414l6-6a1 1 0 011.414 1.414L5.414 9H17a1 1 0 110 2H5.414l4.293 4.293a1 1 0 010 1.414z" clipRule="evenodd" />
                     </svg>
-                    Back
+                    Back to Admin
                 </button>
             )}
 
-            <h1 className="text-2xl font-bold text-neutral-800 dark:text-neutral-100 mb-4">📢 Notification Manager</h1>
+            <div className="flex justify-between items-center mb-6">
+                <h1 className="text-2xl font-bold text-neutral-800 dark:text-neutral-100 flex items-center">
+                    📢 Notification Manager
+                </h1>
+            </div>
 
-            {/* Stats Overview */}
+            {/* Stats Overview - Always Visible */}
             {stats && (
-                <div className="grid grid-cols-3 gap-4 mb-6">
-                    <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg">
-                        <p className="text-sm text-neutral-600 dark:text-neutral-400">Total Sent</p>
-                        <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">{stats.total}</p>
+                <div className="grid grid-cols-3 gap-4 mb-8">
+                    <div className="bg-blue-50 dark:bg-blue-900/20 p-5 rounded-xl border border-blue-100 dark:border-blue-800">
+                        <p className="text-sm font-medium text-neutral-600 dark:text-neutral-400 uppercase tracking-wider">Total Sent</p>
+                        <p className="text-3xl font-bold text-blue-600 dark:text-blue-400 mt-1">{stats.total}</p>
                     </div>
-                    <div className="bg-green-50 dark:bg-green-900/20 p-4 rounded-lg">
-                        <p className="text-sm text-neutral-600 dark:text-neutral-400">Read</p>
-                        <p className="text-2xl font-bold text-green-600 dark:text-green-400">{stats.read}</p>
+                    <div className="bg-green-50 dark:bg-green-900/20 p-5 rounded-xl border border-green-100 dark:border-green-800">
+                        <p className="text-sm font-medium text-neutral-600 dark:text-neutral-400 uppercase tracking-wider">Read</p>
+                        <p className="text-3xl font-bold text-green-600 dark:text-green-400 mt-1">{stats.read}</p>
                     </div>
-                    <div className="bg-yellow-50 dark:bg-yellow-900/20 p-4 rounded-lg">
-                        <p className="text-sm text-neutral-600 dark:text-neutral-400">Unread</p>
-                        <p className="text-2xl font-bold text-yellow-600 dark:text-yellow-400">{stats.unread}</p>
+                    <div className="bg-yellow-50 dark:bg-yellow-900/20 p-5 rounded-xl border border-yellow-100 dark:border-yellow-800">
+                        <p className="text-sm font-medium text-neutral-600 dark:text-neutral-400 uppercase tracking-wider">Unread</p>
+                        <p className="text-3xl font-bold text-yellow-600 dark:text-yellow-400 mt-1">{stats.unread}</p>
                     </div>
                 </div>
             )}
 
-            {/* Notification Composer */}
-            <div className="bg-white dark:bg-neutral-800 rounded-lg border border-neutral-200 dark:border-neutral-700 p-4 mb-6">
-                <h2 className="text-lg font-semibold text-neutral-800 dark:text-neutral-100 mb-4">Compose Notification</h2>
+            {/* Main Content Area */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
 
-                {/* Message Templates */}
-                <div className="mb-4">
-                    <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">Quick Templates</label>
-                    <div className="flex flex-wrap gap-2">
-                        {templates.map((template, idx) => (
-                            <button
-                                key={idx}
-                                onClick={() => setMessage(template.message)}
-                                className="px-3 py-1 text-sm bg-neutral-100 dark:bg-neutral-700 rounded-md hover:bg-neutral-200 dark:hover:bg-neutral-600"
-                            >
-                                {template.name}
-                            </button>
-                        ))}
-                    </div>
-                </div>
+                {/* Left Column: Composer (Always Visible for Quick Access) */}
+                <div className="lg:col-span-1">
+                    <div className="bg-white dark:bg-neutral-800 rounded-xl border border-neutral-200 dark:border-neutral-700 p-5 shadow-sm sticky top-6">
+                        <h2 className="text-lg font-bold text-neutral-800 dark:text-neutral-100 mb-4 border-b border-neutral-100 dark:border-neutral-700 pb-3">
+                            ✨ Compose New
+                        </h2>
 
-                {/* Message Input */}
-                <div className="mb-4">
-                    <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">Message *</label>
-                    <textarea
-                        value={message}
-                        onChange={(e) => setMessage(e.target.value)}
-                        className="w-full px-3 py-2 border border-neutral-300 dark:border-neutral-600 rounded-md bg-white dark:bg-neutral-900 text-neutral-800 dark:text-neutral-100"
-                        rows={4}
-                        placeholder="Enter your notification message..."
-                    />
-                </div>
-
-                {/* Category & Priority */}
-                <div className="grid grid-cols-2 gap-4 mb-4">
-                    <div>
-                        <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">Category</label>
-                        <select value={category} onChange={(e) => setCategory(e.target.value as NotificationCategory)} className="w-full px-3 py-2 border border-neutral-300 dark:border-neutral-600 rounded-md bg-white dark:bg-neutral-900">
-                            <option value="weather">{getCategoryIcon('weather')} Weather</option>
-                            <option value="location">{getCategoryIcon('location')} Location</option>
-                            <option value="price">{getCategoryIcon('price')} Price</option>
-                            <option value="booking">{getCategoryIcon('booking')} Booking</option>
-                            <option value="promotional">{getCategoryIcon('promotional')} Promotional</option>
-                            <option value="performance">{getCategoryIcon('performance')} Performance</option>
-                            <option value="system">{getCategoryIcon('system')} System</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">Priority</label>
-                        <select value={priority} onChange={(e) => setPriority(e.target.value as NotificationPriority)} className="w-full px-3 py-2 border border-neutral-300 dark:border-neutral-600 rounded-md bg-white dark:bg-neutral-900">
-                            <option value="low">Low</option>
-                            <option value="medium">Medium</option>
-                            <option value="high">High</option>
-                            <option value="urgent">Urgent</option>
-                        </select>
-                    </div>
-                </div>
-
-                {/* Broadcast Mode Toggle - Storage Optimized */}
-                <div className="mb-4 p-3 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
-                    <label className="flex items-center mb-2">
-                        <input
-                            type="checkbox"
-                            checked={useBroadcast}
-                            onChange={(e) => setUseBroadcast(e.target.checked)}
-                            className="mr-2 w-4 h-4"
-                        />
-                        <span className="text-sm font-semibold text-blue-800 dark:text-blue-300">📡 Broadcast Mode (Storage Optimized)</span>
-                    </label>
-                    <p className="text-xs text-blue-600 dark:text-blue-400 mb-2">1 notification per district instead of per user. Ideal for weather, system alerts.</p>
-
-                    {useBroadcast && (
-                        <div className="grid grid-cols-2 gap-3 mt-3">
-                            <div>
-                                <label className="block text-xs font-medium text-neutral-600 dark:text-neutral-400 mb-1">Target District</label>
-                                <select
-                                    value={broadcastDistrict}
-                                    onChange={(e) => setBroadcastDistrict(e.target.value)}
-                                    className="w-full px-2 py-1 text-sm border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-900"
-                                >
-                                    <option value="all">🌍 All Districts</option>
-                                    {allDistricts.map(d => (
-                                        <option key={d} value={d}>{d}</option>
-                                    ))}
-                                </select>
+                        {/* Templates */}
+                        <div className="mb-5">
+                            <label className="block text-xs font-semibold text-neutral-500 uppercase mb-2">Quick Templates</label>
+                            <div className="flex flex-wrap gap-2">
+                                {templates.map((template, idx) => (
+                                    <button
+                                        key={idx}
+                                        onClick={() => setMessage(template.message)}
+                                        className="px-3 py-2 text-xs font-bold bg-white dark:bg-neutral-800 border-2 border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-300 rounded-xl hover:border-primary hover:text-primary hover:bg-primary/5 transition-all shadow-sm active:scale-95"
+                                    >
+                                        {template.name}
+                                    </button>
+                                ))}
                             </div>
+                        </div>
+
+                        {/* Inputs */}
+                        <div className="space-y-4">
                             <div>
-                                <label className="block text-xs font-medium text-neutral-600 dark:text-neutral-400 mb-1">Expires In (Days)</label>
-                                <input
-                                    type="number"
-                                    min="1"
-                                    max="30"
-                                    value={broadcastExpiresInDays}
-                                    onChange={(e) => setBroadcastExpiresInDays(parseInt(e.target.value) || 7)}
-                                    className="w-full px-2 py-1 text-sm border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-900"
+                                <label className="block text-sm font-medium mb-1">Message</label>
+                                <textarea
+                                    value={message}
+                                    onChange={(e) => setMessage(e.target.value)}
+                                    className="w-full px-3 py-2 border border-neutral-300 dark:border-neutral-600 rounded-lg bg-neutral-50 dark:bg-neutral-900 focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-sm"
+                                    rows={4}
+                                    placeholder="Type your notification here..."
                                 />
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label className="block text-sm font-medium mb-1">Category</label>
+                                    <select
+                                        value={category}
+                                        onChange={(e) => setCategory(e.target.value as NotificationCategory)}
+                                        className="w-full px-2 py-2 border border-neutral-300 dark:border-neutral-600 rounded-lg bg-white dark:bg-neutral-900 text-sm"
+                                    >
+                                        <option value="weather">🌤️ Weather</option>
+                                        <option value="location">📍 Location</option>
+                                        <option value="price">💰 Price</option>
+                                        <option value="booking">📅 Booking</option>
+                                        <option value="promotional">🎉 Promo</option>
+                                        <option value="system">🔔 System</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium mb-1">Priority</label>
+                                    <select
+                                        value={priority}
+                                        onChange={(e) => setPriority(e.target.value as NotificationPriority)}
+                                        className="w-full px-2 py-2 border border-neutral-300 dark:border-neutral-600 rounded-lg bg-white dark:bg-neutral-900 text-sm"
+                                    >
+                                        <option value="low">Low</option>
+                                        <option value="medium">Medium</option>
+                                        <option value="high">High</option>
+                                        <option value="urgent">Urgent</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            {/* Broadcast Toggle */}
+                            <div className="p-3 bg-blue-50 dark:bg-blue-900/10 rounded-lg border border-blue-100 dark:border-blue-800/30">
+                                <label className="flex items-center cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        checked={useBroadcast}
+                                        onChange={(e) => setUseBroadcast(e.target.checked)}
+                                        className="mr-2 w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                                    />
+                                    <span className="text-xs font-bold text-blue-800 dark:text-blue-300">📡 Broadcast Mode</span>
+                                </label>
+                                {useBroadcast && (
+                                    <div className="mt-3 space-y-2 animate-fade-in">
+                                        <select
+                                            value={broadcastDistrict}
+                                            onChange={(e) => setBroadcastDistrict(e.target.value)}
+                                            className="w-full px-2 py-1.5 text-xs border border-blue-200 dark:border-blue-800 rounded bg-white dark:bg-neutral-900"
+                                        >
+                                            <option value="all">🌍 All Districts</option>
+                                            {allDistricts.map(d => <option key={d} value={d}>{d}</option>)}
+                                        </select>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Send Button */}
+                            <Button onClick={handleSend} disabled={sending || !message.trim()} variant="primary" className="w-full py-2.5 shadow-lg shadow-primary/20">
+                                {sending ? '🚀 Sending...' : 'Send Notification'}
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Right Column: Viewer (Batches or List) */}
+                <div className="lg:col-span-2">
+                    {/* BATCH VIEW */}
+                    {viewMode === 'batches' && (
+                        <div className="space-y-6">
+                            <div className="flex items-center justify-between">
+                                <h2 className="text-lg font-bold text-neutral-800 dark:text-neutral-100">Browse by Category</h2>
+                                <button onClick={fetchHistory} className="text-sm text-primary hover:bg-primary/5 px-2 py-1 rounded">↻ Refresh</button>
+                            </div>
+
+                            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                                {['weather', 'location', 'price', 'booking', 'promotional', 'system'].map((cat) => {
+                                    const count = batchCounts[cat] || 0;
+                                    return (
+                                        <div
+                                            key={cat}
+                                            onClick={() => handleBatchClick(cat)}
+                                            className="group bg-white dark:bg-neutral-800 p-5 rounded-xl border border-neutral-200 dark:border-neutral-700 hover:border-primary/50 hover:shadow-md cursor-pointer transition-all duration-200"
+                                        >
+                                            <div className="flex justify-between items-start mb-3">
+                                                <span className="text-2xl filter drop-shadow-sm group-hover:scale-110 transition-transform duration-200">
+                                                    {getCategoryIcon(cat as NotificationCategory)}
+                                                </span>
+                                                <span className="bg-neutral-100 dark:bg-neutral-700 text-neutral-600 dark:text-neutral-300 text-xs font-bold px-2 py-1 rounded-full">
+                                                    {count}
+                                                </span>
+                                            </div>
+                                            <h3 className="font-bold text-neutral-800 dark:text-neutral-100 capitalize mb-1">
+                                                {cat}
+                                            </h3>
+                                            <p className="text-xs text-neutral-500 dark:text-neutral-400 group-hover:text-primary transition-colors">
+                                                View notifications →
+                                            </p>
+                                        </div>
+                                    );
+                                })}
                             </div>
                         </div>
                     )}
-                </div>
 
-                {/* Target Audience - Only show if NOT in broadcast mode */}
-                {!useBroadcast && (
-                    <div className="mb-4">
-                        <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">Target Audience</label>
-
-                        <div className="space-y-2">
-                            <label className="flex items-center">
-                                <input
-                                    type="checkbox"
-                                    checked={targetAudience.allUsers}
-                                    onChange={(e) => setTargetAudience({ ...targetAudience, allUsers: e.target.checked })}
-                                    className="mr-2"
-                                />
-                                <span className="text-sm">All Users</span>
-                            </label>
-
-                            {!targetAudience.allUsers && (
-                                <>
-                                    <div>
-                                        <label className="block text-sm mb-1">Districts</label>
-                                        <select
-                                            multiple
-                                            value={targetAudience.districts}
-                                            onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setTargetAudience({ ...targetAudience, districts: Array.from(e.target.selectedOptions, (option: any) => option.value) })}
-                                            className="w-full px-3 py-2 border border-neutral-300 dark:border-neutral-600 rounded-md bg-white dark:bg-neutral-900"
-                                            size={4}
+                    {/* LIST VIEW */}
+                    {viewMode === 'list' && (
+                        <div className="bg-white dark:bg-neutral-800 rounded-xl border border-neutral-200 dark:border-neutral-700 overflow-hidden shadow-sm">
+                            <div className="px-6 py-4 border-b border-neutral-100 dark:border-neutral-700 flex justify-between items-center bg-neutral-50 dark:bg-neutral-800/50">
+                                <h3 className="font-bold text-neutral-800 dark:text-neutral-100 flex items-center gap-2">
+                                    {selectedBatch && (
+                                        <button
+                                            onClick={handleBackToBatches}
+                                            className="p-1 rounded-full hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-colors text-pink-500"
+                                            title="Back"
                                         >
-                                            {allDistricts.map(district => (
-                                                <option key={district} value={district}>{district}</option>
-                                            ))}
-                                        </select>
-                                    </div>
+                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" viewBox="0 0 20 20" fill="currentColor">
+                                                <path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd" />
+                                            </svg>
+                                        </button>
+                                    )}
+                                    {selectedBatch ? `${selectedBatch.charAt(0).toUpperCase() + selectedBatch.slice(1)} Notifications` : 'All Notifications'}
+                                </h3>
+                                <span className="text-xs font-medium text-neutral-500 bg-white dark:bg-neutral-700 px-2 py-1 rounded border border-neutral-200 dark:border-neutral-600">
+                                    {filteredHistory.length} items
+                                </span>
+                            </div>
 
-                                    <div>
-                                        <label className="block text-sm mb-1">User Roles</label>
-                                        <div className="flex gap-3">
-                                            <label className="flex items-center">
-                                                <input
-                                                    type="checkbox"
-                                                    checked={targetAudience.roles.includes('Farmer')}
-                                                    onChange={(e) => {
-                                                        const roles = e.target.checked
-                                                            ? [...targetAudience.roles, 'Farmer']
-                                                            : targetAudience.roles.filter(r => r !== 'Farmer');
-                                                        setTargetAudience({ ...targetAudience, roles });
-                                                    }}
-                                                    className="mr-1"
-                                                />
-                                                <span className="text-sm">Farmers</span>
-                                            </label>
-                                            <label className="flex items-center">
-                                                <input
-                                                    type="checkbox"
-                                                    checked={targetAudience.roles.includes('Supplier')}
-                                                    onChange={(e) => {
-                                                        const roles = e.target.checked
-                                                            ? [...targetAudience.roles, 'Supplier']
-                                                            : targetAudience.roles.filter(r => r !== 'Supplier');
-                                                        setTargetAudience({ ...targetAudience, roles });
-                                                    }}
-                                                    className="mr-1"
-                                                />
-                                                <span className="text-sm">Suppliers</span>
-                                            </label>
-                                        </div>
-                                    </div>
-
-                                    <label className="flex items-center">
-                                        <input
-                                            type="checkbox"
-                                            checked={targetAudience.newSignups}
-                                            onChange={(e) => setTargetAudience({ ...targetAudience, newSignups: e.target.checked })}
-                                            className="mr-2"
-                                        />
-                                        <span className="text-sm">New Signups Only (last </span>
-                                        <input
-                                            type="number"
-                                            value={targetAudience.newSignupsDays}
-                                            onChange={(e) => setTargetAudience({ ...targetAudience, newSignupsDays: parseInt(e.target.value) || 7 })}
-                                            className="w-16 mx-1 px-2 py-1 border border-neutral-300 dark:border-neutral-600 rounded text-sm"
-                                            disabled={!targetAudience.newSignups}
-                                        />
-                                        <span className="text-sm"> days)</span>
-                                    </label>
-                                </>
-                            )}
+                            <div className="overflow-x-auto">
+                                <table className="min-w-full text-left text-sm">
+                                    <thead>
+                                        <tr className="border-b border-neutral-200 dark:border-neutral-700 bg-neutral-50/50 dark:bg-neutral-800">
+                                            <th className="px-6 py-3 font-semibold text-neutral-700 dark:text-neutral-300 w-1/2">Message</th>
+                                            <th className="px-6 py-3 font-semibold text-neutral-700 dark:text-neutral-300">Sent Via</th>
+                                            <th className="px-6 py-3 font-semibold text-neutral-700 dark:text-neutral-300">Date</th>
+                                            <th className="px-6 py-3 font-semibold text-neutral-700 dark:text-neutral-300">Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-neutral-100 dark:divide-neutral-700">
+                                        {filteredHistory.length === 0 ? (
+                                            <tr>
+                                                <td colSpan={4} className="px-6 py-12 text-center text-neutral-400 italic">
+                                                    No notifications found in this category.
+                                                </td>
+                                            </tr>
+                                        ) : (
+                                            filteredHistory.map((notif: any) => (
+                                                <tr key={notif.id} className="hover:bg-neutral-50 dark:hover:bg-neutral-700/30 transition-colors group">
+                                                    <td className="px-6 py-4">
+                                                        <p className="text-neutral-800 dark:text-neutral-200 whitespace-normal break-words leading-relaxed">
+                                                            {notif.message}
+                                                        </p>
+                                                    </td>
+                                                    <td className="px-6 py-4">
+                                                        <span className="text-xs bg-neutral-100 dark:bg-neutral-700 text-neutral-600 dark:text-neutral-300 px-2 py-1 rounded border border-neutral-200 dark:border-neutral-600">
+                                                            {notif.sentVia?.join(', ') || 'app'}
+                                                        </span>
+                                                    </td>
+                                                    <td className="px-6 py-4 text-neutral-500 text-xs">
+                                                        {new Date(notif.timestamp).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                                    </td>
+                                                    <td className="px-6 py-4">
+                                                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${notif.read
+                                                            ? 'bg-green-50 text-green-700 border-green-200 dark:bg-green-900/20 dark:text-green-300 dark:border-green-800'
+                                                            : 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/20 dark:text-amber-300 dark:border-amber-800'}`}>
+                                                            {notif.read ? 'Read' : 'Unread'}
+                                                        </span>
+                                                    </td>
+                                                </tr>
+                                            ))
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
-                    </div>
-                )}
-
-                {/* Delivery Channels */}
-                <div className="mb-4">
-                    <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">Delivery Channels</label>
-                    <div className="flex gap-4">
-                        <label className="flex items-center">
-                            <input type="checkbox" checked className="mr-2" disabled />
-                            <span className="text-sm">In-App (Always)</span>
-                        </label>
-                        <label className="flex items-center">
-                            <input
-                                type="checkbox"
-                                checked={channels.includes('push')}
-                                onChange={(e) => {
-                                    setChannels(e.target.checked ? [...channels, 'push'] : channels.filter(c => c !== 'push'));
-                                }}
-                                className="mr-2"
-                            />
-                            <span className="text-sm">📱 Push Notification (FREE - Unlimited)</span>
-                        </label>
-                    </div>
-                </div>
-
-                {/* Schedule */}
-                <div className="mb-4">
-                    <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">Schedule (Optional)</label>
-                    <input
-                        type="datetime-local"
-                        value={scheduledFor}
-                        onChange={(e) => setScheduledFor(e.target.value)}
-                        className="px-3 py-2 border border-neutral-300 dark:border-neutral-600 rounded-md bg-white dark:bg-neutral-900"
-                    />
-                </div>
-
-                {/* Recipient Count */}
-                <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-md">
-                    <p className="text-sm font-medium text-blue-800 dark:text-blue-200">
-                        📊 Estimated Recipients: <span className="font-bold">{recipientCount}</span> users
-                    </p>
-                </div>
-
-                {/* Send Button */}
-                <Button onClick={handleSend} disabled={sending || !message.trim()} variant="primary">
-                    {sending ? 'Sending...' : scheduledFor ? 'Schedule Notification' : 'Send Notification'}
-                </Button>
-            </div>
-
-            {/* Notification History */}
-            <div className="bg-white dark:bg-neutral-800 rounded-lg border border-neutral-200 dark:border-neutral-700 p-4">
-                <div className="flex justify-between items-center mb-4">
-                    <h2 className="text-lg font-semibold text-neutral-800 dark:text-neutral-100">Recent Notifications</h2>
-                    <button onClick={fetchStats} className="text-sm text-primary hover:underline">Refresh</button>
-                </div>
-
-                <div className="overflow-x-auto">
-                    <table className="min-w-full text-left text-sm whitespace-nowrap">
-                        <thead>
-                            <tr className="border-b border-gray-200 dark:border-gray-700">
-                                <th className="px-4 py-2 font-medium text-gray-900 dark:text-white">Message</th>
-                                <th className="px-4 py-2 font-medium text-gray-900 dark:text-white">Category</th>
-                                <th className="px-4 py-2 font-medium text-gray-900 dark:text-white">Sent Via</th>
-                                <th className="px-4 py-2 font-medium text-gray-900 dark:text-white">Date</th>
-                                <th className="px-4 py-2 font-medium text-gray-900 dark:text-white">Status</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-                            {notificationHistory.length === 0 ? (
-                                <tr>
-                                    <td colSpan={5} className="px-4 py-8 text-center text-gray-500">No notifications found</td>
-                                </tr>
-                            ) : (
-                                notificationHistory.map((notif: any) => (
-                                    <tr key={notif.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
-                                        <td className="px-4 py-2 max-w-xs truncate" title={notif.message}>{notif.message}</td>
-                                        <td className="px-4 py-2">
-                                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
-                                                {getCategoryIcon(notif.category)} {notif.category}
-                                            </span>
-                                        </td>
-                                        <td className="px-4 py-2 text-gray-500">{notif.sentVia?.join(', ') || 'app'}</td>
-                                        <td className="px-4 py-2 text-gray-500">{new Date(notif.timestamp).toLocaleDateString()}</td>
-                                        <td className="px-4 py-2">
-                                            <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${notif.read ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
-                                                {notif.read ? 'Read' : 'Unread'}
-                                            </span>
-                                        </td>
-                                    </tr>
-                                ))
-                            )}
-                        </tbody>
-                    </table>
+                    )}
                 </div>
             </div>
         </div>

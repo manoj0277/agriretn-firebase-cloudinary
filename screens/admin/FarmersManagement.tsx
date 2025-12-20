@@ -5,6 +5,7 @@ import { useBooking } from '../../context/BookingContext'
 import { exportToExcel, exportToPdf } from '../../lib/export'
 import { User } from '../../types'
 import { useToast } from '../../context/ToastContext'
+import { MedalName } from '../../components/MedalName';
 
 const API_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3001/api';
 
@@ -21,7 +22,8 @@ const FarmersManagement: React.FC = () => {
   const [kycMap, setKycMap] = useState<Record<string, string>>({})
   const [statusPopupUser, setStatusPopupUser] = useState<User | null>(null)
 
-  const farmers = useMemo(() => allUsers.filter(u => u.role === 'Farmer'), [allUsers])
+  // Show both Farmers and Suppliers in the Farmers list, as Suppliers can also act as Farmers
+  const farmers = useMemo(() => allUsers.filter(u => u.role === 'Farmer' || u.role === 'Supplier'), [allUsers])
 
   useEffect(() => {
     const buildMaps = async () => {
@@ -113,8 +115,14 @@ const FarmersManagement: React.FC = () => {
     }
   }
 
+  // ... inside component ...
   const columns: Column<any>[] = [
-    { key: 'name', header: 'Farmer Name', sort: (a, b) => String(a.name).localeCompare(String(b.name)) },
+    {
+      key: 'name',
+      header: 'Farmer Name',
+      sort: (a, b) => String(a.name).localeCompare(String(b.name)),
+      render: r => <MedalName userId={r._user.id} displayName={r.name} />
+    },
     { key: 'phone', header: 'Phone' },
     { key: 'location', header: 'Location', sort: (a, b) => String(a.location).localeCompare(String(b.location)) },
     { key: 'totalBookings', header: 'Total Bookings', sort: (a, b) => a.totalBookings - b.totalBookings },
@@ -210,7 +218,7 @@ const FarmersManagement: React.FC = () => {
 
       {/* Status Change Popup */}
       {statusPopupUser && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999]" onClick={() => setStatusPopupUser(null)}>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[10001]" onClick={() => setStatusPopupUser(null)}>
           <div className="bg-white dark:bg-neutral-800 rounded-lg border border-neutral-200 dark:border-neutral-700 w-full max-w-sm p-4 shadow-xl" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <h4 className="font-bold text-lg">Change Status</h4>

@@ -169,7 +169,7 @@ const ManageSupportTicketsScreen: React.FC<ManageSupportTicketsScreenProps> = ({
                         <button
                             key={status}
                             onClick={() => setFilter(status)}
-                            className={`px-4 py-2 text-sm font-semibold rounded-full capitalize ${filter === status ? 'bg-primary text-white' : 'bg-neutral-200 dark:bg-neutral-600 text-neutral-700 dark:text-neutral-200'}`}
+                            className={`px-4 py-2 text-sm font-semibold rounded-full capitalize ${filter === status ? 'bg-primary text-white' : 'bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-700 dark:text-neutral-200'}`}
                         >
                             {status}
                         </button>

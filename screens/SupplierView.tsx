@@ -1,10 +1,13 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet';
+import DashboardLayout from '../components/DashboardLayout';
 import L from 'leaflet';
 import { useAuth } from '../context/AuthContext';
 import { useItem } from '../context/ItemContext';
-import { Item, ItemCategory, Booking, AppView, WorkPurpose, WORK_PURPOSES } from '../types';
+import { useBooking } from '../context/BookingContext';
+import { useReview } from '../context/ReviewContext';
+import { Item, ItemCategory, Booking, AppView, WorkPurpose, WORK_PURPOSES, CATEGORY_WORK_PURPOSES, WORKER_PURPOSE_IMAGES, HARVESTER_PURPOSE_IMAGES, TRACTOR_PURPOSE_IMAGES } from '../types';
 import Header from '../components/Header';
 import Button from '../components/Button';
 import Input from '../components/Input';
@@ -16,8 +19,6 @@ import { SupplierRequestsScreen } from './SupplierRequestsScreen';
 import { useChat } from '../context/ChatContext';
 import { useToast } from '../context/ToastContext';
 import SupplierBookingsScreen from './SupplierBookingsScreen';
-import { useBooking } from '../context/BookingContext';
-import { useReview } from '../context/ReviewContext';
 import SupplierScheduleScreen from './SupplierScheduleScreen';
 import { uploadImage } from '../src/lib/upload';
 import { GoogleGenAI, HarmCategory, HarmBlockThreshold } from "@google/genai";
@@ -30,12 +31,18 @@ const apiKey = typeof process !== 'undefined' && process.env && process.env.API_
 const ai = apiKey ? new GoogleGenAI({ apiKey }) : null;
 
 import VerifiedBadge from '../components/VerifiedBadge';
+import AppSidebar from '../components/AppSidebar';
+import { RequestQueuePanel, EquipmentStatusPanel } from '../components/SupplierWidgets';
+
+
 
 interface SupplierViewProps {
     navigate: (view: AppView) => void;
     onSwitchMode?: () => void;
     roleBadge?: string;
 }
+
+import { StreakLeaderboardModal } from '../components/StreakLeaderboardModal';
 
 const HEAVY_MACHINERY_CATEGORIES = [ItemCategory.Tractors, ItemCategory.Harvesters, ItemCategory.JCB, ItemCategory.Borewell];
 const EQUIPMENT_CATEGORIES = [ItemCategory.Drones, ItemCategory.Sprayers];
@@ -94,6 +101,14 @@ const AddItemScreen: React.FC<{ itemToEdit: Item | null, onBack: () => void }> =
     const [supplierEmail, setSupplierEmail] = useState('');
     const [currentLocation, setCurrentLocation] = useState<{ lat: number; lng: number } | null>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [locationSuggestions, setLocationSuggestions] = useState<any[]>([]);
+    const [showSuggestions, setShowSuggestions] = useState(false);
+    const [isLocationSearching, setIsLocationSearching] = useState(false);
+    const [locationError, setLocationError] = useState('');
+
+    // Ref for debounce timeout
+    const geocodeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+    const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
     const isWorker = useMemo(() => category === ItemCategory.Workers, [category]);
     const isHeavyMachinery = useMemo(() => HEAVY_MACHINERY_CATEGORIES.includes(category), [category]);
@@ -136,6 +151,7 @@ const AddItemScreen: React.FC<{ itemToEdit: Item | null, onBack: () => void }> =
             setYear(itemToEdit.year?.toString() || '');
             setHorsepower(itemToEdit.horsepower?.toString() || '');
             setCondition(itemToEdit.condition || 'Good');
+            setAutoPriceOptimization(!!itemToEdit.autoPriceOptimization);
         } else {
             resetForm();
         }
@@ -211,15 +227,15 @@ const AddItemScreen: React.FC<{ itemToEdit: Item | null, onBack: () => void }> =
             const prompt = `
                 As a market analysis expert for an agricultural equipment rental platform called AgriRent, suggest a competitive hourly price for a supplier.
                 - Item Category: ${category}
-                - Work Purpose: ${purposeName}
-                - Supplier's Location: ${location || 'not specified'}
-                - Recent booking prices for similar items (price per hour): ${itemPrices.join(', ')}
+- Work Purpose: ${purposeName}
+- Supplier's Location: ${location || 'not specified'}
+    - Recent booking prices for similar items(price per hour): ${itemPrices.join(', ')}
                 
                 Based on this data, provide a suggested price range and a very brief justification.
-                IMPORTANT: Respond with the suggested range and justification in ${languageName} language only.
-                Respond with ONLY the suggested range and justification. For example: 'Suggested range: ₹1500 - ₹1800. This is competitive for your area.'
-                If there is not enough data, just say 'Not enough data for a suggestion.' (Translate this phrase to ${languageName} if responding in that language).
-            `;
+    IMPORTANT: Respond with the suggested range and justification in ${languageName} language only.
+                Respond with ONLY the suggested range and justification.For example: 'Suggested range: ₹1500 - ₹1800. This is competitive for your area.'
+                If there is not enough data, just say 'Not enough data for a suggestion.'(Translate this phrase to ${languageName} if responding in that language).
+`;
 
             // Helper for retrying on 503
             const generateWithRetry = async (maxRetries = 3) => {
@@ -240,7 +256,7 @@ const AddItemScreen: React.FC<{ itemToEdit: Item | null, onBack: () => void }> =
                     } catch (err: any) {
                         const isOverloaded = err?.message?.includes('503') || err?.message?.includes('overloaded');
                         if (isOverloaded && i < maxRetries - 1) {
-                            console.warn(`Gemini 503/Overloaded. Retrying in ${(i + 1) * 1000}ms...`);
+                            console.warn(`Gemini 503 / Overloaded.Retrying in ${(i + 1) * 1000}ms...`);
                             await new Promise(r => setTimeout(r, (i + 1) * 1000));
                             continue;
                         }
@@ -288,8 +304,9 @@ const AddItemScreen: React.FC<{ itemToEdit: Item | null, onBack: () => void }> =
     };
 
     const addPurpose = () => {
+        const availablePurposes = CATEGORY_WORK_PURPOSES[category] || WORK_PURPOSES;
         const usedPurposes = new Set(purposes.map(p => p.name));
-        const nextPurpose = WORK_PURPOSES.find(p => !usedPurposes.has(p));
+        const nextPurpose = availablePurposes.find(p => !usedPurposes.has(p));
         if (nextPurpose) {
             setPurposes([...purposes, { name: nextPurpose, price: '' }]);
         } else {
@@ -422,19 +439,29 @@ const AddItemScreen: React.FC<{ itemToEdit: Item | null, onBack: () => void }> =
 
     const fetchAddress = async (lat: number, lng: number) => {
         try {
-            const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`);
+            const response = await fetch(
+                `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=14&addressdetails=1`,
+                { headers: { 'Accept-Language': 'en' } }
+            );
             const data = await response.json();
             if (data && data.address) {
                 const parts = [];
-                if (data.address.village) parts.push(data.address.village);
+
+                // Prioritize more specific locations first
+                if (data.address.neighbourhood) parts.push(data.address.neighbourhood);
+                else if (data.address.suburb) parts.push(data.address.suburb);
+                else if (data.address.village) parts.push(data.address.village);
                 else if (data.address.town) parts.push(data.address.town);
                 else if (data.address.city) parts.push(data.address.city);
-                else if (data.address.suburb) parts.push(data.address.suburb);
 
-                if (data.address.county) parts.push(data.address.county);
-                if (data.address.state_district) parts.push(data.address.state_district);
+                // Add district/county for context
+                if (data.address.county && !parts.includes(data.address.county)) parts.push(data.address.county);
+                else if (data.address.state_district && !parts.includes(data.address.state_district)) parts.push(data.address.state_district);
 
-                const addressStr = parts.length > 0 ? parts.join(', ') : (data.display_name ? data.display_name.split(',')[0] : `${lat.toFixed(5)}, ${lng.toFixed(5)}`);
+                // Add state if very few parts
+                if (parts.length < 2 && data.address.state) parts.push(data.address.state);
+
+                const addressStr = parts.length > 0 ? parts.join(', ') : (data.display_name ? data.display_name.split(',').slice(0, 3).join(', ') : `${lat.toFixed(5)}, ${lng.toFixed(5)}`);
                 setLocation(addressStr);
             } else {
                 setLocation(`${lat.toFixed(5)}, ${lng.toFixed(5)}`);
@@ -445,45 +472,189 @@ const AddItemScreen: React.FC<{ itemToEdit: Item | null, onBack: () => void }> =
         }
     };
 
+    // Forward geocoding: address to coordinates
+    const geocodeAddress = async (address: string) => {
+        if (!address || address.trim().length < 3) return;
+
+        setIsLocationSearching(true);
+        setLocationError('');
+
+        try {
+            // Use Nominatim API
+            const response = await fetch(
+                `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&countrycodes=in&limit=1`,
+                { headers: { 'Accept-Language': 'en' } }
+            );
+            const data = await response.json();
+
+            if (data && Array.isArray(data) && data.length > 0) {
+                const item = data[0];
+                const newLat = parseFloat(item.lat);
+                const newLng = parseFloat(item.lon);
+
+                setItemGeo({ lat: newLat, lng: newLng });
+                setItemMapCenter([newLat, newLng]);
+                if (itemMapRef.current) {
+                    itemMapRef.current.setView([newLat, newLng], 13);
+                }
+            } else {
+                setLocationError('Location not found on map.');
+            }
+        } catch (error) {
+            console.error('Error geocoding address:', error);
+            setLocationError('Error finding location.');
+        } finally {
+            setIsLocationSearching(false);
+        }
+    };
+
+    // Search for location suggestions
+    const searchLocation = async (query: string) => {
+        if (!query || query.trim().length < 3) {
+            setLocationSuggestions([]);
+            setShowSuggestions(false);
+            return;
+        }
+
+        setIsLocationSearching(true);
+        try {
+            // Use Nominatim API for better village-level search and country filtering
+            const response = await fetch(
+                `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&countrycodes=in&limit=10&addressdetails=1`,
+                { headers: { 'Accept-Language': 'en' } }
+            );
+            const data = await response.json();
+
+            if (data && Array.isArray(data)) {
+                // Prioritize results: Karimnagar > Telangana > India
+                const sortedData = data.sort((a: any, b: any) => {
+                    const aText = (a.display_name || '').toLowerCase();
+                    const bText = (b.display_name || '').toLowerCase();
+
+                    const score = (text: string) => {
+                        if (text.includes('karimnagar')) return 3;
+                        if (text.includes('telangana')) return 2;
+                        if (text.includes('india')) return 1;
+                        return 0;
+                    };
+
+                    return score(bText) - score(aText);
+                });
+
+                // Adapt Nominatim format to match what selectSuggestion expects
+                const adaptedSuggestions = sortedData.map((item: any) => ({
+                    display_name: item.display_name,
+                    lat: item.lat,
+                    lon: item.lon,
+                    address: item.address // Keep address details if needed
+                }));
+                setLocationSuggestions(adaptedSuggestions);
+                setShowSuggestions(true);
+            } else {
+                setLocationSuggestions([]);
+                setShowSuggestions(false);
+            }
+        } catch (error) {
+            console.error('Error searching location:', error);
+            setLocationSuggestions([]);
+            setShowSuggestions(false);
+        } finally {
+            setIsLocationSearching(false);
+        }
+    };
+
+    const selectSuggestion = (suggestion: any) => {
+        const lat = parseFloat(suggestion.lat);
+        const lon = parseFloat(suggestion.lon || suggestion.lng); // Handle both
+
+        // Pin map
+        setItemGeo({ lat, lng: lon });
+        setItemMapCenter([lat, lon]);
+        if (itemMapRef.current) itemMapRef.current.setView([lat, lon], 13);
+
+        // Set short name
+        const parts = suggestion.display_name.split(', ');
+        const shortName = parts.slice(0, 3).join(', ');
+        setLocation(shortName);
+
+        // Clear suggestions
+        setLocationSuggestions([]);
+        setShowSuggestions(false);
+
+        // Clear timeouts
+        if (geocodeTimeoutRef.current) clearTimeout(geocodeTimeoutRef.current);
+        if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+    };
+
     return (
         <div className="dark:text-neutral-200">
             <Header title={itemToEdit ? 'Edit Item' : 'Add Item'} onBack={onBack} />
 
-            <form className="p-4 space-y-4" onSubmit={handleSave}>
+            <form className="space-y-6" onSubmit={handleSave}>
                 {category !== ItemCategory.Workers && (
                     <div>
-                        <label className="block text-neutral-700 dark:text-neutral-300 text-sm font-bold mb-2">Item Image <span className="text-red-600">*</span></label>
-                        <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 dark:border-gray-600 border-dashed rounded-md">
-                            <div className="space-y-1 text-center">
-                                {imagePreviews.length > 0 ? (
-                                    <div className="flex flex-wrap justify-center gap-2">
-                                        {imagePreviews.map((img, i) => (
-                                            img && img.trim() !== '' ? (
-                                                <img key={i} src={img} alt={`Preview ${i + 1}`} className="h-20 w-28 object-cover rounded-md" />
-                                            ) : null
-                                        ))}
+                        <label className="block text-neutral-700 dark:text-neutral-300 text-sm font-bold mb-2">
+                            Item Image (Max 3) <span className="text-red-600">*</span>
+                        </label>
+                        {imagePreviews.length > 0 ? (
+                            <div className="grid grid-cols-3 gap-2 mb-2">
+                                {imagePreviews.map((preview, index) => (
+                                    <div key={index} className="relative h-24 rounded-lg overflow-hidden border border-neutral-200 dark:border-neutral-700 shadow-sm">
+                                        <img src={preview} alt={`Item ${index + 1}`} className="w-full h-full object-cover" />
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                const newPreviews = imagePreviews.filter((_, i) => i !== index);
+                                                setImagePreviews(newPreviews);
+                                                if (newPreviews.length === 0) setImagePreview(null);
+                                                else setImagePreview(newPreviews[0]);
+                                            }}
+                                            className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 shadow-md hover:bg-red-600 transition-colors"
+                                        >
+                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                                        </button>
                                     </div>
-                                ) : (
-                                    <svg className="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48" aria-hidden="true">
-                                        <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                                    </svg>
-                                )}
-                                <div className="flex text-sm text-gray-400 justify-center">
-                                    <label htmlFor="file-upload" className="relative cursor-pointer bg-white dark:bg-gray-700 rounded-md font-medium text-primary hover:text-primary-dark focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-primary px-2 py-1">
-                                        <span>{imagePreviews.length > 0 ? 'Change images' : 'Upload images (1–3)'}</span>
-                                        <input id="file-upload" name="file-upload" type="file" multiple className="sr-only" onChange={handleImageChange} accept=".jpeg,.jpg,.png,.webp" />
-                                    </label>
-                                </div>
-                                <p className="text-xs text-gray-500">JPEG, JPG, PNG, WEBP (max 3)</p>
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="h-40 w-full border-2 border-dashed border-neutral-300 dark:border-neutral-600 rounded-xl flex flex-col items-center justify-center bg-gray-50 dark:bg-gray-800 text-neutral-500 mb-2 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors cursor-pointer" onClick={() => document.getElementById('item-images')?.click()}>
+                                <svg className="w-10 h-10 mb-2 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                </svg>
+                                <span className="text-sm font-medium">Click to upload photos</span>
+                            </div>
+                        )}
+                        <input
+                            id="item-images"
+                            type="file"
+                            accept="image/*"
+                            multiple
+                            onChange={handleImageChange}
+                            className="hidden"
+                            required={!itemToEdit && imagePreviews.length === 0}
+                        />
+                        <div className="flex items-start mt-2">
+                            <div className="flex-shrink-0">
+                                <svg className="h-4 w-4 text-green-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                                </svg>
+                            </div>
+                            <div className="ml-2 w-full">
+                                <p className="text-sm text-gray-500">
+                                    Please upload <span className="font-bold text-gray-700 dark:text-gray-300">clear images</span> of your vehicle/equipment from different angles (Front, Side, Back).
+                                    Good quality images increase your chances of getting bookings.
+                                </p>
+                                <p className="text-xs text-gray-500 mt-1">JPEG, JPG, PNG, WEBP (max 3)</p>
                             </div>
                         </div>
                     </div>
                 )}
                 <Input label="Item Name (e.g., Tractor, Rotavator, Seed Planter)" value={name} onChange={e => setName(e.target.value)} required />
+
                 <div>
                     <label className="block text-neutral-700 dark:text-neutral-300 text-sm font-bold mb-2">Select Item Location on Map <span className="text-red-600">*</span></label>
-                    <div className="rounded overflow-hidden border border-neutral-200 dark:border-neutral-600">
-                        <MapContainer center={itemMapCenter} zoom={12} scrollWheelZoom={true} style={{ height: '220px', width: '100%' }}>
+                    <div className="rounded-xl overflow-hidden border border-neutral-200 dark:border-neutral-600 shadow-sm">
+                        <MapContainer center={itemMapCenter} zoom={12} scrollWheelZoom={true} style={{ height: '240px', width: '100%' }}>
                             <TileLayer attribution='&copy; OpenStreetMap contributors' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
                             <MapClickHandler onMapClick={(lat, lng) => {
                                 setItemGeo({ lat, lng });
@@ -523,115 +694,246 @@ const AddItemScreen: React.FC<{ itemToEdit: Item | null, onBack: () => void }> =
                             )}
                         </MapContainer>
                     </div>
-                    <p className="text-xs text-neutral-600 dark:text-neutral-400 mt-1">Tap the map or drag the pin to set location.</p>
-                    <p className="text-xs text-neutral-600 dark:text-neutral-400">This makes the supplier listing location selection intuitive: tap or drag the pin to choose the exact point on the map, and the item save enforces having a selected location</p>
-                    {itemGeo && <p className="text-xs text-neutral-600 dark:text-neutral-400 font-medium text-primary mt-1">Selected Coordinates: {itemGeo.lat.toFixed(4)}, {itemGeo.lng.toFixed(4)}</p>}
+                    <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-2 flex items-center gap-1">
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                        Tap the map or drag the pin to set the exact location.
+                    </p>
+                    {itemGeo && <p className="text-xs text-primary font-medium mt-1">Selected Location: {itemGeo.lat.toFixed(4)}, {itemGeo.lng.toFixed(4)}</p>}
                 </div>
+
                 {/* Location Address Field */}
                 <div>
                     <label className="block text-neutral-700 dark:text-neutral-300 text-sm font-bold mb-2">
                         Location Address <span className="text-red-600">*</span>
                     </label>
-                    <input
-                        type="text"
-                        value={location}
-                        onChange={(e) => setLocation(e.target.value)}
-                        placeholder="Enter location address (e.g., Village, Mandal, District)"
-                        className="shadow appearance-none border border-neutral-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg w-full py-3 px-4 text-neutral-800 dark:text-white leading-tight focus:outline-none focus:ring-2 focus:ring-primary/50"
-                        required
-                    />
+                    <div className="relative">
+                        <div className="flex gap-2">
+                            <div className="relative w-full">
+                                <input
+                                    type="text"
+                                    value={location}
+                                    onChange={(e) => {
+                                        const newLocation = e.target.value;
+                                        setLocation(newLocation);
+
+                                        // Clear previous timeouts
+                                        if (geocodeTimeoutRef.current) clearTimeout(geocodeTimeoutRef.current);
+                                        if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+
+                                        // Search suggestions (500ms)
+                                        searchTimeoutRef.current = setTimeout(() => searchLocation(newLocation), 500);
+                                    }}
+                                    onFocus={() => locationSuggestions.length > 0 && setShowSuggestions(true)}
+                                    placeholder="Enter location (e.g., Village, Mandal)"
+                                    required
+                                    className="w-full pl-4 pr-12 py-3 border border-neutral-300 dark:border-gray-600 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-green-500/50 focus:border-green-500 bg-white dark:bg-gray-700 text-neutral-800 dark:text-white"
+                                />
+
+                                {/* Search Suggestions Dropdown */}
+                                {showSuggestions && locationSuggestions.length > 0 && (
+                                    <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-gray-700 border border-neutral-200 dark:border-gray-600 rounded-lg shadow-xl max-h-48 overflow-y-auto" style={{ zIndex: 9999 }}>
+                                        {locationSuggestions.map((suggestion, index) => (
+                                            <button
+                                                key={index}
+                                                type="button"
+                                                onClick={() => selectSuggestion(suggestion)}
+                                                className="w-full text-left px-4 py-3 text-sm hover:bg-green-50 dark:hover:bg-green-900/20 text-neutral-800 dark:text-white border-b border-neutral-100 dark:border-gray-600 last:border-0 flex items-center gap-2"
+                                            >
+                                                <span className="text-green-600">📍</span> {suggestion.display_name}
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => geocodeAddress(location)}
+                                className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-bold whitespace-nowrap shadow-sm"
+                                disabled={isLocationSearching}
+                            >
+                                {isLocationSearching ? 'Searching...' : 'Search'}
+                            </button>
+                        </div>
+                    </div>
+                    {locationError && <p className="text-xs text-red-500 mt-1">{locationError}</p>}
                     <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
-                        This address will be shown to farmers when they view your equipment
+                        Farmers will see this address for your equipment.
                     </p>
                 </div>
+
                 <div>
                     <label className="block text-neutral-700 dark:text-neutral-300 text-sm font-bold mb-2">Category</label>
-                    <select value={category} onChange={e => setCategory(e.target.value as ItemCategory)} className="appearance-none shadow border border-neutral-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg w-full py-3 px-4 pr-10 text-neutral-800 dark:text-white leading-tight focus:outline-none focus:ring-2 focus:ring-primary/50" style={{ backgroundImage: "url('data:image/svg+xml;charset=UTF-8,%3csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27 fill=%27none%27 stroke=%27currentColor%27 stroke-width=%272%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27%3e%3cpolyline points=%276 9 12 15 18 9%27%3e%3c/polyline%3e%3c/svg%3e')", backgroundPosition: 'right 0.75rem center', backgroundRepeat: 'no-repeat', backgroundSize: '1.5em 1.5em' }}>
-                        {Object.values(ItemCategory).map(t => <option key={t} value={t}>{t}</option>)}
-                    </select>
-                </div>
-                {/* Work Purposes Section */}
-                <div className="space-y-3 p-3 border border-neutral-200 dark:border-neutral-600 rounded-lg">
-                    <h3 className="font-bold text-neutral-800 dark:text-neutral-100">Work Purposes & Pricing</h3>
-                    {priceSuggestion && (
-                        <div className="p-3 bg-blue-50 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200 text-sm rounded-md flex justify-between items-center">
-                            <span>💡 {priceSuggestion}</span>
-                            <button onClick={() => setPriceSuggestion('')} type="button" className="text-blue-500 hover:text-blue-700">&times;</button>
+                    <div className="relative">
+                        <select
+                            value={category}
+                            onChange={e => setCategory(e.target.value as ItemCategory)}
+                            className="appearance-none shadow-sm border border-neutral-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg w-full py-3 px-4 pr-10 text-neutral-800 dark:text-white leading-tight focus:outline-none focus:ring-2 focus:ring-green-500/50 transition-shadow"
+                        >
+                            {Object.values(ItemCategory).map(t => <option key={t} value={t}>{t}</option>)}
+                        </select>
+                        <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-700 dark:text-gray-300">
+                            <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z" /></svg>
                         </div>
-                    )}
-                    {purposes.map((p, index) => (
-                        <div key={index} className="p-2 bg-neutral-50 dark:bg-neutral-900/50 rounded-md">
-                            <div className="flex items-center space-x-2">
-                                <select
-                                    value={p.name}
-                                    onChange={(e) => handlePurposeChange(index, 'name', e.target.value)}
-                                    className="flex-grow shadow-sm appearance-none border border-neutral-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg py-2 px-3 text-neutral-800 dark:text-white text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                                >
-                                    {WORK_PURPOSES.map(wp => (
-                                        <option key={wp} value={wp} disabled={purposes.some((purpose, i) => i !== index && purpose.name === wp)}>
-                                            {wp}
-                                        </option>
-                                    ))}
-                                </select>
-                                <input
-                                    type="number"
-                                    placeholder="Price/hr (₹)"
-                                    value={p.price}
-                                    onChange={(e) => handlePurposeChange(index, 'price', e.target.value)}
-                                    className="w-28 shadow-sm appearance-none border border-neutral-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg py-2 px-3 text-neutral-800 dark:text-white text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                                    required
-                                />
-                                <button type="button" onClick={() => removePurpose(index)} className="p-2 text-red-500 hover:bg-red-100 dark:hover:bg-red-900/50 rounded-full disabled:opacity-50" disabled={purposes.length <= 1}>
-                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                                </button>
+                    </div>
+                </div>
+
+                {/* Work Purposes Section */}
+                <div className="space-y-4 p-5 border border-neutral-200 dark:border-neutral-600 rounded-xl bg-gray-50/50 dark:bg-gray-800/20">
+                    <div className="flex justify-between items-center">
+                        <h3 className="font-bold text-lg text-neutral-800 dark:text-neutral-100">Price Configuration</h3>
+                        {priceSuggestion && (
+                            <div className="px-3 py-1 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-xs rounded-full border border-blue-100 dark:border-blue-800 flex items-center gap-2">
+                                <span>💡 {priceSuggestion}</span>
+                                <button onClick={() => setPriceSuggestion('')} type="button" className="text-blue-500 hover:text-blue-700 font-bold">&times;</button>
                             </div>
-                            <div className="text-right mt-2">
-                                <button type="button" onClick={() => handleSuggestPrice(p.name)} disabled={isSuggestingPrice} className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200 disabled:opacity-50">
-                                    {isSuggestingPrice ? 'Analyzing...' : 'AI Suggest Price'}
-                                </button>
+                        )}
+                    </div>
+
+                    {purposes.map((p, index) => (
+                        <div key={index} className="p-4 bg-white dark:bg-neutral-800 rounded-lg border border-neutral-200 dark:border-neutral-700 shadow-sm transition-shadow hover:shadow-md">
+                            <div className="flex items-start gap-3">
+                                {/* Image Thumbnail Logic - Helper function or inline check */}
+                                <div className="hidden sm:block flex-shrink-0 mt-1">
+                                    {(category === ItemCategory.Workers || category === ItemCategory.Harvesters || category === ItemCategory.Tractors) ? (
+                                        <div className="w-12 h-12 rounded-lg bg-gray-100 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 overflow-hidden">
+                                            {(category === ItemCategory.Workers && WORKER_PURPOSE_IMAGES[p.name]) ||
+                                                (category === ItemCategory.Harvesters && HARVESTER_PURPOSE_IMAGES[p.name]) ||
+                                                (category === ItemCategory.Tractors && TRACTOR_PURPOSE_IMAGES[p.name]) ? (
+                                                <img
+                                                    src={
+                                                        (category === ItemCategory.Workers && WORKER_PURPOSE_IMAGES[p.name]) ||
+                                                        (category === ItemCategory.Harvesters && HARVESTER_PURPOSE_IMAGES[p.name]) ||
+                                                        (category === ItemCategory.Tractors && TRACTOR_PURPOSE_IMAGES[p.name])
+                                                    }
+                                                    alt={p.name}
+                                                    className="w-full h-full object-cover"
+                                                />
+                                            ) : (
+                                                <div className="w-full h-full flex items-center justify-center text-gray-400">
+                                                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                                                </div>
+                                            )}
+                                        </div>
+                                    ) : null}
+                                </div>
+
+                                <div className="flex-grow space-y-3">
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                        <div>
+                                            <label className="text-xs font-semibold text-gray-500 mb-1 block">Work Purpose</label>
+                                            <div className="relative">
+                                                <select
+                                                    value={p.name}
+                                                    onChange={(e) => handlePurposeChange(index, 'name', e.target.value)}
+                                                    className="w-full appearance-none shadow-sm border border-neutral-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg py-2 pl-3 pr-8 text-neutral-800 dark:text-white text-sm focus:outline-none focus:ring-1 focus:ring-green-500"
+                                                >
+                                                    {(CATEGORY_WORK_PURPOSES[category] || WORK_PURPOSES).map(wp => (
+                                                        <option key={wp} value={wp} disabled={purposes.some((purpose, i) => i !== index && purpose.name === wp)}>
+                                                            {wp}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <label className="text-xs font-semibold text-gray-500 mb-1 block">Price per Hour (₹)</label>
+                                            <div className="relative">
+                                                <input
+                                                    type="number"
+                                                    placeholder="0.00"
+                                                    value={p.price}
+                                                    onChange={(e) => handlePurposeChange(index, 'price', e.target.value)}
+                                                    className="w-full shadow-sm appearance-none border border-neutral-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg py-2 px-3 text-neutral-800 dark:text-white text-sm focus:outline-none focus:ring-1 focus:ring-green-500 font-semibold"
+                                                    required
+                                                />
+                                                <span className="absolute right-3 top-2 text-gray-400 text-sm">₹/hr</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="flex justify-between items-center pt-1">
+                                        <button type="button" onClick={() => handleSuggestPrice(p.name)} disabled={isSuggestingPrice} className="text-xs flex items-center gap-1 px-3 py-1.5 bg-blue-50 text-blue-600 rounded-md hover:bg-blue-100 disabled:opacity-50 transition-colors font-medium">
+                                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                                            AI Suggest Price
+                                        </button>
+                                        <button type="button" onClick={() => removePurpose(index)} className="text-xs text-red-500 hover:text-red-700 flex items-center gap-1 px-2 py-1 rounded hover:bg-red-50 disabled:opacity-50" disabled={purposes.length <= 1}>
+                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                            Remove
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     ))}
-                    <Button type="button" variant="secondary" onClick={addPurpose} className="w-full text-sm py-2" disabled={purposes.length >= WORK_PURPOSES.length}>
-                        + Add Another Purpose
-                    </Button>
+
+                    <button
+                        type="button"
+                        onClick={addPurpose}
+                        className="w-full py-3 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-xl text-gray-500 dark:text-gray-400 hover:border-green-500 hover:text-green-600 dark:hover:border-green-500 dark:hover:text-green-500 transition-colors font-semibold flex items-center justify-center gap-2"
+                        disabled={purposes.length >= (CATEGORY_WORK_PURPOSES[category] || WORK_PURPOSES).length}
+                    >
+                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
+                        Add Another Purpose
+                    </button>
                 </div>
 
                 {isWorker && (
                     <div>
                         <label className="block text-neutral-700 dark:text-neutral-300 text-sm font-bold mb-2">Gender</label>
-                        <select value={gender} onChange={e => setGender(e.target.value as 'Male' | 'Female')} className="appearance-none shadow border border-neutral-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg w-full py-3 px-4 pr-10 text-neutral-800 dark:text-white leading-tight focus:outline-none focus:ring-2 focus:ring-primary/50" style={{ backgroundImage: "url('data:image/svg+xml;charset=UTF-8,%3csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27 fill=%27none%27 stroke=%27currentColor%27 stroke-width=%272%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27%3e%3cpolyline points=%276 9 12 15 18 9%27%3e%3c/polyline%3e%3c/svg%3e')", backgroundPosition: 'right 0.75rem center', backgroundRepeat: 'no-repeat', backgroundSize: '1.5em 1.5em' }}>
-                            <option value="Male">Male</option>
-                            <option value="Female">Female</option>
-                        </select>
+                        <div className="relative">
+                            <select value={gender} onChange={e => setGender(e.target.value as 'Male' | 'Female')} className="appearance-none shadow-sm border border-neutral-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg w-full py-3 px-4 pr-10 text-neutral-800 dark:text-white leading-tight focus:outline-none focus:ring-2 focus:ring-green-500/50">
+                                <option value="Male">Male</option>
+                                <option value="Female">Female</option>
+                            </select>
+                            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-700 dark:text-gray-300">
+                                <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z" /></svg>
+                            </div>
+                        </div>
                         <p className="text-xs text-neutral-500 mt-1">A default image will be assigned based on gender.</p>
                     </div>
                 )}
+
                 <div>
                     <label className="block text-neutral-700 dark:text-neutral-300 text-sm font-bold mb-2">Description</label>
-                    <textarea value={description} onChange={e => setDescription(e.target.value)} rows={4} required className="shadow appearance-none border border-neutral-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg w-full py-3 px-4 text-neutral-800 dark:text-white placeholder-gray-400 leading-tight focus:outline-none focus:ring-2 focus:ring-primary/50" />
+                    <textarea
+                        value={description}
+                        onChange={e => setDescription(e.target.value)}
+                        rows={4}
+                        required
+                        className="shadow-sm appearance-none border border-neutral-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg w-full py-3 px-4 text-neutral-800 dark:text-white placeholder-gray-400 leading-tight focus:outline-none focus:ring-2 focus:ring-green-500/50"
+                        placeholder="Describe your item's condition, features, or any specific terms..."
+                    />
                 </div>
-                {isHeavyMachinery && (
-                    <>
-                        <Input label="Machine Model" value={model} onChange={e => setModel(e.target.value)} required />
-                        <Input label="Number Plate" value={licensePlate} onChange={e => setLicensePlate(e.target.value)} required />
-                        <Input label="Year of Manufacture" type="number" value={year} onChange={e => setYear(e.target.value)} required />
-                        <Input label="Horsepower (HP)" type="number" value={horsepower} onChange={e => setHorsepower(e.target.value)} required />
-                    </>
-                )}
-                {isEquipment && (
-                    <Input label="Equipment Model" value={model} onChange={e => setModel(e.target.value)} required />
-                )}
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {isHeavyMachinery && (
+                        <>
+                            <Input label="Machine Model" value={model} onChange={e => setModel(e.target.value)} required />
+                            <Input label="Number Plate" value={licensePlate} onChange={e => setLicensePlate(e.target.value)} required />
+                            <Input label="Year of Manufacture" type="number" value={year} onChange={e => setYear(e.target.value)} required />
+                            <Input label="Horsepower (HP)" type="number" value={horsepower} onChange={e => setHorsepower(e.target.value)} required />
+                        </>
+                    )}
+                    {isEquipment && (
+                        <Input label="Equipment Model" value={model} onChange={e => setModel(e.target.value)} required />
+                    )}
+                </div>
+
                 {(isHeavyMachinery || isEquipment) && (
                     <div>
                         <label className="block text-neutral-700 dark:text-neutral-300 text-sm font-bold mb-2">Condition</label>
-                        <select value={condition} onChange={e => setCondition(e.target.value as 'New' | 'Good' | 'Fair')} className="appearance-none shadow border border-neutral-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg w-full py-3 px-4 pr-10 text-neutral-800 dark:text-white leading-tight focus:outline-none focus:ring-2 focus:ring-primary/50" style={{ backgroundImage: "url('data:image/svg+xml;charset=UTF-8,%3csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27 fill=%27none%27 stroke=%27currentColor%27 stroke-width=%272%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27%3e%3cpolyline points=%276 9 12 15 18 9%27%3e%3c/polyline%3e%3c/svg%3e')", backgroundPosition: 'right 0.75rem center', backgroundRepeat: 'no-repeat', backgroundSize: '1.5em 1.5em' }}>
-                            <option value="New">New</option>
-                            <option value="Good">Good</option>
-                            <option value="Fair">Fair</option>
-                        </select>
+                        <div className="relative">
+                            <select value={condition} onChange={e => setCondition(e.target.value as 'New' | 'Good' | 'Fair')} className="appearance-none shadow-sm border border-neutral-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg w-full py-3 px-4 pr-10 text-neutral-800 dark:text-white leading-tight focus:outline-none focus:ring-2 focus:ring-green-500/50">
+                                <option value="New">New</option>
+                                <option value="Good">Good</option>
+                                <option value="Fair">Fair</option>
+                            </select>
+                            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-700 dark:text-gray-300">
+                                <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z" /></svg>
+                            </div>
+                        </div>
                     </div>
                 )}
+
                 <Input
                     label={`Operator Charge per hour (₹) - Fixed Rate`}
                     type="number"
@@ -640,28 +942,40 @@ const AddItemScreen: React.FC<{ itemToEdit: Item | null, onBack: () => void }> =
                     disabled={true}
                     className="bg-gray-100 dark:bg-neutral-800 cursor-not-allowed opacity-70"
                 />
-                <div className="flex items-center justify-between p-4 bg-white dark:bg-neutral-800 rounded-xl border border-neutral-200 dark:border-neutral-700 shadow-sm">
+
+                <div className="flex items-center justify-between p-5 bg-white dark:bg-neutral-800 rounded-xl border border-neutral-200 dark:border-neutral-700 shadow-sm transition-all hover:bg-gray-50 dark:hover:bg-neutral-700/50">
                     <div>
-                        <p className="text-sm font-bold text-neutral-800 dark:text-neutral-100">Auto Price Optimization</p>
-                        <p className="text-xs text-neutral-600 dark:text-neutral-300">Adjust prices based on demand and season</p>
+                        <p className="text-base font-bold text-neutral-800 dark:text-neutral-100 flex items-center gap-2">
+                            Auto Price Optimization
+                            <span className="bg-green-100 text-green-800 text-[10px] px-2 py-0.5 rounded-full uppercase tracking-wide font-bold">New</span>
+                        </p>
+                        <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-1 max-w-[250px]">
+                            Automatically adjust prices based on real-time demand and seasonality.
+                        </p>
                     </div>
+                    {/* FIXED: Toggle Visibility */}
                     <button
                         type="button"
                         role="switch"
                         aria-checked={autoPriceOptimization}
                         onClick={() => setAutoPriceOptimization(prev => !prev)}
-                        className={`relative inline-flex items-center h-6 rounded-full w-11 transition-colors ${autoPriceOptimization ? 'bg-primary' : 'bg-neutral-200'}`}
+                        className={`relative inline-flex items-center h-8 w-14 rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 ${autoPriceOptimization ? 'bg-green-600 border-2 border-green-600' : 'bg-gray-200 border-2 border-gray-300'}`}
                     >
-                        <span className={`inline-block w-4 h-4 transform bg-white rounded-full transition-transform ${autoPriceOptimization ? 'translate-x-6' : 'translate-x-1'}`} />
+                        <span className="sr-only">Toggle Auto Price Optimization</span>
+                        <span
+                            className={`inline-block w-6 h-6 transform bg-white rounded-full shadow transition-transform ${autoPriceOptimization ? 'translate-x-6' : 'translate-x-0'}`}
+                        />
                     </button>
                 </div>
+
                 {isWorker && (
                     <Input label="Available Quantity" type="number" value={quantityAvailable} onChange={e => setQuantityAvailable(e.target.value)} placeholder="e.g., 10" required min="0" />
                 )}
-                <div className="flex justify-center pt-4">
+
+                <div className="flex justify-center pt-6 pb-20 md:pb-0">
                     <Button
                         type="submit"
-                        className="w-full md:w-auto px-8"
+                        className="w-full md:w-auto px-10 py-3 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl shadow-lg hover:shadow-xl transition-all transform hover:-translate-y-0.5"
                         disabled={isSubmitting}
                     >
                         {isSubmitting ? (
@@ -670,7 +984,7 @@ const AddItemScreen: React.FC<{ itemToEdit: Item | null, onBack: () => void }> =
                                 Submitting...
                             </span>
                         ) : (
-                            itemToEdit ? 'Save Changes' : 'Submit for Approval'
+                            itemToEdit ? 'Save Changes' : 'Submit Item'
                         )}
                     </Button>
                 </div>
@@ -780,7 +1094,7 @@ const SupplierListingsScreen: React.FC<{ onAddItem: () => void, onEditItem: (m: 
                             >
                                 {item.icon}
                                 {statusCounts[item.id as keyof typeof statusCounts] > 0 && (
-                                    <span className={`absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full text-[10px] font-bold ${statusFilter === item.id ? 'bg-primary text-white' : 'bg-neutral-200 dark:bg-neutral-600 text-neutral-600 dark:text-neutral-300'}`}>
+                                    <span className={`absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full text-[10px] font-bold ${statusFilter === item.id ? 'bg-primary text-white' : 'bg-white dark:bg-neutral-700 border border-neutral-200 dark:border-neutral-600 text-neutral-600 dark:text-neutral-300'}`}>
                                         {statusCounts[item.id as keyof typeof statusCounts]}
                                     </span>
                                 )}
@@ -814,7 +1128,7 @@ const SupplierListingsScreen: React.FC<{ onAddItem: () => void, onEditItem: (m: 
                     </div>
                 )}
 
-                <div className="space-y-4">
+                <div className="space-y-6">
                     {filteredItems.length > 0 ? (
                         [...filteredItems]
                             .sort((a, b) => {
@@ -829,17 +1143,17 @@ const SupplierListingsScreen: React.FC<{ onAddItem: () => void, onEditItem: (m: 
                                 return (
                                     <div key={item.id} className="bg-white dark:bg-neutral-800 rounded-xl border border-neutral-200 dark:border-neutral-700 shadow-sm hover:shadow-md transition-all overflow-hidden">
                                         {/* Card Header with Image and Details */}
-                                        <div className="flex gap-4 p-4">
+                                        <div className="flex gap-5 p-5">
                                             {/* Item Image */}
                                             <div className="flex-shrink-0">
                                                 {item.images && item.images[0] ? (
                                                     <img
                                                         src={item.images[0]}
                                                         alt={item.name}
-                                                        className="w-20 h-20 object-cover rounded-lg border border-neutral-200 dark:border-neutral-600"
+                                                        className="w-24 h-24 object-cover rounded-xl border border-neutral-200 dark:border-neutral-600 shadow-sm"
                                                     />
                                                 ) : (
-                                                    <div className="w-20 h-20 bg-neutral-100 dark:bg-neutral-700 rounded-lg flex items-center justify-center">
+                                                    <div className="w-24 h-24 bg-neutral-100 dark:bg-neutral-700 rounded-xl flex items-center justify-center">
                                                         <svg className="w-8 h-8 text-neutral-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                                                         </svg>
@@ -848,14 +1162,16 @@ const SupplierListingsScreen: React.FC<{ onAddItem: () => void, onEditItem: (m: 
                                             </div>
 
                                             {/* Item Details */}
-                                            <div className="flex-1 min-w-0">
+                                            <div className="flex-1 min-w-0 py-1">
                                                 <div className="flex items-start justify-between gap-2">
                                                     <div className="flex-1">
-                                                        <h3 className="text-lg font-bold text-neutral-900 dark:text-white truncate">{item.name || '--'}</h3>
-                                                        <p className="text-sm text-neutral-600 dark:text-neutral-400 mt-0.5">
+                                                        <h3 className="text-xl font-bold text-neutral-900 dark:text-white truncate">{item.name || '--'}</h3>
+                                                        <p className="text-sm text-neutral-600 dark:text-neutral-400 mt-1">
                                                             <span className="text-neutral-500">Starting from</span> <span className="font-bold text-neutral-800 dark:text-neutral-200">₹{minPrice}/hr</span>
                                                         </p>
-                                                        <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">{item.category}</p>
+                                                        <span className="inline-block mt-2 px-2.5 py-0.5 rounded-md text-xs font-medium bg-neutral-100 text-neutral-600">
+                                                            {item.category}
+                                                        </span>
                                                     </div>
                                                     <span className={`flex-shrink-0 text-xs font-bold px-3 py-1.5 rounded-full ${getStatusClasses(item.status)}`}>
                                                         {item.status.charAt(0).toUpperCase() + item.status.slice(1)}
@@ -873,12 +1189,12 @@ const SupplierListingsScreen: React.FC<{ onAddItem: () => void, onEditItem: (m: 
                                         </div>
 
                                         {/* Action Buttons - Left aligned with equal width */}
-                                        <div className="px-4 pb-4 pt-2 border-t border-neutral-100 dark:border-neutral-700">
+                                        <div className="px-5 pb-5 pt-3 border-t border-neutral-100 dark:border-neutral-700 bg-neutral-50/30 dark:bg-neutral-800/50">
                                             <div className="flex items-center justify-between">
-                                                <div className="grid grid-cols-3 gap-2 flex-1 max-w-md">
+                                                <div className="flex gap-3 flex-1">
                                                     <button
                                                         onClick={() => onEditItem(item)}
-                                                        className={`font-semibold py-2 px-3 rounded-lg text-sm transition-colors shadow-sm flex items-center justify-center gap-1.5 bg-green-500 hover:bg-green-600 text-white ${isReuploadRequested || item.status === 'rejected' ? 'animate-pulse ring-2 ring-green-300 ring-offset-2' : ''
+                                                        className={`font-semibold py-2 px-4 rounded-lg text-sm transition-colors shadow-sm flex items-center justify-center gap-1.5 bg-green-600 hover:bg-green-700 text-white ${isReuploadRequested || item.status === 'rejected' ? 'animate-pulse ring-2 ring-green-300 ring-offset-2' : ''
                                                             }`}
                                                     >
                                                         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -888,29 +1204,28 @@ const SupplierListingsScreen: React.FC<{ onAddItem: () => void, onEditItem: (m: 
                                                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                                                             )}
                                                         </svg>
-                                                        {isReuploadRequested || item.status === 'rejected' ? 'Re-upload' : 'Edit'}
-                                                    </button>
-                                                    <button
-                                                        onClick={() => setItemToDelete(item)}
-                                                        className="bg-red-500 hover:bg-red-600 text-white font-semibold py-2 px-3 rounded-lg text-sm transition-colors shadow-sm flex items-center justify-center gap-1.5"
-                                                    >
-                                                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                                        </svg>
-                                                        Delete
+                                                        {isReuploadRequested || item.status === 'rejected' ? 'Fix Issue' : 'Edit'}
                                                     </button>
                                                     <button
                                                         onClick={() => optimizePrices(item)}
-                                                        className="bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-3 rounded-lg text-sm transition-colors shadow-sm flex items-center justify-center gap-1.5"
+                                                        className="bg-white border border-neutral-300 text-neutral-700 hover:bg-neutral-50 font-semibold py-2 px-4 rounded-lg text-sm transition-colors shadow-sm flex items-center justify-center gap-1.5"
                                                     >
-                                                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                        <svg className="w-4 h-4 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
                                                         </svg>
                                                         Optimize
                                                     </button>
+                                                    <button
+                                                        onClick={() => setItemToDelete(item)}
+                                                        className="text-red-600 hover:bg-red-50 font-semibold py-2 px-3 rounded-lg text-sm transition-colors flex items-center justify-center gap-1.5"
+                                                    >
+                                                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                                        </svg>
+                                                    </button>
                                                 </div>
-                                                <span className={`ml-3 text-xs font-medium px-2 py-1 rounded-full ${item.autoPriceOptimization ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-neutral-100 text-neutral-500 dark:bg-neutral-700 dark:text-neutral-400'}`}>
-                                                    {item.autoPriceOptimization ? '✓ Auto-Opt' : 'Auto-Opt Off'}
+                                                <span className={`ml-3 text-xs font-bold px-3 py-1.5 rounded-full border ${item.autoPriceOptimization ? 'bg-green-50 text-green-700 border-green-200' : 'bg-gray-50 text-gray-500 border-gray-200'}`}>
+                                                    {item.autoPriceOptimization ? '✓ Auto-Opt Active' : 'Auto-Opt Off'}
                                                 </span>
                                             </div>
                                         </div>
@@ -1254,7 +1569,7 @@ export const SupplierKycInlineForm: React.FC<{ onSubmitted: () => void }> = ({ o
 };
 // Minimal Professional StatCard
 const StatCard: React.FC<{ title: string; value: string | number; icon: React.ReactElement }> = ({ title, value, icon }) => (
-    <div className="bg-gray-50 dark:bg-neutral-800 p-6 rounded-xl border border-gray-200 dark:border-neutral-700 hover:shadow-md transition-shadow">
+    <div className="bg-white dark:bg-neutral-800 p-6 rounded-xl border border-neutral-200 dark:border-neutral-700 hover:shadow-md transition-shadow">
         <div className="flex flex-col space-y-3">
             <div className="flex items-center justify-between">
                 <div className="p-2 bg-green-50 dark:bg-green-900/20 rounded-lg">
@@ -1277,6 +1592,7 @@ const SupplierDashboardScreen: React.FC<SupplierViewProps & { goToTab?: (name: s
     const { reviews } = useReview();
     const { t } = useLanguage();
     const [showWeeklyTrend, setShowWeeklyTrend] = useState(false);
+    const [showLeaderboard, setShowLeaderboard] = useState(false);
     const [reuploadTypes, setReuploadTypes] = useState<string[]>([]);
 
     useEffect(() => {
@@ -1423,16 +1739,32 @@ const SupplierDashboardScreen: React.FC<SupplierViewProps & { goToTab?: (name: s
                             {roleBadge}
                         </span>
                     )}
+
+                    {/* Leaderboard Trigger */}
+                    <button
+                        onClick={() => setShowLeaderboard(true)}
+                        className="flex items-center space-x-2 px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-full shadow-md hover:shadow-lg transition-all active:scale-95 border-2 border-orange-400"
+                    >
+                        <span className="text-lg">🏆</span>
+                        <div className="flex flex-col items-start leading-none">
+                            <span className="text-xs font-semibold opacity-90">Streak</span>
+                            <span className="font-bold">{user?.streak?.currentCount || 0}</span>
+                        </div>
+                    </button>
                 </div>
             </div>
 
+            <StreakLeaderboardModal isOpen={showLeaderboard} onClose={() => setShowLeaderboard(false)} />
+
             {/* Key Stats Grid */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <StatCard
-                    title={t('totalEarnings')}
-                    value={`₹${totalEarnings.toLocaleString()}`}
-                    icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
-                />
+                <div onClick={() => navigate({ view: 'EARNINGS_DETAILS' })} className="cursor-pointer">
+                    <StatCard
+                        title={t('totalEarnings')}
+                        value={`₹${totalEarnings.toLocaleString()}`}
+                        icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
+                    />
+                </div>
                 <StatCard
                     title={t('avgRating')}
                     value={avgRating > 0 ? `${avgRating.toFixed(1)}/5` : 'N/A'}
@@ -1545,7 +1877,7 @@ const SupplierDashboardScreen: React.FC<SupplierViewProps & { goToTab?: (name: s
             </div>
             {
                 showWeeklyTrend && (
-                    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
+                    <div className="fixed inset-0 bg-black/50 z-[10001] flex items-center justify-center">
                         <div className="bg-white dark:bg-neutral-800 rounded-lg border border-neutral-200 dark:border-neutral-700 w-[90%] max-w-xl p-4">
                             <div className="flex justify-between items-center mb-2">
                                 <h4 className="font-semibold">Weekly Revenue Trend</h4>
@@ -1579,9 +1911,17 @@ const supplierNavItems: NavItemConfig[] = [
     { name: 'dashboard', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg> },
 ];
 
-const SupplierView: React.FC<SupplierViewProps> = ({ navigate, onSwitchMode, roleBadge }) => {
+interface SupplierViewProps {
+    navigate: (view: AppView) => void;
+    onSwitchMode?: () => void;
+    roleBadge?: string;
+    children?: React.ReactNode;
+}
+
+const SupplierView: React.FC<SupplierViewProps> = ({ navigate, onSwitchMode, roleBadge, children }) => {
     const [view, setView] = useState<'TABS' | 'ADD_ITEM'>('TABS');
     const [activeTab, setActiveTab] = useState('dashboard');
+    const [isRightSidebarOpen, setIsRightSidebarOpen] = useState(true);
     const [itemToEdit, setItemToEdit] = useState<Item | null>(null);
     const { user } = useAuth();
     const { getUnreadMessageCount } = useChat();
@@ -1656,23 +1996,61 @@ const SupplierView: React.FC<SupplierViewProps> = ({ navigate, onSwitchMode, rol
         return <AddItemScreen itemToEdit={itemToEdit} onBack={handleBackToDashboard} />;
     }
 
+    const navItems = supplierNavItems; // Assuming supplierNavItems is defined globally or imported
+
+    const { logout } = useAuth();
+
     return (
-        <div className="pb-20">
-            <Header title={activeTab === 'listings' ? 'My Items & Services' : t(activeTab as any)}>
-                {hasActiveBookings && (
-                    <button onClick={() => navigate({ view: 'CONVERSATIONS' })} className="relative p-2 text-neutral-700 dark:text-neutral-300 hover:text-primary rounded-full hover:bg-neutral-100 dark:hover:bg-neutral-700" aria-label="Open Chats">
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
-                        {unreadChatCount > 0 && (
-                            <span className="absolute top-1 right-1 flex h-3 w-3">
-                                <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
-                            </span>
+        <div className="flex h-screen overflow-hidden bg-green-50 dark:bg-neutral-900">
+            {/* Desktop Sidebar */}
+            <AppSidebar
+                role="Supplier"
+                activeTab={activeTab}
+                setActiveTab={setActiveTab}
+                navigate={navigate}
+                onLogout={logout}
+            />
+
+            {/* Main Content Area Wrapper */}
+            <div className="flex-1 flex h-full overflow-hidden relative">
+
+                {/* Center Content */}
+                <div className="flex-1 flex flex-col overflow-hidden">
+                    <div className="flex-1 overflow-y-auto min-h-0 pb-20 md:pb-0">
+                        {children ? children : renderContent()}
+                    </div>
+                </div>
+
+                {/* Right Sidebar (Desktop Only) */}
+                <div className={`hidden xl:block ${isRightSidebarOpen ? 'w-80 p-6 opacity-100' : 'w-0 p-0 opacity-0 overflow-hidden'} border-l border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 overflow-y-auto transition-all duration-300 ease-in-out`}>
+                    <div className="min-w-[18rem]"> {/* Prevent content squash during transition */}
+                        <RequestQueuePanel />
+                        <EquipmentStatusPanel />
+                    </div>
+                </div>
+
+                {/* Right Sidebar Toggle Button */}
+                <button
+                    onClick={() => setIsRightSidebarOpen(!isRightSidebarOpen)}
+                    className={`hidden xl:flex absolute top-24 z-20 items-center justify-center w-5 h-12 bg-white dark:bg-neutral-800 border-l border-t border-b border-neutral-200 dark:border-neutral-700 shadow-sm hover:shadow-md hover:bg-neutral-50 rounded-l-lg transition-all duration-300 ease-in-out bg-opacity-90 backdrop-blur-sm`}
+                    style={{ right: isRightSidebarOpen ? '20rem' : '0' }}
+                    title={isRightSidebarOpen ? "Collapse Sidebar" : "Expand Sidebar"}
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-neutral-500" viewBox="0 0 20 20" fill="currentColor">
+                        {isRightSidebarOpen ? (
+                            <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
+                        ) : (
+                            <path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd" />
                         )}
-                    </button>
-                )}
-                <NotificationBell />
-            </Header>
-            {renderContent()}
-            <BottomNav activeTab={activeTab} setActiveTab={setActiveTab} navItems={supplierNavItems} />
+                    </svg>
+                </button>
+
+            </div>
+
+            {/* Mobile Bottom Navigation */}
+            <div className="md:hidden fixed bottom-0 left-0 right-0 z-50">
+                <BottomNav activeTab={activeTab} setActiveTab={setActiveTab} navItems={supplierNavItems} />
+            </div>
         </div>
     );
 };

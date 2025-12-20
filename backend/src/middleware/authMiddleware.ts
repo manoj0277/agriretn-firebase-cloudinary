@@ -117,12 +117,18 @@ export const requireRole = (...allowedRoles: UserRole[]) => {
             });
         }
 
-        // Admin always has access
-        if (req.user.role === UserRole.Admin) {
+        // Admin and Founder always have access to everything (case-insensitive check)
+        const userRole = req.user.role?.toLowerCase();
+        const isAdmin = userRole === UserRole.Admin.toLowerCase();
+        const isFounder = userRole === UserRole.Founder.toLowerCase();
+
+        if (isAdmin || isFounder) {
             return next();
         }
 
-        if (!allowedRoles.includes(req.user.role)) {
+        const isAllowed = allowedRoles.some(role => role.toLowerCase() === userRole);
+
+        if (!isAllowed) {
             console.warn(`[Auth Middleware] Role check failed: User ${req.user.email} with role ${req.user.role} tried to access route requiring ${allowedRoles.join(' or ')}`);
             return res.status(403).json({
                 error: 'Forbidden',

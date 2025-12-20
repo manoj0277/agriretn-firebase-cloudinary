@@ -4,7 +4,7 @@ import { useAdminAlert } from '../context/AdminAlertContext';
 import { AppView } from '../types';
 
 interface HeaderProps {
-    title: string;
+    title: string | React.ReactNode;
     onBack?: () => void;
     children?: React.ReactNode;
     navigate?: (view: AppView) => void;
@@ -15,20 +15,20 @@ const Header: React.FC<HeaderProps> = ({ title, onBack, children, navigate }) =>
     const { unreadCount } = useAdminAlert();
 
     return (
-        <header className="bg-white border-b border-gray-200 p-4 sticky top-0 flex items-center h-16" style={{ zIndex: 10000 }}>
+        <header className="bg-green-700 border-b border-green-800 p-4 sticky top-0 flex items-center h-16" style={{ zIndex: 10000 }}>
             {onBack && (
-                <button onClick={onBack} className="mr-2 text-primary p-2 rounded-full hover:bg-gray-100">
+                <button onClick={onBack} className="mr-2 text-white p-2 rounded-full hover:bg-green-600">
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                     </svg>
                 </button>
             )}
-            <h1 className="text-xl font-bold text-gray-800 flex-grow">{title}</h1>
+            <h1 className="text-xl font-bold text-white flex-grow">{title}</h1>
             <div className="flex items-center space-x-2">
                 {user?.role === 'Admin' && navigate && (
                     <button
                         onClick={() => navigate({ view: 'ADMIN_ALERTS' })}
-                        className="relative p-2 text-neutral-600 hover:text-red-600 hover:bg-red-50 rounded-full transition-colors mr-2"
+                        className="relative p-2 text-green-100 hover:text-white hover:bg-green-600 rounded-full transition-colors mr-2"
                         title="Admin Alerts"
                     >
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">

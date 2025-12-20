@@ -1,0 +1,210 @@
+import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { AppView } from '../types';
+import Header from '../components/Header';
+import BottomNav, { NavItemConfig } from '../components/BottomNav';
+import AdminOverviewDashboard from './admin/AdminOverviewDashboard';
+import FarmersManagement from './admin/FarmersManagement';
+import SuppliersManagement from './admin/SuppliersManagement';
+import ManageBookingsScreen from './ManageBookingsScreen';
+import ManageSupportTicketsScreen from './ManageSupportTicketsScreen';
+import AdminAnalyticsScreen from './AdminAnalyticsScreen';
+import FraudDetectionScreen from './FraudDetectionScreen';
+import SupplierKycScreen from './SupplierKycScreen';
+import AdminItemApprovalScreen from './AdminItemApprovalScreen';
+import NotificationManagerScreen from './NotificationManagerScreen';
+import DemandControlScreen from './admin/DemandControlScreen';
+import CommunityManagementScreen from './admin/CommunityManagementScreen';
+import AgentManagementScreen from './admin/AgentManagementScreen';
+import SettingsScreen from './SettingsScreen';
+import MyAccountScreen from './MyAccountScreen';
+import ChatMonitoringScreen from './founder/ChatMonitoringScreen';
+import NotificationBell from '../components/NotificationBell';
+import { useAuth } from '../context/AuthContext';
+import { useLanguage } from '../context/LanguageContext';
+import { TranslationKey } from '../translations';
+import { useToast } from '../context/ToastContext';
+import AdminSidebar from '../components/AdminSidebar';
+
+interface FounderViewProps {
+    navigate: (view: AppView) => void;
+    children?: React.ReactNode;
+}
+
+const FounderView: React.FC<FounderViewProps> = ({ navigate, children }) => {
+    const [activeTab, setActiveTabState] = useState('dashboard');
+    const [history, setHistory] = useState<string[]>(['dashboard']);
+    const { user, logout } = useAuth();
+    const { t } = useLanguage();
+
+    // Wrapper for setActiveTab to handle history
+    const setActiveTab = (tab: string) => {
+        if (tab !== activeTab) {
+            setHistory(prev => [...prev, tab]);
+            setActiveTabState(tab);
+        }
+    };
+
+    // Handle Back Navigation (History Pop)
+    const handleBack = () => {
+        if (history.length > 1) {
+            const newHistory = [...history];
+            newHistory.pop();
+            const prevTab = newHistory[newHistory.length - 1];
+            setHistory(newHistory);
+            setActiveTabState(prevTab);
+        }
+    };
+
+    const headerTitle = useMemo(() => {
+        switch (activeTab) {
+            case 'support':
+                return 'Founder Support Portal'; // Distinct title
+            case 'analytics':
+                return 'Platform Analytics';
+            case 'fraud':
+                return 'Fraud Detection';
+            case 'kyc':
+                return 'Supplier KYC';
+            case 'demand-control':
+                return 'Demand & Price Control';
+            case 'community-moderation':
+                return 'Community Moderation';
+            case 'agent-management':
+                return 'Founder Agent Control'; // Distinct title
+            case 'dashboard':
+                return 'Founder Dashboard'; // Distinct title
+            case 'profile':
+                return 'My Account';
+            case 'chat-monitor':
+                return 'Chat Monitor';
+            default:
+                return `Founder ${t(activeTab as TranslationKey)}`;
+        }
+    }, [activeTab, t]);
+
+    const adminNavItems: NavItemConfig[] = [
+        { name: 'dashboard', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" /></svg> },
+        { name: 'farmers', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg> },
+        { name: 'suppliers', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg> },
+        { name: 'bookings', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg> },
+        { name: 'more', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg> },
+    ];
+
+    const MoreScreen = () => (
+        <div className="p-4 grid grid-cols-2 gap-4 pb-24">
+            <button onClick={() => setActiveTab('items')} className="p-4 bg-white dark:bg-neutral-800 rounded-xl shadow-sm border border-neutral-200 dark:border-neutral-700 flex flex-col items-center justify-center gap-2 hover:bg-neutral-50 dark:hover:bg-neutral-700 transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                <span className="text-sm font-semibold text-neutral-700 dark:text-neutral-300 text-center">Item Approvals</span>
+            </button>
+            <button onClick={() => setActiveTab('kyc')} className="p-4 bg-white dark:bg-neutral-800 rounded-xl shadow-sm border border-neutral-200 dark:border-neutral-700 flex flex-col items-center justify-center gap-2 hover:bg-neutral-50 dark:hover:bg-neutral-700 transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V8a2 2 0 00-2-2h-5m-4 0V5a2 2 0 114 0v1m-4 0a2 2 0 104 0m-5 8a2 2 0 100-4 2 2 0 000 4zm0 0c1.306 0 2.417.835 2.83 2M9 14a3.001 3.001 0 00-2.83 2M15 11h3m-3 4h2" /></svg>
+                <span className="text-sm font-semibold text-neutral-700 dark:text-neutral-300 text-center">Supplier KYC</span>
+            </button>
+            <button onClick={() => setActiveTab('support')} className="p-4 bg-white dark:bg-neutral-800 rounded-xl shadow-sm border border-neutral-200 dark:border-neutral-700 flex flex-col items-center justify-center gap-2 hover:bg-neutral-50 dark:hover:bg-neutral-700 transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 5.636l-3.536 3.536m0 5.656l3.536 3.536M9.172 9.172L5.636 5.636m3.536 9.192l-3.536 3.536M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-5 0a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
+                <span className="text-sm font-semibold text-neutral-700 dark:text-neutral-300 text-center">Support Tickets</span>
+            </button>
+            <button onClick={() => setActiveTab('analytics')} className="p-4 bg-white dark:bg-neutral-800 rounded-xl shadow-sm border border-neutral-200 dark:border-neutral-700 flex flex-col items-center justify-center gap-2 hover:bg-neutral-50 dark:hover:bg-neutral-700 transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 00-2-2m0 0h2a2 2 0 012 2v0a2 2 0 01-2 2h-2a2 2 0 01-2-2v0a2 2 0 012-2z" /></svg>
+                <span className="text-sm font-semibold text-neutral-700 dark:text-neutral-300 text-center">Analytics</span>
+            </button>
+            <button onClick={() => setActiveTab('demand-control')} className="p-4 bg-white dark:bg-neutral-800 rounded-xl shadow-sm border border-neutral-200 dark:border-neutral-700 flex flex-col items-center justify-center gap-2 hover:bg-neutral-50 dark:hover:bg-neutral-700 transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                <span className="text-sm font-semibold text-neutral-700 dark:text-neutral-300 text-center">Demand & Pricing</span>
+            </button>
+            <button onClick={() => setActiveTab('fraud')} className="p-4 bg-white dark:bg-neutral-800 rounded-xl shadow-sm border border-neutral-200 dark:border-neutral-700 flex flex-col items-center justify-center gap-2 hover:bg-neutral-50 dark:hover:bg-neutral-700 transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                <span className="text-sm font-semibold text-neutral-700 dark:text-neutral-300 text-center">Fraud Detection</span>
+            </button>
+            <button onClick={() => setActiveTab('notification-manager')} className="p-4 bg-white dark:bg-neutral-800 rounded-xl shadow-sm border border-neutral-200 dark:border-neutral-700 flex flex-col items-center justify-center gap-2 hover:bg-neutral-50 dark:hover:bg-neutral-700 transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
+                <span className="text-sm font-semibold text-neutral-700 dark:text-neutral-300 text-center">Notifications</span>
+            </button>
+            <button onClick={() => setActiveTab('community-moderation')} className="p-4 bg-white dark:bg-neutral-800 rounded-xl shadow-sm border border-neutral-200 dark:border-neutral-700 flex flex-col items-center justify-center gap-2 hover:bg-neutral-50 dark:hover:bg-neutral-700 transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8h2a2 2 0 012 2v6a2 2 0 01-2 2h-2v4l-4-4H9a1.994 1.994 0 01-1.414-.586m0 0L11 14h4a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2v4l.586-.586z" /></svg>
+                <span className="text-sm font-semibold text-neutral-700 dark:text-neutral-300 text-center">Community Moderation</span>
+            </button>
+            <button onClick={() => setActiveTab('chat-monitor')} className="p-4 bg-white dark:bg-neutral-800 rounded-xl shadow-sm border border-neutral-200 dark:border-neutral-700 flex flex-col items-center justify-center gap-2 hover:bg-neutral-50 dark:hover:bg-neutral-700 transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>
+                <span className="text-sm font-semibold text-neutral-700 dark:text-neutral-300 text-center">Chat Monitor</span>
+            </button>
+            <button onClick={() => setActiveTab('agent-management')} className="p-4 bg-white dark:bg-neutral-800 rounded-xl shadow-sm border border-neutral-200 dark:border-neutral-700 flex flex-col items-center justify-center gap-2 hover:bg-neutral-50 dark:hover:bg-neutral-700 transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
+                <span className="text-sm font-semibold text-neutral-700 dark:text-neutral-300 text-center">Agent Management</span>
+            </button>
+            <button onClick={() => setActiveTab('settings')} className="p-4 bg-white dark:bg-neutral-800 rounded-xl shadow-sm border border-neutral-200 dark:border-neutral-700 flex flex-col items-center justify-center gap-2 hover:bg-neutral-50 dark:hover:bg-neutral-700 transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0 3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                <span className="text-sm font-semibold text-neutral-700 dark:text-neutral-300 text-center">Settings</span>
+            </button>
+            <button onClick={() => setActiveTab('profile')} className="p-4 bg-white dark:bg-neutral-800 rounded-xl shadow-sm border border-neutral-200 dark:border-neutral-700 flex flex-col items-center justify-center gap-2 hover:bg-neutral-50 dark:hover:bg-neutral-700 transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
+                <span className="text-sm font-semibold text-neutral-700 dark:text-neutral-300 text-center">My Account</span>
+            </button>
+        </div>
+    );
+
+    const renderContent = () => {
+        switch (activeTab) {
+            case 'dashboard':
+                return <AdminOverviewDashboard setActiveTab={setActiveTab as any} />; // We can Reuse the dashboard widgets
+            case 'farmers':
+                return <FarmersManagement />;
+            case 'suppliers':
+                return <SuppliersManagement />;
+            case 'items':
+                return <AdminItemApprovalScreen />;
+            case 'bookings':
+                return <ManageBookingsScreen />;
+            case 'support':
+                return <ManageSupportTicketsScreen onBack={handleBack} />;
+            case 'analytics':
+                return <AdminAnalyticsScreen />;
+            case 'fraud':
+                return <FraudDetectionScreen />;
+            case 'kyc':
+                return <SupplierKycScreen />;
+            case 'demand-control':
+                return <DemandControlScreen />;
+            case 'agent-management':
+                return <AgentManagementScreen />;
+            case 'notification-manager':
+                return <NotificationManagerScreen onBack={history.length > 1 ? handleBack : undefined} />;
+            case 'more':
+                return <MoreScreen />;
+            case 'community-moderation':
+                return <CommunityManagementScreen />;
+            case 'settings':
+                return <SettingsScreen navigate={navigate} goBack={handleBack} hideHeader={true} />;
+            case 'profile':
+                return <MyAccountScreen goBack={handleBack} navigate={navigate} />;
+            case 'chat-monitor':
+                return <ChatMonitoringScreen />;
+        }
+    };
+
+    return (
+        <div className="h-screen flex bg-indigo-50 dark:bg-neutral-900 overflow-hidden">
+            {/* Desktop Sidebar - Reusing AdminSidebar but Founder logic inside it handles menu items */}
+            {/* We might want to pass a Theme or Mode if we want distinct colors, but AdminSidebar styling is baked in currently */}
+            <AdminSidebar activeTab={activeTab} setActiveTab={setActiveTab} onLogout={logout} />
+
+            {/* Main Content Area */}
+            <div className="flex-1 flex flex-col h-screen overflow-hidden">
+                <Header title={headerTitle} onBack={history.length > 1 ? handleBack : undefined}>
+                    <NotificationBell />
+                </Header>
+
+                <div className="flex-1 overflow-y-auto pb-20 md:pb-0">
+                    {children ? children : renderContent()}
+                </div>
+
+                {/* Mobile Bottom Nav */}
+                <div className="md:hidden">
+                    <BottomNav activeTab={activeTab} setActiveTab={setActiveTab} navItems={adminNavItems} />
+                </div>
+            </div>
+        </div>
+    );
+};
+
+export default FounderView;

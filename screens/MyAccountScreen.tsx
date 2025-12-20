@@ -6,7 +6,7 @@ import Input from '../components/Input';
 import Button from '../components/Button';
 import { useToast } from '../context/ToastContext';
 import { useLanguage } from '../context/LanguageContext';
-
+import { useStreakRankings } from '../hooks/useStreakRankings';
 
 interface MyAccountScreenProps {
     goBack: () => void;
@@ -14,11 +14,11 @@ interface MyAccountScreenProps {
 }
 
 const MyAccountScreen: React.FC<MyAccountScreenProps> = ({ goBack, navigate }) => {
-    const { user, updateUser, changePassword } = useAuth();
+    const { user, allUsers, updateUser, changePassword } = useAuth();
     const { showToast } = useToast();
     const { t } = useLanguage();
+    const { getRankBorderClass } = useStreakRankings(allUsers);
     const [isEditing, setIsEditing] = useState(false);
-
 
     // Profile form state
     const [name, setName] = useState('');
@@ -86,7 +86,7 @@ const MyAccountScreen: React.FC<MyAccountScreenProps> = ({ goBack, navigate }) =
 
 
     return (
-        <div className="dark:text-neutral-200">
+        <div className="bg-green-50 dark:bg-neutral-900 min-h-screen dark:text-neutral-200">
             <Header title={t('myAccount')} onBack={goBack} />
             <div className="p-6 space-y-6">
                 <div className="flex flex-col items-center space-y-4">
@@ -94,7 +94,7 @@ const MyAccountScreen: React.FC<MyAccountScreenProps> = ({ goBack, navigate }) =
                         <img
                             src={profilePicture}
                             alt="Profile"
-                            className="w-24 h-24 rounded-full object-cover border-4 border-white dark:border-neutral-700 shadow-lg"
+                            className={`w-24 h-24 rounded-full object-cover ${user ? getRankBorderClass(user.id) : 'border-4 border-white dark:border-neutral-700 shadow-lg'}`}
                             referrerPolicy="no-referrer"
                             crossOrigin="anonymous"
                             onError={(e) => {
@@ -111,16 +111,24 @@ const MyAccountScreen: React.FC<MyAccountScreenProps> = ({ goBack, navigate }) =
                     )}
                 </div>
 
-                <div className="space-y-2 divide-y divide-neutral-200 dark:divide-neutral-700">
-                    <div className="pt-2">
-                        <span className="text-primary font-semibold cursor-pointer" onClick={() => navigate({ view: 'PERSONAL_DETAILS' })}>Show Personal Details</span>
+                <div className="space-y-4">
+                    <div
+                        className="bg-white dark:bg-neutral-800 p-4 rounded-lg cursor-pointer hover:bg-neutral-50 dark:hover:bg-neutral-700 transition-colors shadow-sm border border-neutral-200 dark:border-neutral-700"
+                        onClick={() => navigate({ view: 'PERSONAL_DETAILS' })}
+                    >
+                        <span className="text-neutral-900 dark:text-neutral-100 font-semibold text-lg">Show Personal Details</span>
                     </div>
                 </div>
 
 
 
-                <div className="border-t dark:border-neutral-700 pt-6">
-                    <span className="text-primary font-semibold cursor-pointer" onClick={() => navigate({ view: 'CHANGE_PASSWORD' })}>{t('changePassword')}</span>
+                <div className="pt-2">
+                    <div
+                        className="bg-white dark:bg-neutral-800 p-4 rounded-lg cursor-pointer hover:bg-neutral-50 dark:hover:bg-neutral-700 transition-colors shadow-sm border border-neutral-200 dark:border-neutral-700"
+                        onClick={() => navigate({ view: 'CHANGE_PASSWORD' })}
+                    >
+                        <span className="text-neutral-900 dark:text-neutral-100 font-semibold text-lg">{t('changePassword')}</span>
+                    </div>
                 </div>
             </div>
         </div>

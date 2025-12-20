@@ -4,9 +4,11 @@
 // would in turn query your PostgreSQL database hosted on a service like Render.
 
 import React, { createContext, useState, useContext, ReactNode, useMemo, useEffect } from 'react';
-import { Item } from '../types';
+import { Item, UserRole } from '../types';
 import { useToast } from './ToastContext';
 import { useNotification } from './NotificationContext';
+import { auth, db } from '../src/lib/firebase';
+import { onSnapshot, collection, query, where } from 'firebase/firestore';
 
 const API_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3001/api';
 
@@ -26,19 +28,54 @@ export const ItemProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const { showToast } = useToast();
     const { addNotification } = useNotification() as any;
 
+    // Load items with real-time listener (Optimized)
     useEffect(() => {
-        const load = async () => {
+        let unsubscribe: () => void;
+
+        const setupListener = async () => {
             try {
-                const res = await fetch(`${API_URL}/items`);
-                if (res.ok) {
-                    const data = await res.json();
-                    setItems(data);
-                }
-            } catch {
-                showToast('Could not load items.', 'error');
+                // Determine if we should listen to ALL items (Admin) or just public/own items
+                // Ideally, all items are public in this app (marketplace), so we listen to 'items' collection.
+                // However, for efficiency, if we have huge data, we'd filter.
+                // Assuming < 2000 items, a full collection listener is acceptable for "Live" feel.
+
+                const q = collection(db, 'items');
+                unsubscribe = onSnapshot(q, (snapshot) => {
+                    const loadedItems = snapshot.docs.map(doc => ({ id: Number(doc.id), ...doc.data() } as unknown as Item));
+                    // Note: Firestore IDs are strings, but our app uses numbers for legacy compatibility.
+                    // Ideally we migrate to string IDs. For now, we cast.
+                    // If IDs are actually stored as numbers in Firestore fields, we extract them.
+
+                    // Fallback if doc.id is not the numeric ID we expect:
+                    // If data() has 'id', use that.
+                    const finalItems = loadedItems.map(i => ({ ...i, id: Number(i.id) || i.id }));
+
+                    setItems(finalItems as Item[]);
+                }, (error) => {
+                    console.error('Item listener error:', error);
+                    // Fallback to fetch if permission denied or offline
+                    fetchItemsViaApi();
+                });
+
+            } catch (e) {
+                console.error('Setup listener failed', e);
+                fetchItemsViaApi();
             }
         };
-        load();
+
+        const fetchItemsViaApi = async () => {
+            const res = await fetch(`${API_URL}/items`);
+            if (res.ok) {
+                const data = await res.json();
+                setItems(data);
+            }
+        };
+
+        setupListener();
+
+        return () => {
+            if (unsubscribe) unsubscribe();
+        };
     }, []);
 
     const addItem = async (itemData: Omit<Item, 'id'>) => {

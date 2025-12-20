@@ -6,6 +6,8 @@ import { useAuth } from '../context/AuthContext';
 import { useChat } from '../context/ChatContext';
 import { useLanguage } from '../context/LanguageContext';
 
+import { useStreakRankings } from '../hooks/useStreakRankings';
+
 interface ConversationsScreenProps {
     navigate: (view: AppView) => void;
     goBack: () => void;
@@ -16,6 +18,8 @@ const ConversationsScreen: React.FC<ConversationsScreenProps> = ({ navigate, goB
     const { getConversationsForUser } = useChat();
     const { t } = useLanguage();
 
+    const { getRankBorderClass } = useStreakRankings(allUsers);
+
     if (!user) {
         goBack(); // Should not happen if we are here
         return null;
@@ -23,12 +27,12 @@ const ConversationsScreen: React.FC<ConversationsScreenProps> = ({ navigate, goB
 
     const conversations = getConversationsForUser(user.id);
 
-    const getChatPartner = (otherUserId: number): User | undefined => {
-        return allUsers.find(u => u.id === otherUserId);
+    const getChatPartner = (otherUserId: number | string): User | undefined => {
+        return allUsers.find(u => String(u.id) === String(otherUserId));
     };
 
     return (
-        <div className="flex flex-col h-screen dark:text-neutral-200">
+        <div className="flex flex-col h-screen bg-green-50 dark:bg-neutral-900 dark:text-neutral-200">
             <Header title={t('chats')} onBack={goBack} />
             <div className="flex-grow overflow-y-auto">
                 {conversations.length > 0 ? (
@@ -43,13 +47,13 @@ const ConversationsScreen: React.FC<ConversationsScreenProps> = ({ navigate, goB
                                 <button
                                     key={convo.chatId}
                                     onClick={() => navigate({ view: 'CHAT', chatPartner })}
-                                    className="w-full text-left p-4 flex items-center space-x-4 hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors"
+                                    className="w-full text-left p-4 flex items-center space-x-4 bg-white hover:bg-neutral-50 dark:bg-neutral-800 dark:hover:bg-neutral-700 rounded-lg mb-2 transition-colors shadow-sm"
                                 >
                                     <div className="relative">
                                         <img
                                             src={chatPartner.profilePicture || `https://ui-avatars.com/api/?name=${chatPartner.name.replace(' ', '+')}&background=random`}
                                             alt={chatPartner.name}
-                                            className="w-12 h-12 rounded-full object-cover"
+                                            className={`w-12 h-12 rounded-full object-cover ${getRankBorderClass(convo.chatId.split('-').find(id => id !== String(user.id)) || '')}`}
                                         />
                                         {isUnread && <span className="absolute top-0 right-0 block h-3 w-3 rounded-full bg-primary ring-2 ring-white dark:ring-neutral-800"></span>}
                                     </div>

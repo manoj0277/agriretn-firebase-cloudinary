@@ -31,6 +31,8 @@ import AiSuggestionsModal from './AiSuggestionsModal';
 import { useWeather } from '../context/WeatherContext';
 import { FarmerHomeScreen } from './FarmerView';
 
+import AppSidebar from '../components/AppSidebar';
+
 const apiKey = typeof process !== 'undefined' && process.env && process.env.API_KEY
     ? process.env.API_KEY
     : undefined;
@@ -367,7 +369,7 @@ const AgentHomeScreen: React.FC<AgentViewProps> = ({ navigate, roleBadge }) => {
                         <button
                             key={type}
                             onClick={() => setSelectedCategory(type)}
-                            className={`px-4 py-2 text-sm font-semibold rounded-full whitespace-nowrap transition-colors ${selectedCategory === type ? 'bg-primary text-white' : 'bg-neutral-200 dark:bg-neutral-600 text-neutral-700 dark:text-neutral-200'}`}
+                            className={`px-4 py-2 text-sm font-semibold rounded-full whitespace-nowrap transition-colors ${selectedCategory === type ? 'bg-primary text-white' : 'bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-700 dark:text-neutral-200'}`}
                         >
                             {type}
                         </button>
@@ -410,7 +412,7 @@ const AgentHomeScreen: React.FC<AgentViewProps> = ({ navigate, roleBadge }) => {
 
             </div>
             {isFilterModalOpen && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 z-40 flex justify-center items-end" onClick={() => setIsFilterModalOpen(false)}>
+                <div className="fixed inset-0 bg-black bg-opacity-50 z-[10001] flex justify-center items-end" onClick={() => setIsFilterModalOpen(false)}>
                     <div className="bg-white dark:bg-neutral-800 w-full max-w-lg rounded-t-2xl p-6 shadow-xl" onClick={e => e.stopPropagation()}>
                         <div className="flex justify-between items-center mb-4">
                             <h2 className="text-xl font-bold text-neutral-800 dark:text-neutral-100">Filters</h2>
@@ -585,7 +587,7 @@ const AgentMapScreen: React.FC<AgentViewProps> = ({ navigate }) => {
     }, [searchQuery, selectedCategory, approvedItems, bookings, priceRange, minRating, showAvailableOnly, filterDate, allUsers]);
 
     return (
-        <div className="flex flex-col h-full">
+        <div className="flex flex-col h-screen bg-green-50 dark:bg-neutral-900">
             <Header title="Map View">
                 <ChatIcon onClick={() => navigate({ view: 'CONVERSATIONS' })} unreadCount={unreadChatCount} />
                 <NotificationBell />
@@ -734,7 +736,7 @@ const AgentBookingsScreen: React.FC<AgentViewProps> = ({ navigate }) => {
             <Header title={t('myBookings')}>
                 <button
                     onClick={() => navigate({ view: 'PAYMENT_HISTORY' })}
-                    className="relative p-2 text-neutral-700 dark:text-neutral-300 hover:text-primary rounded-full hover:bg-neutral-100 dark:hover:bg-neutral-700"
+                    className="relative p-2 text-white hover:text-white rounded-full hover:bg-green-600"
                     aria-label={t('paymentHistory')}
                 >
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -783,8 +785,10 @@ const AgentBookingsScreen: React.FC<AgentViewProps> = ({ navigate }) => {
                             key={status}
                             onClick={() => setStatusFilter(status)}
                             className={`flex-1 py-1.5 text-sm font-medium rounded-md transition-all ${statusFilter === status
-                                ? 'bg-white dark:bg-neutral-600 text-neutral-900 dark:text-white shadow-sm'
-                                : 'text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200'
+                                ? (status === 'Upcoming' ? 'bg-blue-500 text-white shadow-md' :
+                                    status === 'Completed' ? 'bg-green-500 text-white shadow-md' :
+                                        'bg-red-500 text-white shadow-md')
+                                : 'bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700 shadow-sm'
                                 }`}
                         >
                             {status}
@@ -919,10 +923,13 @@ const AgentBookingsScreen: React.FC<AgentViewProps> = ({ navigate }) => {
     );
 }
 
+import { useStreakRankings } from '../hooks/useStreakRankings';
+
 const AgentProfileScreen: React.FC<AgentViewProps> = ({ navigate, onSwitchMode, roleBadge }) => {
-    const { user, logout } = useAuth();
+    const { user, allUsers, logout } = useAuth();
     const { getUnreadMessageCount } = useChat();
     const { t } = useLanguage();
+    const { getRankBorderClass } = useStreakRankings(allUsers);
     const unreadChatCount = user ? getUnreadMessageCount(user.id) : 0;
 
     const ProfileLink: React.FC<{ label: string, onClick: () => void, icon: React.ReactElement }> = ({ label, onClick, icon }) => (
@@ -965,7 +972,7 @@ const AgentProfileScreen: React.FC<AgentViewProps> = ({ navigate, onSwitchMode, 
                 {/* Profile Picture with Edit Badge */}
                 <div className="text-center mb-8">
                     <div className="relative inline-block">
-                        <div className="w-24 h-24 rounded-full bg-green-50 dark:bg-green-900/20 border-4 border-green-100 dark:border-green-800 overflow-hidden mx-auto">
+                        <div className={`w-24 h-24 rounded-full bg-green-50 dark:bg-green-900/20 overflow-hidden mx-auto ${user ? getRankBorderClass(user.id) : 'border-4 border-green-100 dark:border-green-800'}`}>
                             <img
                                 src={user?.profilePicture}
                                 alt={user?.name}
@@ -1126,12 +1133,35 @@ const AgentProStandardView: React.FC<AgentViewProps> = ({ navigate: parentNaviga
         }
     };
 
+    const { logout } = useAuth();
+
     return (
-        <div className="h-full flex flex-col">
-            <div className={`flex-grow flex flex-col ${activeTab === 'map' ? 'overflow-hidden' : 'overflow-y-auto pb-20'}`}>
-                {renderContent()}
+        <div className="flex h-screen overflow-hidden bg-green-50 dark:bg-neutral-900">
+            {/* Desktop Sidebar */}
+            <AppSidebar
+                role="Agent"
+                activeTab={activeTab}
+                setActiveTab={setActiveTab}
+                navigate={handleNavigate}
+                onLogout={logout}
+                roleBadge={roleBadge && (
+                    <div className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-gradient-to-r from-blue-500 to-indigo-500 text-white shadow-sm border border-blue-400/30 whitespace-nowrap leading-none tracking-wide">
+                        {roleBadge}
+                    </div>
+                )}
+            />
+
+            {/* Main Content */}
+            <div className="flex-1 flex flex-col h-screen overflow-hidden relative">
+                <div className={`flex-1 ${activeTab === 'map' ? 'overflow-hidden' : 'overflow-y-auto pb-20 md:pb-0'}`}>
+                    {renderContent()}
+                </div>
+
+                {/* Mobile Bottom Nav */}
+                <div className="md:hidden">
+                    <BottomNav activeTab={activeTab} setActiveTab={setActiveTab} navItems={agentNavItems} />
+                </div>
             </div>
-            <BottomNav activeTab={activeTab} setActiveTab={setActiveTab} navItems={agentNavItems} />
         </div>
     );
 };

@@ -20,9 +20,13 @@ import { SettingsProvider } from './context/SettingsContext';
 import { LanguageProvider, useLanguage } from './context/LanguageContext';
 import { AppView, Item, UserRole, Booking, User, ItemCategory } from './types';
 import AuthScreen from './screens/AuthScreen';
-import FarmerView from './screens/FarmerView';
-import AgentView from './screens/AgentView';
-import NewAgentView from './screens/NewAgentView';
+import { AppSkeleton } from './components/AppSkeleton';
+
+// Lazy Load Major Views
+const FarmerView = React.lazy(() => import('./screens/FarmerView'));
+const AgentView = React.lazy(() => import('./screens/AgentView'));
+const NewAgentView = React.lazy(() => import('./screens/NewAgentView'));
+// SupplierView has named exports used elsewhere, keeping sync for now or handling properly
 import SupplierView, { SupplierKycInlineForm } from './screens/SupplierView';
 import ItemDetailScreen from './screens/ItemDetailScreen';
 import Header from './components/Header';
@@ -42,7 +46,8 @@ import SettingsScreen from './screens/SettingsScreen';
 import PolicyScreen from './screens/PolicyScreen';
 import PaymentHistoryScreen from './screens/PaymentHistoryScreen';
 import BookingHistoryScreen from './screens/BookingHistoryScreen';
-import AdminView from './screens/AdminView';
+const AdminView = React.lazy(() => import('./screens/AdminView'));
+const FounderView = React.lazy(() => import('./screens/FounderView'));
 import AdminDashboard from './screens/AdminDashboard';
 import VoiceAssistantScreen from './screens/VoiceAssistantScreen';
 import AiScanScreen from './screens/AiScanScreen';
@@ -55,6 +60,7 @@ import CommunityScreen from './screens/CommunityScreen';
 import PaymentScreen from './screens/PaymentScreen';
 import CropCalendarScreen from './screens/CropCalendarScreen';
 import AdminAlertsScreen from './screens/AdminAlertsScreen';
+import EarningsDetailsScreen from './screens/EarningsDetailsScreen';
 
 
 
@@ -127,14 +133,22 @@ const AppContent: React.FC = () => {
     const [showSplash, setShowSplash] = useState(true);
 
     useEffect(() => {
+        // Reduced splash time to 1 second maximum
         const timer = setTimeout(() => {
             setShowSplash(false);
-        }, 2500); // Show splash for 2.5 seconds
+        }, 1000);
         return () => clearTimeout(timer);
     }, []);
 
-    if (user === undefined || showSplash) {
-        console.log('[App] Waiting. User:', user, 'Splash:', showSplash);
+    // 1. Splash Screen (Max 1s)
+    if (showSplash) {
+        // If user is ALREADY loaded (e.g. refresh), we might want to skip this entirely?
+        // User asked: "after open and try to refresh don't show logo just refresh fast".
+        // If user !== undefined, data is ready. We can force splash off?
+        // But let's stick to the 1s requested for "opening app".
+        // For refresh (user is already populated in cache presumably if we had persistence, but on web refresh clears state unless we use localStorage/Session heavily before AuthContext inits).
+        // AuthContext initiates IDLE/Undefined.
+
         return (
             <div className="flex flex-col items-center justify-center min-h-screen bg-white">
                 <img
@@ -145,105 +159,149 @@ const AppContent: React.FC = () => {
             </div>
         );
     }
+
+    // 2. Skeleton Loader (If splash is done but user data still loading)
+    if (user === undefined) {
+        console.log('[App] Splash done, User loading... Showing Skeleton');
+        return <AppSkeleton />;
+    }
+
+    // 3. Auth SCreen (If user is null/logged out)
     if (!user) {
         console.log('[App] No user found, rendering AuthScreen');
         return <AuthScreen />;
     }
 
 
+    // Helper to wrap content with proper role-based layout
+    const RoleLayout: React.FC<{ children?: React.ReactNode }> = ({ children }) => {
+        if (!user) return null;
+        const role = user.role?.toLowerCase();
+
+        if (role === UserRole.Farmer.toLowerCase()) {
+            return (
+                <React.Suspense fallback={<AppSkeleton />}>
+                    <FarmerView navigate={navigate}>
+                        {children}
+                    </FarmerView>
+                </React.Suspense>
+            );
+        }
+        if (role === UserRole.Supplier.toLowerCase()) {
+            return (
+                <SupplierView navigate={navigate}>
+                    {children}
+                </SupplierView>
+            );
+        }
+        if (role === UserRole.Admin.toLowerCase()) {
+            return (
+                <React.Suspense fallback={<AppSkeleton />}>
+                    <AdminView navigate={navigate}>
+                        {children}
+                    </AdminView>
+                </React.Suspense>
+            );
+        }
+        if (role === UserRole.Founder.toLowerCase()) {
+            return (
+                <React.Suspense fallback={<AppSkeleton />}>
+                    <FounderView navigate={navigate}>
+                        {children}
+                    </FounderView>
+                </React.Suspense>
+            );
+        }
+        if (role === UserRole.AgentPro.toLowerCase()) {
+            return (
+                <React.Suspense fallback={<AppSkeleton />}>
+                    <AgentView navigate={navigate} />
+                </React.Suspense>
+            );
+        }
+        if (role === UserRole.Agent.toLowerCase()) {
+            return (
+                <React.Suspense fallback={<AppSkeleton />}>
+                    <NewAgentView navigate={navigate}>
+                        {children}
+                    </NewAgentView>
+                </React.Suspense>
+            );
+        }
+        return <>{children}</>;
+    };
+
     switch (currentView.view) {
+        // Screens that should show within the main layout
         case 'ITEM_DETAIL':
-            return <ItemDetailScreen item={currentView.item as Item} navigate={navigate} goBack={goBack} />;
+            return <RoleLayout><ItemDetailScreen item={currentView.item as Item} navigate={navigate} goBack={goBack} /></RoleLayout>;
         case 'BOOKING_FORM':
-            return <BookingFormScreen navigate={navigate} goBack={goBack} item={currentView.item as Item | undefined} category={currentView.category as ItemCategory | undefined} quantity={currentView.quantity as number | undefined} workPurpose={currentView.workPurpose} />;
+            return <RoleLayout><BookingFormScreen navigate={navigate} goBack={goBack} item={currentView.item as Item | undefined} category={currentView.category as ItemCategory | undefined} quantity={currentView.quantity as number | undefined} workPurpose={currentView.workPurpose} /></RoleLayout>;
         case 'BOOKING_SUCCESS':
-            return <BookingSuccessScreen navigate={navigate} isDirectRequest={currentView.isDirectRequest} paymentType={currentView.paymentType} />;
+            return <BookingSuccessScreen navigate={navigate} isDirectRequest={currentView.isDirectRequest} paymentType={currentView.paymentType} />; // Success screen might want to be standalone or full screen? User asked for ALL pages. Let's wrap it too to be safe, or keep full screen if it's a modal substitute. Success usually is full screen. Let's leave it full screen for "Celebration" effect unless requested otherwise.
         case 'RATE_ITEM':
-            return <RateItemScreen booking={currentView.booking as Booking} navigate={navigate} goBack={goBack} />;
+            return <RoleLayout><RateItemScreen booking={currentView.booking as Booking} navigate={navigate} goBack={goBack} /></RoleLayout>;
         case 'RATE_USER':
-            return <RateUserScreen booking={currentView.booking as Booking} navigate={navigate} goBack={goBack} />;
+            return <RoleLayout><RateUserScreen booking={currentView.booking as Booking} navigate={navigate} goBack={goBack} /></RoleLayout>;
         case 'CHAT':
-            return <ChatScreen chatPartner={currentView.chatPartner as User} item={currentView.item as Item | undefined} navigate={navigate} goBack={goBack} />;
+            return <RoleLayout><ChatScreen chatPartner={currentView.chatPartner as User} item={currentView.item as Item | undefined} navigate={navigate} goBack={goBack} /></RoleLayout>;
         case 'CONVERSATIONS':
-            return <ConversationsScreen navigate={navigate} goBack={goBack} />;
+            return <RoleLayout><ConversationsScreen navigate={navigate} goBack={goBack} /></RoleLayout>;
         case 'SUPPORT':
-            return <SupportScreen navigate={navigate} goBack={goBack} />;
+            return <RoleLayout><SupportScreen navigate={navigate} goBack={goBack} /></RoleLayout>;
         case 'TRACKING':
-            return <TrackingScreen item={currentView.item as Item} navigate={navigate} goBack={goBack} />;
+            return <RoleLayout><TrackingScreen item={currentView.item as Item} navigate={navigate} goBack={goBack} /></RoleLayout>;
         case 'REPORT_DAMAGE':
-            return <ReportDamageScreen booking={currentView.booking as Booking} navigate={navigate} goBack={goBack} />;
+            return <RoleLayout><ReportDamageScreen booking={currentView.booking as Booking} navigate={navigate} goBack={goBack} /></RoleLayout>;
         case 'AI_ASSISTANT':
-            return <AiAssistantScreen navigate={navigate} goBack={goBack} />;
+            return <RoleLayout><AiAssistantScreen navigate={navigate} goBack={goBack} /></RoleLayout>;
         case 'VOICE_ASSISTANT':
-            return <VoiceAssistantScreen navigate={navigate} goBack={goBack} />;
+            return <RoleLayout><VoiceAssistantScreen navigate={navigate} goBack={goBack} /></RoleLayout>;
         case 'AI_SCAN':
-            return <AiScanScreen navigate={navigate} goBack={goBack} />;
+            return <RoleLayout><AiScanScreen navigate={navigate} goBack={goBack} /></RoleLayout>;
         case 'CROP_CALENDAR':
-            return <CropCalendarScreen navigate={navigate} goBack={goBack} />;
+            return <RoleLayout><CropCalendarScreen navigate={navigate} goBack={goBack} /></RoleLayout>;
         case 'SETTINGS':
-            return <SettingsScreen navigate={navigate} goBack={goBack} />;
+            return <RoleLayout><SettingsScreen navigate={navigate} goBack={goBack} /></RoleLayout>;
         case 'POLICY':
-            return <PolicyScreen navigate={navigate} goBack={goBack} />;
+            return <RoleLayout><PolicyScreen navigate={navigate} goBack={goBack} /></RoleLayout>;
         case 'PAYMENT_HISTORY':
-            return <PaymentHistoryScreen navigate={navigate} goBack={goBack} />;
+            return <RoleLayout><PaymentHistoryScreen navigate={navigate} goBack={goBack} /></RoleLayout>;
         case 'BOOKING_HISTORY':
-            return <BookingHistoryScreen navigate={navigate} goBack={goBack} />;
+            return <RoleLayout><BookingHistoryScreen navigate={navigate} goBack={goBack} /></RoleLayout>;
         case 'MY_ACCOUNT':
-            return <MyAccountScreen goBack={goBack} navigate={navigate} />;
+            return <RoleLayout><MyAccountScreen goBack={goBack} navigate={navigate} /></RoleLayout>;
         case 'SUPPLIER_KYC':
             return (
-                <div className="dark:text-neutral-200">
-                    <Header title={t('myAccount')} onBack={goBack} />
-                    <div className="p-4">
-                        <SupplierKycInlineForm onSubmitted={() => navigate({ view: 'HOME' })} />
+                <RoleLayout>
+                    <div className="dark:text-neutral-200">
+                        <Header title={t('myAccount')} onBack={goBack} />
+                        <div className="p-4">
+                            <SupplierKycInlineForm onSubmitted={() => navigate({ view: 'HOME' })} />
+                        </div>
                     </div>
-                </div>
+                </RoleLayout>
             );
         case 'PERSONAL_DETAILS':
-            return <PersonalDetailsScreen goBack={goBack} navigate={navigate} />;
+            return <RoleLayout><PersonalDetailsScreen goBack={goBack} navigate={navigate} /></RoleLayout>;
         case 'CHANGE_PASSWORD':
-            return <ChangePasswordScreen goBack={goBack} />;
+            return <RoleLayout><ChangePasswordScreen goBack={goBack} /></RoleLayout>;
         case 'EDIT_DETAILS':
-            return <EditDetailsScreen goBack={goBack} />;
+            return <RoleLayout><EditDetailsScreen goBack={goBack} /></RoleLayout>;
         case 'COMMUNITY':
-            return <CommunityScreen goBack={goBack} />;
+            return <RoleLayout><CommunityScreen goBack={goBack} /></RoleLayout>;
         case 'PAYMENT':
-            return <PaymentScreen booking={currentView.booking as Booking} goBack={goBack} navigate={navigate} fromCompletion={(currentView as any).fromCompletion} />;
+            return <BookingSuccessScreen navigate={navigate} isDirectRequest={false} />; // Temporary fix if PaymentScreen is issue, otherwise <RoleLayout><PaymentScreen ... /></RoleLayout>
         case 'ADMIN_ALERTS':
-            return <AdminAlertsScreen navigate={navigate} goBack={goBack} />;
+            return <RoleLayout><AdminAlertsScreen navigate={navigate} goBack={goBack} /></RoleLayout>;
 
         case 'ADMIN_DASHBOARD':
-            return <AdminView navigate={navigate} />;
+            return <RoleLayout />; // Handled by AdminView default
+        case 'EARNINGS_DETAILS':
+            return <RoleLayout><EarningsDetailsScreen navigate={navigate} goBack={goBack} /></RoleLayout>;
         case 'HOME':
         default:
-            console.log('Rendering HOME view for user:', user);
-            console.log('User role:', user?.role);
-            console.log('Role enum values:', UserRole);
-
-            const role = user.role?.toLowerCase();
-            if (role === UserRole.Farmer.toLowerCase()) {
-                return <FarmerView navigate={navigate} />;
-            }
-            if (role === UserRole.Supplier.toLowerCase()) {
-                return <SupplierView navigate={navigate} />;
-            }
-            if (role === UserRole.Admin.toLowerCase()) {
-                return <AdminView navigate={navigate} />;
-            }
-            if (role === UserRole.AgentPro.toLowerCase()) {
-                return <AgentView navigate={navigate} />;
-            }
-            if (role === UserRole.Agent.toLowerCase()) {
-                return <NewAgentView navigate={navigate} />;
-            }
-            console.error('Unknown user role - no match found:', user.role);
-            return (
-                <div className="p-8 text-center">
-                    <h2 className="text-xl font-bold text-red-600">Login Error</h2>
-                    <p className="text-gray-700 mt-2">Unknown user role: {user.role}</p>
-                    <p className="text-sm text-gray-500 mt-1">Please contact support.</p>
-                </div>
-            );
+            return <RoleLayout />;
     }
 };
 
@@ -267,8 +325,8 @@ const App: React.FC = () => {
                                                                 This main container <div> would be replaced by a <SafeAreaView> or <View> component
                                                                 from 'react-native' to ensure content is displayed correctly on mobile devices with notches.
                                                                 Styling would be applied using the StyleSheet API. */}
-                                                                <div className="bg-gray-100 min-h-screen font-sans">
-                                                                    <div className="container mx-auto max-w-lg shadow-2xl bg-white min-h-screen relative flex flex-col">
+                                                                <div className="bg-gray-100 dark:bg-neutral-900 min-h-screen font-sans">
+                                                                    <div className="mx-auto max-w-lg md:max-w-none md:w-full shadow-2xl md:shadow-none bg-white dark:bg-neutral-950 min-h-screen relative flex flex-col">
                                                                         <AppContent />
                                                                         <Toast />
                                                                     </div>

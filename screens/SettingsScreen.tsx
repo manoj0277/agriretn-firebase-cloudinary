@@ -13,12 +13,12 @@ interface SettingsScreenProps {
 const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigate, goBack }) => {
     const { theme, toggleTheme, ruralMode, toggleRuralMode } = useSettings();
     const { language, changeLanguage, t } = useLanguage();
-    
+
     // In a real app, these values would come from user preferences storage.
     const [notificationPrefs, setNotificationPrefs] = React.useState({
         bookings: true,
         community: true,
-        offers: false,
+        offers: true,
     });
 
     const handleToggle = (key: keyof typeof notificationPrefs) => {
@@ -44,7 +44,7 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigate, goBack }) => 
             <div className="p-6 space-y-8">
                 {/* General Settings */}
                 <div>
-                     <h3 className="text-lg font-bold text-neutral-800 dark:text-neutral-100 mb-2">General</h3>
+                    <h3 className="text-lg font-bold text-neutral-800 dark:text-neutral-100 mb-2">{t('general')}</h3>
                     <ul className="bg-white dark:bg-neutral-700 rounded-lg border border-neutral-200 dark:border-neutral-600 divide-y divide-neutral-200 dark:divide-neutral-600">
                         <li className="p-4 flex justify-between items-center">
                             <span className="font-semibold text-neutral-800 dark:text-neutral-100">{t('darkMode')}</span>
@@ -68,31 +68,31 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigate, goBack }) => 
                         </li>
                     </ul>
                 </div>
-                
+
                 {/* Notification Settings */}
                 <div>
-                     <h3 className="text-lg font-bold text-neutral-800 dark:text-neutral-100 mb-2">Notifications</h3>
-                     <ul className="bg-white dark:bg-neutral-700 rounded-lg border border-neutral-200 dark:border-neutral-600 divide-y divide-neutral-200 dark:divide-neutral-600">
+                    <h3 className="text-lg font-bold text-neutral-800 dark:text-neutral-100 mb-2">{t('notifications')}</h3>
+                    <ul className="bg-white dark:bg-neutral-700 rounded-lg border border-neutral-200 dark:border-neutral-600 divide-y divide-neutral-200 dark:divide-neutral-600">
                         <li className="p-4 flex justify-between items-center">
                             <div>
-                                <p className="font-semibold text-neutral-800 dark:text-neutral-100">Booking Updates</p>
-                                <p className="text-sm text-neutral-500 dark:text-neutral-400">Status changes, confirmations, etc.</p>
+                                <p className="font-semibold text-neutral-800 dark:text-neutral-100">{t('bookingUpdates')}</p>
+                                <p className="text-sm text-neutral-500 dark:text-neutral-400">{t('bookingUpdatesDesc')}</p>
                             </div>
                             <Toggle isEnabled={notificationPrefs.bookings} onToggle={() => handleToggle('bookings')} />
                         </li>
-                         <li className="p-4 flex justify-between items-center">
+                        <li className="p-4 flex justify-between items-center">
                             <div>
-                                <p className="font-semibold text-neutral-800 dark:text-neutral-100">Community Alerts</p>
-                                 <p className="text-sm text-neutral-500 dark:text-neutral-400">New posts and replies in the forum.</p>
+                                <p className="font-semibold text-neutral-800 dark:text-neutral-100">{t('communityAlerts')}</p>
+                                <p className="text-sm text-neutral-500 dark:text-neutral-400">{t('communityAlertsDesc')}</p>
                             </div>
                             <Toggle isEnabled={notificationPrefs.community} onToggle={() => handleToggle('community')} />
                         </li>
-                         <li className="p-4 flex justify-between items-center">
+                        <li className="p-4 flex justify-between items-center">
                             <div>
-                                <p className="font-semibold text-neutral-800 dark:text-neutral-100">Promotional Offers</p>
-                                <p className="text-sm text-neutral-500 dark:text-neutral-400">Discounts and special offers from AgriRent.</p>
+                                <p className="font-semibold text-neutral-800 dark:text-neutral-100">{t('promotionalOffers')}</p>
+                                <p className="text-sm text-neutral-500 dark:text-neutral-400">{t('promotionalOffersDesc')}</p>
                             </div>
-                           <Toggle isEnabled={notificationPrefs.offers} onToggle={() => handleToggle('offers')} />
+                            <Toggle isEnabled={notificationPrefs.offers} onToggle={() => handleToggle('offers')} />
                         </li>
                     </ul>
                 </div>

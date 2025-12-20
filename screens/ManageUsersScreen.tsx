@@ -5,6 +5,8 @@ import { useAuth } from '../context/AuthContext';
 import Header from '../components/Header';
 import { useLanguage } from '../context/LanguageContext';
 
+import { MedalName } from '../components/MedalName';
+
 const UserCard: React.FC<{ user: User, onApprove: (id: number) => void, onSuspend: (id: number) => void, onReactivate: (id: number) => void }> = ({ user, onApprove, onSuspend, onReactivate }) => {
     const { t } = useLanguage();
     const getStatusClasses = (userStatus: User['userStatus']) => {
@@ -21,7 +23,10 @@ const UserCard: React.FC<{ user: User, onApprove: (id: number) => void, onSuspen
         <div className="bg-white p-4 rounded-lg border border-neutral-200">
             <div className="flex justify-between items-start">
                 <div>
-                    <h3 className="font-bold text-neutral-800">{user.name} <span className="text-sm font-normal text-neutral-500">({user.role})</span></h3>
+                    <h3 className="font-bold text-neutral-800 flex items-center gap-2">
+                        <MedalName userId={user.id} displayName={user.name} />
+                        <span className="text-sm font-normal text-neutral-500">({user.role})</span>
+                    </h3>
                     <p className="text-sm text-neutral-700">{user.email}</p>
                 </div>
                 <span className={`text-xs font-semibold px-3 py-1 rounded-full ${getStatusClasses(user.userStatus)}`}>
@@ -87,24 +92,24 @@ const ManageUsersScreen: React.FC = () => {
     }, [allUsers, filter]);
 
     return (
-        <div className="dark:text-neutral-200 bg-neutral-50 dark:bg-neutral-900 min-h-screen">
+        <div className="dark:text-neutral-200 bg-green-50 dark:bg-neutral-900 min-h-screen">
             <div className="p-4">
                 <div className="flex space-x-2 mb-4">
                     <button
                         onClick={() => setFilter('all')}
-                        className={`px-4 py-2 text-sm font-semibold rounded-full capitalize ${filter === 'all' ? 'bg-primary text-white' : 'bg-neutral-200 text-neutral-700'}`}
+                        className={`px-4 py-2 text-sm font-semibold rounded-full capitalize ${filter === 'all' ? 'bg-primary text-white' : 'bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-700 dark:text-neutral-200'}`}
                     >
                         {t('allUsers')}
                     </button>
                     <button
                         onClick={() => setFilter(UserRole.Farmer)}
-                        className={`px-4 py-2 text-sm font-semibold rounded-full capitalize ${filter === UserRole.Farmer ? 'bg-primary text-white' : 'bg-neutral-200 text-neutral-700'}`}
+                        className={`px-4 py-2 text-sm font-semibold rounded-full capitalize ${filter === UserRole.Farmer ? 'bg-primary text-white' : 'bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-700 dark:text-neutral-200'}`}
                     >
                         {t('farmers')}
                     </button>
                     <button
                         onClick={() => setFilter(UserRole.Supplier)}
-                        className={`px-4 py-2 text-sm font-semibold rounded-full capitalize ${filter === UserRole.Supplier ? 'bg-primary text-white' : 'bg-neutral-200 text-neutral-700'}`}
+                        className={`px-4 py-2 text-sm font-semibold rounded-full capitalize ${filter === UserRole.Supplier ? 'bg-primary text-white' : 'bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-700 dark:text-neutral-200'}`}
                     >
                         {t('suppliers')}
                     </button>

@@ -50,14 +50,14 @@ const ManageItemsScreen: React.FC = () => {
     }
 
     return (
-        <div className="dark:text-neutral-200 bg-neutral-50 dark:bg-neutral-900 min-h-screen">
+        <div className="dark:text-neutral-200 bg-green-50 dark:bg-neutral-900 min-h-screen">
             <div className="p-4">
                 <div className="flex space-x-2 mb-4">
                     {(['all', 'pending', 'approved', 'rejected'] as const).map(status => (
                         <button
                             key={status}
                             onClick={() => setFilter(status)}
-                            className={`px-4 py-2 text-sm font-semibold rounded-full capitalize ${filter === status ? 'bg-primary text-white' : 'bg-neutral-200 dark:bg-neutral-600 text-neutral-700 dark:text-neutral-200'}`}
+                            className={`px-4 py-2 text-sm font-semibold rounded-full capitalize ${filter === status ? 'bg-primary text-white' : 'bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-700 dark:text-neutral-200'}`}
                         >
                             {status}
                         </button>
@@ -65,9 +65,9 @@ const ManageItemsScreen: React.FC = () => {
                 </div>
                 <div className="space-y-3">
                     {filteredItems.map(item => (
-                        <ItemAdminCard 
-                            key={item.id} 
-                            item={item} 
+                        <ItemAdminCard
+                            key={item.id}
+                            item={item}
                             onApprove={approveItem}
                             onReject={rejectItem}
                             supplierName={getSupplierName(item.ownerId)}

@@ -226,10 +226,11 @@ const SupplierKycScreen: React.FC = () => {
 
         {previewUrl && (
           <div
-            className="fixed inset-0 bg-black/95 flex items-center justify-center z-50 p-4"
+            className="fixed inset-0 bg-black/95 flex items-center justify-center p-4 bg-opacity-90"
+            style={{ zIndex: 10001 }}
             onClick={() => setPreviewUrl(null)}
           >
-            <div className="relative max-w-[95vw] max-h-[95vh] flex flex-col items-center">
+            <div className="relative max-w-[70vw] max-h-[70vh] flex flex-col items-center">
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -247,7 +248,7 @@ const SupplierKycScreen: React.FC = () => {
               <img
                 src={previewUrl}
                 alt="KYC Document - Click to close"
-                className="max-h-[90vh] max-w-[90vw] rounded-lg shadow-2xl object-contain border-4 border-white/10"
+                className="max-h-[70vh] max-w-[70vw] rounded-lg shadow-2xl object-contain border-4 border-white/10"
                 onClick={(e) => e.stopPropagation()}
               />
 

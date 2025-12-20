@@ -1,7 +1,10 @@
 
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { Item, AppView, Booking, ItemCategory, WORK_PURPOSES, CATEGORY_WORK_PURPOSES, WorkPurpose, User, UserRole } from '../types';
+import { Item, AppView, Booking, ItemCategory, WORK_PURPOSES, CATEGORY_WORK_PURPOSES, WORKER_PURPOSE_IMAGES, HARVESTER_PURPOSE_IMAGES, TRACTOR_PURPOSE_IMAGES, WorkPurpose, User, UserRole } from '../types';
+import { calculateDynamicPrice, PricingRule } from '../utils/pricing';
+import { collection, getDocs, query, where } from 'firebase/firestore';
+import { db } from '../src/lib/firebase';
 import Header from '../components/Header';
 import Input from '../components/Input';
 import Button from '../components/Button';
@@ -56,6 +59,8 @@ const BookingFormScreen: React.FC<BookingFormScreenProps> = ({ navigate, goBack,
     const [startTime, setStartTime] = useState('');
     const [estimatedDurationInput, setEstimatedDurationInput] = useState('1');
     const [location, setLocation] = useState('');
+    const [locationDetails, setLocationDetails] = useState<{ district?: string, mandal?: string, city?: string }>({});
+    const [pricingRules, setPricingRules] = useState<PricingRule[]>([]);
     const [locationCoords, setLocationCoords] = useState<{ lat: number; lng: number } | undefined>(undefined);
     const [searchSuggestions, setSearchSuggestions] = useState<Array<{ display_name: string; lat: string; lon: string }>>([]);
     const [showSuggestions, setShowSuggestions] = useState(false);
@@ -65,9 +70,15 @@ const BookingFormScreen: React.FC<BookingFormScreenProps> = ({ navigate, goBack,
     const [additionalInstructions, setAdditionalInstructions] = useState('');
     const [itemCategory, setItemCategory] = useState<ItemCategory>(item?.category || category || ItemCategory.Tractors);
     const [quantity, setQuantity] = useState(initialQuantity?.toString() || '1');
+    const [acres, setAcres] = useState('1');
     const [allowMultipleSuppliers, setAllowMultipleSuppliers] = useState(true);
     const [preferredModel, setPreferredModel] = useState('any');
     const [workPurpose, setWorkPurpose] = useState<WorkPurpose>(item?.purposes[0]?.name || initialWorkPurpose || WORK_PURPOSES[0]);
+    const [crop, setCrop] = useState(''); // New state for Crop
+    const [workPurposeDetails, setWorkPurposeDetails] = useState(''); // New state for Others details
+    const [showWorkerPurposeModal, setShowWorkerPurposeModal] = useState(false); // Modal for worker purpose selection
+    const [showHarvesterPurposeModal, setShowHarvesterPurposeModal] = useState(false); // Modal for harvester purpose selection
+    const [showTractorPurposeModal, setShowTractorPurposeModal] = useState(false); // Modal for tractor purpose selection
 
     const [operatorRequired, setOperatorRequired] = useState(false);
     // Payment selection removed; handled after work completion
@@ -180,7 +191,17 @@ const BookingFormScreen: React.FC<BookingFormScreenProps> = ({ navigate, goBack,
 
         const numQuantity = isQuantityApplicable ? parseInt(quantity) : 1;
 
-        const machinePrices = applicableItems.map(i => (i.purposes.find(p => p.name === workPurpose)?.price || 0) * numQuantity * billableHours);
+        // Apply Dynamic Pricing Logic
+        const calculateWithSurge = (basePrice: number, purposeItem: Item) => {
+            const { finalPrice } = calculateDynamicPrice(basePrice, purposeItem, locationDetails, pricingRules);
+            return finalPrice * numQuantity * billableHours;
+        };
+
+        const machinePrices = applicableItems.map(i => {
+            const purpose = i.purposes.find(p => p.name === workPurpose);
+            return purpose ? calculateWithSurge(purpose.price, i) : 0;
+        });
+
         const operatorPrices = operatorRequired ? applicableItems.map(i => (i.operatorCharge || 0) * billableHours) : [0];
 
         const machineMin = Math.min(...machinePrices);
@@ -216,6 +237,21 @@ const BookingFormScreen: React.FC<BookingFormScreenProps> = ({ navigate, goBack,
     const getTodayString = () => new Date().toISOString().split('T')[0];
     const minDate = getTodayString();
 
+    // Fetch Pricing Rules
+    useEffect(() => {
+        const fetchPricingRules = async () => {
+            try {
+                const q = query(collection(db, 'pricing_rules'), where('isActive', '==', true));
+                const snapshot = await getDocs(q);
+                const rules = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PricingRule));
+                setPricingRules(rules);
+            } catch (error) {
+                console.error("Error fetching pricing rules:", error);
+            }
+        };
+        fetchPricingRules();
+    }, []);
+
     // Reverse geocoding function using Nominatim
     const reverseGeocode = async (lat: number, lng: number): Promise<string> => {
         try {
@@ -230,6 +266,14 @@ const BookingFormScreen: React.FC<BookingFormScreenProps> = ({ navigate, goBack,
             if (response.ok) {
                 const data = await response.json();
                 const address = data.address;
+
+                // Store location details for pricing
+                setLocationDetails({
+                    district: address.state_district || address.district,
+                    mandal: address.county || address.town || address.city, // Mandal often maps to county/town in Nominatim
+                    city: address.city || address.town || address.village
+                });
+
                 // Build a readable address from village/suburb/city
                 const parts = [
                     address.village || address.suburb || address.neighbourhood,
@@ -252,12 +296,28 @@ const BookingFormScreen: React.FC<BookingFormScreenProps> = ({ navigate, goBack,
         }
         try {
             const response = await fetch(
-                `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&countrycodes=in&limit=5`,
+                `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&countrycodes=in&limit=10&addressdetails=1`,
                 { headers: { 'Accept-Language': 'en' } }
             );
             if (response.ok) {
                 const data = await response.json();
-                setSearchSuggestions(data);
+
+                // Prioritize results: Karimnagar > Telangana > India
+                const sortedData = data.sort((a: any, b: any) => {
+                    const aText = (a.display_name || '').toLowerCase();
+                    const bText = (b.display_name || '').toLowerCase();
+
+                    const score = (text: string) => {
+                        if (text.includes('karimnagar')) return 3;
+                        if (text.includes('telangana')) return 2;
+                        if (text.includes('india')) return 1;
+                        return 0;
+                    };
+
+                    return score(bText) - score(aText);
+                });
+
+                setSearchSuggestions(sortedData);
                 setShowSuggestions(true);
             }
         } catch (error) {
@@ -275,6 +335,8 @@ const BookingFormScreen: React.FC<BookingFormScreenProps> = ({ navigate, goBack,
         setLocation(shortName);
         setSearchSuggestions([]);
         setShowSuggestions(false);
+        // Important: Fetch details for pricing
+        reverseGeocode(lat, lng);
     };
 
     const handleUseCurrentLocation = () => {
@@ -399,7 +461,10 @@ const BookingFormScreen: React.FC<BookingFormScreenProps> = ({ navigate, goBack,
                 preferredModel: isModelApplicable && preferredModel !== 'any' ? preferredModel : undefined,
                 operatorRequired,
                 quantity: isQuantityApplicable ? parseInt(quantity) : undefined,
+                acres: parseFloat(acres) || undefined,
                 allowMultipleSuppliers: itemCategory === ItemCategory.Workers && !isDirectRequest ? allowMultipleSuppliers : undefined,
+                crop: itemCategory === ItemCategory.Workers ? crop : undefined, // Include crop
+                workPurposeDetails: itemCategory === ItemCategory.Workers && workPurpose === 'Others' ? workPurposeDetails : undefined, // Include details
                 estimatedPrice,
                 estimatedDuration: durationInHours,
                 distanceCharge: distanceCharge > 0 ? distanceCharge : undefined,
@@ -428,7 +493,7 @@ const BookingFormScreen: React.FC<BookingFormScreenProps> = ({ navigate, goBack,
     const formatRange = (min: number, max: number) => min === max ? `₹${min.toLocaleString()}` : `₹${min.toLocaleString()} - ₹${max.toLocaleString()}`;
 
     return (
-        <div className="dark:text-neutral-200">
+        <div className="dark:text-neutral-200 bg-green-50 dark:bg-neutral-900 min-h-screen">
             <Header title={isDirectRequest ? t('confirmYourBooking') : t('createBookingRequest')} onBack={goBack} />
             <div className="p-6">
                 <form className="space-y-4" onSubmit={handleSubmit}>
@@ -445,6 +510,68 @@ const BookingFormScreen: React.FC<BookingFormScreenProps> = ({ navigate, goBack,
                         </select>
                         {isDirectRequest && item && <p className="text-xs text-neutral-500 mt-1">Requesting: <strong>{item.name}</strong> from <strong>{allUsers.find(u => u.id === item.ownerId)?.name}</strong></p>}
                     </div>
+
+                    <div>
+                        <label className="block text-gray-700 dark:text-neutral-300 text-sm font-bold mb-2">{t('workPurpose')}</label>
+                        {(itemCategory === ItemCategory.Workers || itemCategory === ItemCategory.Harvesters || itemCategory === ItemCategory.Tractors) && !isDirectRequest ? (
+                            // Click-to-open modal for Workers, Harvesters, and Tractors
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    if (itemCategory === ItemCategory.Workers) setShowWorkerPurposeModal(true);
+                                    else if (itemCategory === ItemCategory.Harvesters) setShowHarvesterPurposeModal(true);
+                                    else if (itemCategory === ItemCategory.Tractors) setShowTractorPurposeModal(true);
+                                }}
+                                className="w-full text-left shadow appearance-none border border-neutral-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg py-3 px-4 text-neutral-800 dark:text-white leading-tight focus:outline-none focus:ring-2 focus:ring-primary/50 hover:border-primary transition-colors flex items-center justify-between"
+                            >
+                                <span>{workPurpose || 'Select ' + (itemCategory === ItemCategory.Workers ? 'Work Type' : itemCategory === ItemCategory.Harvesters ? 'Harvester Type' : 'Work Purpose')}</span>
+                                <svg className="w-5 h-5 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                </svg>
+                            </button>
+                        ) : (
+                            // Standard dropdown for other categories
+                            <select id="work-purpose" value={workPurpose} onChange={e => handleWorkPurposeChange(e.target.value as WorkPurpose)} required className="shadow appearance-none border border-neutral-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg w-full py-3 px-4 text-neutral-800 dark:text-white leading-tight focus:outline-none focus:ring-2 focus:ring-primary/50">
+                                {(isDirectRequest && item ? item.purposes.map(p => p.name) : CATEGORY_WORK_PURPOSES[itemCategory] || WORK_PURPOSES).map(purpose => {
+                                    const isOffered = isDirectRequest && item ? item.purposes.some(p => p.name === purpose) : true;
+                                    return <option key={purpose} value={purpose} className={isOffered ? 'font-bold dark:text-green-300' : ''}>{purpose}{isOffered && isDirectRequest ? ' ✓' : ''}</option>
+                                })}
+                            </select>
+                        )}
+                        {isBroadcastOverride && (
+                            <div className="mt-2 p-2 bg-yellow-100 text-yellow-800 text-xs rounded-md">
+                                Note: This specific supplier does not offer '{workPurpose}'. Your request will be broadcast to all available suppliers.
+                            </div>
+                        )}
+                    </div>
+
+                    {/* New Fields for Workers */}
+                    {itemCategory === ItemCategory.Workers && (
+                        <div className="space-y-4">
+                            {workPurpose === 'Others' && (
+                                <div className="animate-fade-in">
+                                    <label htmlFor="work-details" className="block text-gray-700 dark:text-neutral-300 text-sm font-bold mb-2">Specify Work Details *</label>
+                                    <Input
+                                        id="work-details"
+                                        value={workPurposeDetails}
+                                        onChange={e => setWorkPurposeDetails(e.target.value)}
+                                        placeholder="e.g. Clearing bushes, specialized pruning..."
+                                        required
+                                    />
+                                </div>
+                            )}
+                            <div>
+                                <label htmlFor="crop" className="block text-gray-700 dark:text-neutral-300 text-sm font-bold mb-2">Which Crop? *</label>
+                                <Input
+                                    id="crop"
+                                    value={crop}
+                                    onChange={e => setCrop(e.target.value)}
+                                    placeholder="e.g. Cotton, Chillies, Paddy..."
+                                    required
+                                />
+                            </div>
+                        </div>
+                    )}
 
                     {isModelApplicable && (
                         <div>
@@ -475,6 +602,13 @@ const BookingFormScreen: React.FC<BookingFormScreenProps> = ({ navigate, goBack,
                             )}
                         </>
                     )}
+
+
+
+                    <div>
+                        <label htmlFor="acres" className="block text-gray-700 dark:text-neutral-300 text-sm font-bold mb-2">How many acres?</label>
+                        <Input id="acres" type="number" value={acres} onChange={e => setAcres(e.target.value)} min="0.1" step="0.1" placeholder="e.g. 2.5" />
+                    </div>
 
                     <Input label={t('selectDate')} type="date" value={date} onChange={e => setDate(e.target.value)} required min={minDate} />
                     {isDateBlocked && (
@@ -563,20 +697,7 @@ const BookingFormScreen: React.FC<BookingFormScreenProps> = ({ navigate, goBack,
                         <p className="text-xs text-neutral-500">Tap on the map to pin exact location.</p>
                     </div>
 
-                    <div>
-                        <label className="block text-gray-700 dark:text-neutral-300 text-sm font-bold mb-2">{t('workPurpose')}</label>
-                        <select id="work-purpose" value={workPurpose} onChange={e => handleWorkPurposeChange(e.target.value as WorkPurpose)} required className="shadow appearance-none border border-neutral-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg w-full py-3 px-4 text-neutral-800 dark:text-white leading-tight focus:outline-none focus:ring-2 focus:ring-primary/50">
-                            {(isDirectRequest && item ? item.purposes.map(p => p.name) : CATEGORY_WORK_PURPOSES[itemCategory] || WORK_PURPOSES).map(purpose => {
-                                const isOffered = isDirectRequest && item ? item.purposes.some(p => p.name === purpose) : true;
-                                return <option key={purpose} value={purpose} className={isOffered ? 'font-bold dark:text-green-300' : ''}>{purpose}{isOffered && isDirectRequest ? ' ✓' : ''}</option>
-                            })}
-                        </select>
-                        {isBroadcastOverride && (
-                            <div className="mt-2 p-2 bg-yellow-100 text-yellow-800 text-xs rounded-md">
-                                Note: This specific supplier does not offer '{workPurpose}'. Your request will be broadcast to all available suppliers.
-                            </div>
-                        )}
-                    </div>
+
 
                     <div>
                         <label htmlFor="instructions" className="block text-gray-700 dark:text-neutral-300 text-sm font-bold mb-2">{t('additionalInstructions')}</label>
@@ -598,6 +719,39 @@ const BookingFormScreen: React.FC<BookingFormScreenProps> = ({ navigate, goBack,
                         {durationInHours > 0 && priceEstimates.total.max > 0 ? (
                             <>
                                 {/* Detailed Price Breakdown */}
+                                {priceEstimates.total.max > 0 && (() => {
+                                    // Check for active surge - simplified check for UI feedback
+                                    // ideally we'd get this from the calculation, but this works for display
+                                    const district = locationDetails.district?.trim().toLowerCase() || '';
+                                    const mandal = locationDetails.mandal?.trim().toLowerCase() || locationDetails.city?.trim().toLowerCase() || '';
+                                    const activeRule = pricingRules.find(r =>
+                                        r.isActive &&
+                                        ((r.district.toLowerCase() === district && r.mandal.toLowerCase() === mandal) ||
+                                            (r.district.toLowerCase() === district && r.mandal === 'ALL') ||
+                                            (r.district === 'ALL' && r.mandal === 'ALL')) &&
+                                        (!r.category || r.category === itemCategory) &&
+                                        r.multiplier > 1
+                                    );
+
+                                    if (activeRule) {
+                                        return (
+                                            <div className="mb-2 bg-orange-100 dark:bg-orange-900/30 border border-orange-200 dark:border-orange-800 rounded-lg p-2 flex items-center justify-between">
+                                                <div className="flex items-center space-x-2">
+                                                    <svg className="w-4 h-4 text-orange-600 dark:text-orange-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                                                    </svg>
+                                                    <span className="text-sm font-medium text-orange-800 dark:text-orange-300">
+                                                        {activeRule.seasonName || 'High Demand'} Pricing
+                                                    </span>
+                                                </div>
+                                                <span className="text-xs font-bold text-orange-700 dark:text-orange-400 bg-orange-200 dark:bg-orange-800 px-1.5 py-0.5 rounded">
+                                                    {activeRule.multiplier}x
+                                                </span>
+                                            </div>
+                                        );
+                                    }
+                                    return null;
+                                })()}
                                 <div className="space-y-1 text-sm">
                                     <div className="flex justify-between text-neutral-700 dark:text-neutral-300">
                                         <span>Equipment Cost</span>
@@ -659,7 +813,7 @@ const BookingFormScreen: React.FC<BookingFormScreenProps> = ({ navigate, goBack,
 
             {/* Location Permission Modal */}
             {showLocationModal && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4" style={{ zIndex: 9999 }}>
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4" style={{ zIndex: 10001 }}>
                     <div className="bg-white dark:bg-neutral-800 rounded-2xl p-6 max-w-sm w-full shadow-xl">
                         <div className="text-center">
                             <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -698,11 +852,203 @@ const BookingFormScreen: React.FC<BookingFormScreenProps> = ({ navigate, goBack,
 
             {/* Location Loading Indicator */}
             {isLocating && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center" style={{ zIndex: 9999 }}>
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4" style={{ zIndex: 10001 }}>
                     <div className="bg-white dark:bg-neutral-800 rounded-2xl p-6 text-center shadow-xl">
                         <div className="animate-spin w-10 h-10 border-4 border-primary border-t-transparent rounded-full mx-auto mb-4"></div>
                         <p className="text-neutral-700 dark:text-neutral-200 font-medium">Detecting your location...</p>
                         <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-1">Please wait</p>
+                    </div>
+                </div>
+            )}
+
+            {/* Worker Purpose Selection Modal */}
+            {showWorkerPurposeModal && (
+                <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4" style={{ zIndex: 10001 }} onClick={() => setShowWorkerPurposeModal(false)}>
+                    <div className="bg-white dark:bg-neutral-800 rounded-2xl p-6 max-w-md w-full shadow-2xl" onClick={e => e.stopPropagation()}>
+                        <div className="flex justify-between items-center mb-4">
+                            <h3 className="text-xl font-bold text-neutral-800 dark:text-white">Select Work Type</h3>
+                            <button onClick={() => setShowWorkerPurposeModal(false)} className="p-1 hover:bg-neutral-100 dark:hover:bg-neutral-700 rounded-full">
+                                <svg className="w-6 h-6 text-neutral-500 dark:text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                            </button>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                            {CATEGORY_WORK_PURPOSES[ItemCategory.Workers].map(purpose => {
+                                const hasImage = WORKER_PURPOSE_IMAGES[purpose];
+                                const isSelected = workPurpose === purpose;
+                                return (
+                                    <button
+                                        key={purpose}
+                                        type="button"
+                                        onClick={() => {
+                                            handleWorkPurposeChange(purpose as WorkPurpose);
+                                            setShowWorkerPurposeModal(false);
+                                        }}
+                                        className={`relative overflow-hidden rounded-xl transition-all ${isSelected
+                                            ? 'ring-4 ring-primary shadow-lg'
+                                            : 'ring-2 ring-neutral-200 dark:ring-neutral-600 hover:ring-primary'
+                                            }`}
+                                    >
+                                        {hasImage ? (
+                                            <div className="relative h-28">
+                                                <img
+                                                    src={hasImage}
+                                                    alt={purpose}
+                                                    className="w-full h-full object-cover"
+                                                />
+                                                <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
+                                                <div className="absolute bottom-0 left-0 right-0 p-2">
+                                                    <p className="text-white font-bold text-xs text-center drop-shadow-lg">{purpose}</p>
+                                                </div>
+                                                {isSelected && (
+                                                    <div className="absolute top-1.5 right-1.5 bg-primary text-white rounded-full p-1">
+                                                        <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                                                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                                        </svg>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ) : (
+                                            <div className={`h-28 flex items-center justify-center ${isSelected ? 'bg-primary text-white' : 'bg-neutral-100 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-200'
+                                                }`}>
+                                                <div className="text-center px-2">
+                                                    <svg className="w-6 h-6 mx-auto mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                                                    </svg>
+                                                    <p className="font-bold text-xs">{purpose}</p>
+                                                </div>
+                                                {isSelected && (
+                                                    <div className="absolute top-1.5 right-1.5 bg-white text-primary rounded-full p-1">
+                                                        <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                                                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                                        </svg>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Harvester Purpose Selection Modal */}
+            {showHarvesterPurposeModal && (
+                <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4" style={{ zIndex: 10001 }} onClick={() => setShowHarvesterPurposeModal(false)}>
+                    <div className="bg-white dark:bg-neutral-800 rounded-2xl p-6 max-w-md w-full shadow-2xl" onClick={e => e.stopPropagation()}>
+                        <div className="flex justify-between items-center mb-4">
+                            <h3 className="text-xl font-bold text-neutral-800 dark:text-white">Select Harvester Type</h3>
+                            <button onClick={() => setShowHarvesterPurposeModal(false)} className="p-1 hover:bg-neutral-100 dark:hover:bg-neutral-700 rounded-full">
+                                <svg className="w-6 h-6 text-neutral-500 dark:text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                            </button>
+                        </div>
+                        <div className="grid grid-cols-1 gap-3">
+                            {CATEGORY_WORK_PURPOSES[ItemCategory.Harvesters].map(purpose => {
+                                const hasImage = HARVESTER_PURPOSE_IMAGES[purpose];
+                                const isSelected = workPurpose === purpose;
+                                return (
+                                    <button
+                                        key={purpose}
+                                        type="button"
+                                        onClick={() => {
+                                            handleWorkPurposeChange(purpose as WorkPurpose);
+                                            setShowHarvesterPurposeModal(false);
+                                        }}
+                                        className={`relative overflow-hidden rounded-xl transition-all ${isSelected
+                                            ? 'ring-4 ring-primary shadow-lg'
+                                            : 'ring-2 ring-neutral-200 dark:ring-neutral-600 hover:ring-primary'
+                                            }`}
+                                    >
+                                        {hasImage ? (
+                                            <div className="relative h-32">
+                                                <img
+                                                    src={hasImage}
+                                                    alt={purpose}
+                                                    className="w-full h-full object-cover"
+                                                />
+                                                <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
+                                                <div className="absolute bottom-0 left-0 right-0 p-3">
+                                                    <p className="text-white font-bold text-sm text-center drop-shadow-lg">{purpose}</p>
+                                                </div>
+                                                {isSelected && (
+                                                    <div className="absolute top-2 right-2 bg-primary text-white rounded-full p-1.5">
+                                                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                                                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                                        </svg>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ) : null}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Tractor Purpose Selection Modal */}
+            {showTractorPurposeModal && (
+                <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4" style={{ zIndex: 10001 }} onClick={() => setShowTractorPurposeModal(false)}>
+                    <div className="bg-white dark:bg-neutral-800 rounded-2xl p-6 max-w-2xl w-full shadow-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+                        <div className="flex justify-between items-center mb-4">
+                            <h3 className="text-xl font-bold text-neutral-800 dark:text-white">Select Work Purpose</h3>
+                            <button onClick={() => setShowTractorPurposeModal(false)} className="p-1 hover:bg-neutral-100 dark:hover:bg-neutral-700 rounded-full">
+                                <svg className="w-6 h-6 text-neutral-500 dark:text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                            </button>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                            {CATEGORY_WORK_PURPOSES[ItemCategory.Tractors].map(purpose => {
+                                const hasImage = TRACTOR_PURPOSE_IMAGES[purpose];
+                                const isSelected = workPurpose === purpose;
+                                return (
+                                    <button
+                                        key={purpose}
+                                        type="button"
+                                        onClick={() => {
+                                            handleWorkPurposeChange(purpose as WorkPurpose);
+                                            setShowTractorPurposeModal(false);
+                                        }}
+                                        className={`relative overflow-hidden rounded-xl transition-all ${isSelected
+                                            ? 'ring-4 ring-primary shadow-lg'
+                                            : 'ring-2 ring-neutral-200 dark:ring-neutral-600 hover:ring-primary'
+                                            }`}
+                                    >
+                                        {hasImage ? (
+                                            <div className="relative h-28">
+                                                <img
+                                                    src={hasImage}
+                                                    alt={purpose}
+                                                    className="w-full h-full object-cover"
+                                                />
+                                                <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
+                                                <div className="absolute bottom-0 left-0 right-0 p-2">
+                                                    <p className="text-white font-bold text-xs text-center drop-shadow-lg">{purpose}</p>
+                                                </div>
+                                                {isSelected && (
+                                                    <div className="absolute top-2 right-2 bg-primary text-white rounded-full p-1">
+                                                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                                                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                                        </svg>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ) : (
+                                            <div className="relative h-28 bg-neutral-100 dark:bg-neutral-700 flex items-center justify-center">
+                                                <p className="text-neutral-700 dark:text-neutral-300 font-semibold text-sm px-2 text-center">{purpose}</p>
+                                            </div>
+                                        )}
+                                    </button>
+                                );
+                            })}
+                        </div>
                     </div>
                 </div>
             )}

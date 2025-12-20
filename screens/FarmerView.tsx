@@ -12,6 +12,8 @@ import { useAuth } from '../context/AuthContext';
 import { useBooking } from '../context/BookingContext';
 import { useItem } from '../context/ItemContext';
 import { useReview } from '../context/ReviewContext';
+import { useStreakRankings } from '../hooks/useStreakRankings';
+import DashboardLayout from '../components/DashboardLayout';
 import { AppView, Item, ItemCategory, Booking } from '../types';
 import Header from '../components/Header';
 import BottomNav, { NavItemConfig } from '../components/BottomNav';
@@ -28,6 +30,7 @@ import FarmerMapScreen from './FarmerMapScreen';
 import { useLanguage } from '../context/LanguageContext';
 import AiSuggestionsModal from './AiSuggestionsModal';
 import { useWeather } from '../context/WeatherContext';
+import AppSidebar from '../components/AppSidebar';
 
 const apiKey = typeof process !== 'undefined' && process.env && process.env.API_KEY
     ? process.env.API_KEY
@@ -40,6 +43,7 @@ interface FarmerViewProps {
     navigate: (view: AppView) => void;
     onSwitchMode?: () => void;
     roleBadge?: string;
+    children?: React.ReactNode;
 }
 
 const RepeatIcon: React.FC<{ className?: string }> = ({ className }) => (
@@ -49,7 +53,7 @@ const RepeatIcon: React.FC<{ className?: string }> = ({ className }) => (
 );
 
 const ChatIcon: React.FC<{ onClick: () => void; unreadCount: number; }> = ({ onClick, unreadCount }) => (
-    <button onClick={onClick} className="relative p-2 text-neutral-700 dark:text-neutral-300 hover:text-primary rounded-full hover:bg-neutral-100 dark:hover:bg-neutral-700" aria-label="Open Chats">
+    <button onClick={onClick} className="relative p-2 text-white hover:text-green-100 rounded-full hover:bg-green-600 transition-colors" aria-label="Open Chats">
         <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
         {unreadCount > 0 && (
             <span className="absolute top-1 right-1 flex h-3 w-3">
@@ -389,18 +393,21 @@ export const FarmerHomeScreen: React.FC<FarmerViewProps> = ({ navigate, roleBadg
     }, [searchQuery, selectedCategory, approvedItems, sortBy, bookings, priceRange, minRating, showAvailableOnly, filterDate, allUsers, userLocation]);
 
     return (
-        <div className="dark:text-neutral-200">
+        <div className="h-full overflow-y-auto bg-green-50 dark:bg-neutral-900 dark:text-neutral-200">
             {/* Header with centered title */}
-            <div className="sticky top-0 z-10 bg-white dark:bg-neutral-800 border-b border-neutral-200 dark:border-neutral-700 px-4 py-3">
+            <div className="sticky top-0 z-10 bg-green-700 border-b border-green-800 px-4 py-3">
                 <div className="flex items-center justify-between mb-3">
                     <ChatIcon onClick={() => navigate({ view: 'CONVERSATIONS' })} unreadCount={unreadChatCount} />
                     <div className="flex flex-col">
-                        <h1 className="text-lg font-bold text-neutral-900 dark:text-white flex items-center gap-2">
+                        <h1 className="text-lg font-bold text-white flex items-center gap-2">
                             {t('marketplace')}
 
                         </h1>
                     </div>
-                    <NotificationBell />
+                    {/* Assuming NotificationBell can inherit color or we wrap it in a div that forces white text if it uses currentColor, otherwise we might need to update NotificationBell too */}
+                    <div className="text-white hover:text-green-100">
+                        <NotificationBell />
+                    </div>
                 </div>
 
                 {/* Suspension / Blocked Banner */}
@@ -424,7 +431,12 @@ export const FarmerHomeScreen: React.FC<FarmerViewProps> = ({ navigate, roleBadg
                 )}
 
                 {/* Search bar with icons */}
-                <div className="flex items-center space-x-2">
+
+            </div>
+
+            <div className="px-4 pt-4">
+                {/* Inner Search Bar */}
+                <div className="flex items-center space-x-2 mb-4">
                     <div className="flex-grow relative">
                         <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-neutral-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -449,11 +461,7 @@ export const FarmerHomeScreen: React.FC<FarmerViewProps> = ({ navigate, roleBadg
                         </svg>
                         {areFiltersActive && <span className="absolute -top-1 -right-1 block h-2.5 w-2.5 rounded-full bg-red-500 ring-2 ring-white"></span>}
                     </button>
-
                 </div>
-            </div>
-
-            <div className="px-4 pt-4">
                 {/* Horizontal category pills */}
                 <div className="flex space-x-2 overflow-x-auto pb-3 mb-4 hide-scrollbar">
                     {itemCategories.map(type => (
@@ -526,47 +534,45 @@ export const FarmerHomeScreen: React.FC<FarmerViewProps> = ({ navigate, roleBadg
                 </div>
 
                 {/* All Services - Vertical list with horizontal cards */}
-                <div className="space-y-3 pb-20">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 pb-20">
                     {processedItems.map(item => (
                         <div
                             key={item.id}
                             onClick={() => navigate({ view: 'ITEM_DETAIL', item })}
-                            className="bg-white dark:bg-neutral-800 rounded-2xl p-4 shadow-sm border border-neutral-100 dark:border-neutral-700 cursor-pointer hover:shadow-md transition-all duration-200"
+                            className="bg-white dark:bg-neutral-800 rounded-2xl p-4 shadow-sm border border-neutral-100 dark:border-neutral-700 cursor-pointer hover:shadow-md transition-all duration-200 flex flex-col h-full"
                         >
-                            <div className="flex gap-5">
-                                <div className="relative w-32 h-32 flex-shrink-0 bg-neutral-100 dark:bg-neutral-700 rounded-xl overflow-hidden">
-                                    <img
-                                        src={item.images?.[0] || 'https://via.placeholder.com/140'}
-                                        alt={item.name}
-                                        className="w-full h-full object-cover"
-                                    />
+                            <div className="relative w-full h-48 md:h-40 flex-shrink-0 bg-neutral-100 dark:bg-neutral-700 rounded-xl overflow-hidden mb-4">
+                                <img
+                                    src={item.images?.[0] || 'https://via.placeholder.com/140'}
+                                    alt={item.name}
+                                    className="w-full h-full object-cover"
+                                />
+                            </div>
+                            <div className="flex-1 flex flex-col">
+                                <div className="mb-2">
+                                    <span className={`inline-block px-3 py-1 rounded-full text-xs font-bold tracking-wide ${item.category === 'Tractors' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
+                                        item.category === 'JCB' ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' :
+                                            item.category === 'Harvesters' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' :
+                                                'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                                        }`}>
+                                        {item.category}
+                                    </span>
                                 </div>
-                                <div className="flex-1 flex flex-col justify-center">
-                                    <div className="mb-1.5">
-                                        <span className={`inline-block px-3 py-1 rounded-full text-xs font-bold tracking-wide ${item.category === 'Tractors' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
-                                            item.category === 'JCB' ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' :
-                                                item.category === 'Harvesters' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' :
-                                                    'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
-                                            }`}>
-                                            {item.category}
-                                        </span>
-                                    </div>
-                                    <h3 className="font-bold text-lg text-neutral-900 dark:text-white mb-1.5 leading-tight">{item.name}</h3>
-                                    <p className="text-lg font-bold text-primary mb-1.5">₹{Math.min(...item.purposes.map(p => p.price))}/hr</p>
-                                    <div className="flex items-center text-sm text-neutral-500 dark:text-neutral-400">
-                                        {item.avgRating ? (
-                                            <>
-                                                <svg className="w-4 h-4 text-yellow-400 mr-1" fill="currentColor" viewBox="0 0 20 20">
-                                                    <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                                                </svg>
-                                                <span className="font-medium text-neutral-700 dark:text-neutral-300">{item.avgRating.toFixed(1)}</span>
-                                                <span className="mx-1.5 text-neutral-300 dark:text-neutral-600">•</span>
-                                                <span>{item.reviews?.length || 0} reviews</span>
-                                            </>
-                                        ) : (
-                                            <span>No reviews yet</span>
-                                        )}
-                                    </div>
+                                <h3 className="font-bold text-lg text-neutral-900 dark:text-white mb-1.5 leading-tight truncate" title={item.name}>{item.name}</h3>
+                                <p className="text-lg font-bold text-primary mb-2">₹{Math.min(...item.purposes.map(p => p.price))}/hr</p>
+                                <div className="mt-auto flex items-center text-sm text-neutral-500 dark:text-neutral-400">
+                                    {item.avgRating ? (
+                                        <>
+                                            <svg className="w-4 h-4 text-yellow-400 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                                                <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                                            </svg>
+                                            <span className="font-medium text-neutral-700 dark:text-neutral-300">{item.avgRating.toFixed(1)}</span>
+                                            <span className="mx-1.5 text-neutral-300 dark:text-neutral-600">•</span>
+                                            <span>{item.reviews?.length || 0} reviews</span>
+                                        </>
+                                    ) : (
+                                        <span>No reviews yet</span>
+                                    )}
                                 </div>
                             </div>
                         </div>
@@ -575,7 +581,7 @@ export const FarmerHomeScreen: React.FC<FarmerViewProps> = ({ navigate, roleBadg
 
             </div>
             {isFilterModalOpen && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 z-40 flex justify-center items-end" onClick={() => setIsFilterModalOpen(false)}>
+                <div className="fixed inset-0 bg-black bg-opacity-50 z-[10001] flex justify-center items-end" onClick={() => setIsFilterModalOpen(false)}>
                     <div className="bg-white dark:bg-neutral-800 w-full max-w-lg rounded-t-2xl p-6 shadow-xl" onClick={e => e.stopPropagation()}>
                         <div className="flex justify-between items-center mb-4">
                             <h2 className="text-xl font-bold text-neutral-800 dark:text-neutral-100">Filters</h2>
@@ -831,7 +837,7 @@ const FarmerMapView: React.FC<FarmerViewProps> = ({ navigate }) => {
 
             {/* Location Permission Popup */}
             {showLocationPopup && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4" style={{ zIndex: 9999 }}>
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4" style={{ zIndex: 10001 }}>
                     <div className="bg-white dark:bg-neutral-800 rounded-2xl p-6 max-w-sm w-full shadow-xl">
                         <div className="text-center">
                             <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -934,87 +940,86 @@ const FarmerBookingsScreen: React.FC<FarmerViewProps> = ({ navigate }) => {
     });
 
     return (
-        <div className="dark:text-neutral-200">
+        <div className="min-h-screen bg-green-50 dark:bg-neutral-900 dark:text-neutral-200">
             {/* Header with search and filter icons */}
             {/* Header with search and filter icons */}
-            <div className="sticky top-0 z-10 bg-white dark:bg-neutral-800 border-b border-neutral-200 dark:border-neutral-700 px-4 py-3">
-                <div className="flex items-center justify-between mb-3">
-                    <h1 className="text-lg font-bold text-neutral-900 dark:text-white">{t('myBookings')}</h1>
-                    <div className="flex items-center space-x-1">
-                        <button
-                            onClick={() => navigate({ view: 'PAYMENT_HISTORY' })}
-                            className="relative p-2 text-neutral-700 dark:text-neutral-300 hover:text-primary rounded-full hover:bg-neutral-100 dark:hover:bg-neutral-700"
-                            aria-label={t('paymentHistory')}
-                        >
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H4a3 3 0 00-3 3v8a3 3 0 003 3z" />
-                            </svg>
-                        </button>
-                        <button
-                            onClick={() => navigate({ view: 'BOOKING_HISTORY' })}
-                            className="relative p-2 text-neutral-700 dark:text-neutral-300 hover:text-primary rounded-full hover:bg-neutral-100 dark:hover:bg-neutral-700"
-                            aria-label={t('bookingHistory')}
-                        >
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6 1a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
-                        </button>
-                        <button
-                            onClick={() => setIsSearchOpen(!isSearchOpen)}
-                            className={`p-2 rounded-full transition-colors ${isSearchOpen ? 'bg-neutral-100 dark:bg-neutral-700 text-primary' : 'text-neutral-600 dark:text-neutral-300'}`}
-                        >
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                            </svg>
-                        </button>
-                        <button className="p-2 text-neutral-600 dark:text-neutral-300">
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2a1 1 0 01-.293.707L16 11.414V16l-4 2v-6.586L3.293 6.707A1 1 0 013 6V4z" />
-                            </svg>
-                        </button>
-                    </div>
+            {/* Header with search and filter icons */}
+            <Header title={t('myBookings')}>
+                <div className="flex items-center space-x-1">
+                    <button
+                        onClick={() => navigate({ view: 'PAYMENT_HISTORY' })}
+                        className="relative p-2 text-white hover:text-green-100 rounded-full hover:bg-green-600"
+                        aria-label={t('paymentHistory')}
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H4a3 3 0 00-3 3v8a3 3 0 003 3z" />
+                        </svg>
+                    </button>
+                    <button
+                        onClick={() => navigate({ view: 'BOOKING_HISTORY' })}
+                        className="relative p-2 text-white hover:text-green-100 rounded-full hover:bg-green-600"
+                        aria-label={t('bookingHistory')}
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6 1a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                    </button>
+                    <button
+                        onClick={() => setIsSearchOpen(!isSearchOpen)}
+                        className={`p-2 rounded-full transition-colors ${isSearchOpen ? 'bg-green-800 text-white' : 'text-white hover:bg-green-600'}`}
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                        </svg>
+                    </button>
+                    <button className="p-2 text-white hover:bg-green-600 rounded-full">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2a1 1 0 01-.293.707L16 11.414V16l-4 2v-6.586L3.293 6.707A1 1 0 013 6V4z" />
+                        </svg>
+                    </button>
                 </div>
-                {/* Search Input */}
-                {isSearchOpen && (
-                    <div className="mb-3 animate-fade-in">
-                        <input
-                            type="text"
-                            placeholder={t('searchPlaceholder')}
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            className="w-full p-2 border border-neutral-200 dark:border-neutral-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/50 bg-white dark:bg-neutral-700 text-neutral-900 dark:text-white text-sm"
-                            autoFocus
-                        />
-                    </div>
-                )}
-
-                {/* Status Filter Tabs */}
-                <div className="flex space-x-2 bg-neutral-100 dark:bg-neutral-700 p-1 rounded-lg">
-                    {(['Upcoming', 'Completed', 'Cancelled'] as const).map((status) => {
-                        const getTabColors = () => {
-                            if (statusFilter === status) {
-                                if (status === 'Upcoming') return 'bg-blue-500 text-white shadow-md';
-                                if (status === 'Completed') return 'bg-green-500 text-white shadow-md';
-                                if (status === 'Cancelled') return 'bg-red-500 text-white shadow-md';
-                            }
-                            return 'text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200';
-                        };
-
-                        return (
-                            <button
-                                key={status}
-                                onClick={() => setStatusFilter(status)}
-                                className={`flex-1 py-1.5 text-sm font-medium rounded-md transition-all ${getTabColors()}`}
-                            >
-                                {status}
-                            </button>
-                        );
-                    })}
+            </Header>
+            {/* Search Input */}
+            {isSearchOpen && (
+                <div className="mb-3 animate-fade-in">
+                    <input
+                        type="text"
+                        placeholder={t('searchPlaceholder')}
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="w-full p-2 border border-neutral-200 dark:border-neutral-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/50 bg-white dark:bg-neutral-700 text-neutral-900 dark:text-white text-sm"
+                        autoFocus
+                    />
                 </div>
+            )}
+
+            {/* Status Filter Tabs */}
+            <div className="flex space-x-2 bg-neutral-100 dark:bg-neutral-700 p-1 rounded-lg">
+                {(['Upcoming', 'Completed', 'Cancelled'] as const).map((status) => {
+                    const getTabColors = () => {
+                        if (statusFilter === status) {
+                            if (status === 'Upcoming') return 'bg-green-600 text-white shadow-md'; // Changed from blue to green
+                            if (status === 'Completed') return 'bg-green-600 text-white shadow-md';
+                            if (status === 'Cancelled') return 'bg-red-500 text-white shadow-md';
+                        }
+                        return 'bg-white dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700 shadow-sm';
+                    };
+
+                    return (
+                        <button
+                            key={status}
+                            onClick={() => setStatusFilter(status)}
+                            className={`flex-1 py-1.5 text-sm font-medium rounded-md transition-all ${getTabColors()}`}
+                        >
+                            {status}
+                        </button>
+                    );
+                })}
             </div>
 
+
             {/* Booking cards */}
-            < div className="p-4 space-y-4 pb-24" >
+            <div className="p-4 space-y-4 pb-24">
                 {
                     filteredBookings.length > 0 ? [...filteredBookings].reverse().map(booking => {
                         const item = items.find(m => m.id === booking.itemId);
@@ -1128,27 +1133,33 @@ const FarmerBookingsScreen: React.FC<FarmerViewProps> = ({ navigate }) => {
                         </div>
                     )
                 }
-            </div >
+            </div>
 
-            {bookingToCancel && (
-                <ConfirmationDialog
-                    title="Cancel Booking"
-                    message="Are you sure you want to cancel this booking?"
-                    note="This action cannot be undone."
-                    confirmText="Confirm"
-                    cancelText="Go Back"
-                    onConfirm={handleConfirmCancel}
-                    onCancel={() => setBookingToCancel(null)}
-                />
-            )}
-        </div >
+            {
+                bookingToCancel && (
+                    <ConfirmationDialog
+                        title="Cancel Booking"
+                        message="Are you sure you want to cancel this booking?"
+                        note="This action cannot be undone."
+                        confirmText="Confirm"
+                        cancelText="Go Back"
+                        onConfirm={handleConfirmCancel}
+                        onCancel={() => setBookingToCancel(null)}
+                    />
+                )
+            }
+        </div>
+
     );
 }
-
+// [Removed lines 1154-1156]
 const ProfileScreen: React.FC<FarmerViewProps> = ({ navigate, onSwitchMode, roleBadge }) => {
-    const { user, logout } = useAuth();
+    const { user, allUsers, logout } = useAuth();
     const { getUnreadMessageCount } = useChat();
+    const { showToast } = useToast();
     const { t } = useLanguage();
+    const { getRankBorderClass } = useStreakRankings(allUsers);
+
     const unreadChatCount = user ? getUnreadMessageCount(user.id) : 0;
 
     const ProfileLink: React.FC<{ label: string, onClick: () => void, icon: React.ReactElement }> = ({ label, onClick, icon }) => (
@@ -1177,20 +1188,25 @@ const ProfileScreen: React.FC<FarmerViewProps> = ({ navigate, onSwitchMode, role
 
     return (
         <div className="dark:text-neutral-200 bg-neutral-50 dark:bg-neutral-900 min-h-full">
-            <Header title={t('myProfile')}>
-                {roleBadge && (
-                    <div className="mr-2 inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-sm border border-blue-400/30">
-                        {roleBadge}
-                    </div>
-                )}
+            <Header title={
+                <div className="flex items-center">
+                    {t('myProfile')}
+                    {roleBadge && (
+                        <div className="md:hidden ml-3 inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-sm border border-blue-400/30">
+                            {roleBadge}
+                        </div>
+                    )}
+                </div>
+            }>
                 <ChatIcon onClick={() => navigate({ view: 'CONVERSATIONS' })} unreadCount={unreadChatCount} />
                 <NotificationBell />
             </Header>
             <div className="p-6">
+
                 {/* Profile Picture with Edit Badge */}
                 <div className="text-center mb-8">
                     <div className="relative inline-block">
-                        <div className="w-24 h-24 rounded-full bg-green-50 dark:bg-green-900/20 border-4 border-green-100 dark:border-green-800 overflow-hidden mx-auto">
+                        <div className={`w-24 h-24 rounded-full bg-green-50 dark:bg-green-900/20 overflow-hidden mx-auto ${user ? getRankBorderClass(user.id) : 'border-4 border-green-100 dark:border-green-800'}`}>
                             <img
                                 src={user?.profilePicture}
                                 alt={user?.name}
@@ -1204,14 +1220,7 @@ const ProfileScreen: React.FC<FarmerViewProps> = ({ navigate, onSwitchMode, role
                                 }}
                             />
                         </div>
-                        <button
-                            onClick={() => navigate({ view: 'MY_ACCOUNT' })}
-                            className="absolute bottom-0 right-0 w-7 h-7 bg-green-500 rounded-full flex items-center justify-center shadow-lg border-2 border-white dark:border-neutral-800"
-                        >
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                            </svg>
-                        </button>
+
                     </div>
                     <h2 className="text-xl font-bold mt-4 text-neutral-800 dark:text-neutral-100">{user?.name || 'farmer'}</h2>
                 </div>
@@ -1283,7 +1292,7 @@ const ProfileScreen: React.FC<FarmerViewProps> = ({ navigate, onSwitchMode, role
     );
 };
 
-const FarmerView: React.FC<FarmerViewProps> = ({ navigate, onSwitchMode, roleBadge }) => {
+const FarmerView: React.FC<FarmerViewProps> = ({ navigate, onSwitchMode, roleBadge, children }) => {
     const [activeTab, setActiveTab] = useState<string>('home');
     const { bookings } = useBooking();
 
@@ -1298,53 +1307,56 @@ const FarmerView: React.FC<FarmerViewProps> = ({ navigate, onSwitchMode, roleBad
         })[0];
     }, [bookings]);
 
-    const farmerNavItems: NavItemConfig[] = [
-        {
-            name: 'home',
-            icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>
-        },
-        {
-            name: 'bookings',
-            icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>
-        },
-        {
-            name: 'book',
-            icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" /></svg>,
-            isCenter: true,
-            onClick: () => navigate({ view: 'BOOKING_FORM' })
-        },
-        {
-            name: 'map',
-            icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l5.447 2.724A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m-6 3l6-3m0 10V4" /></svg>
-        },
-        {
-            name: 'profile',
-            icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
-        }
+    const navItems: NavItemConfig[] = [
+        { name: 'home', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg> },
+        { name: 'map', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0121 18.382V7.618a1 1 0 01-.553-.894L15 4m0 13V4m0 0L9 7" /></svg> },
+        { name: 'book', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>, isCenter: true, onClick: () => navigate({ view: 'BOOKING_FORM' }) },
+        { name: 'bookings', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg> },
+        { name: 'profile', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg> },
     ];
 
     const renderContent = () => {
         switch (activeTab) {
-            case 'home':
-                return <FarmerHomeScreen navigate={navigate} roleBadge={roleBadge} />;
-            case 'bookings':
-                return <FarmerBookingsScreen navigate={navigate} />;
-            case 'map':
-                return <FarmerMapView navigate={navigate} />;
-            case 'profile':
-                return <ProfileScreen navigate={navigate} onSwitchMode={onSwitchMode} roleBadge={roleBadge} />;
-            default:
-                return <FarmerHomeScreen navigate={navigate} roleBadge={roleBadge} />;
+            case 'home': return <FarmerHomeScreen navigate={navigate} activeTab="home" setActiveTab={setActiveTab} onSwitchMode={onSwitchMode} roleBadge={roleBadge} latestArrivedWithOtp={latestArrivedWithOtp} />;
+            case 'map': return <FarmerMapView navigate={navigate} onSwitchMode={onSwitchMode} roleBadge={roleBadge} />;
+            case 'bookings': return <FarmerBookingsScreen navigate={navigate} onSwitchMode={onSwitchMode} roleBadge={roleBadge} />;
+            case 'profile': return <ProfileScreen navigate={navigate} onSwitchMode={onSwitchMode} roleBadge={roleBadge} />;
+            default: return <FarmerHomeScreen navigate={navigate} activeTab="home" setActiveTab={setActiveTab} onSwitchMode={onSwitchMode} roleBadge={roleBadge} latestArrivedWithOtp={latestArrivedWithOtp} />;
         }
     };
 
+    const { logout } = useAuth(); // Import logout
+
     return (
-        <div className="flex-1 w-full flex flex-col">
-            <div className={`flex-grow flex flex-col ${activeTab === 'map' ? 'overflow-hidden' : 'overflow-y-auto pb-20'}`}>
-                {renderContent()}
+        <div className="flex h-screen overflow-hidden bg-green-50 dark:bg-neutral-900">
+            {/* Desktop Sidebar */}
+            <AppSidebar
+                role="Farmer"
+                activeTab={activeTab}
+                setActiveTab={setActiveTab}
+                navigate={navigate}
+                onLogout={logout}
+                roleBadge={roleBadge && (
+                    <div className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-gradient-to-r from-blue-500 to-indigo-500 text-white shadow-sm border border-blue-400/30 whitespace-nowrap leading-none tracking-wide">
+                        {roleBadge}
+                    </div>
+                )}
+            />
+
+            {/* Main Content */}
+            <div className="flex-1 flex flex-col h-full overflow-hidden relative">
+                {/* Desktop Content - Scrollable */}
+                <div className="hidden md:block flex-1 overflow-y-auto min-h-0 pb-10">
+                    {children ? children : renderContent()}
+                </div>
+
+                {/* Mobile Content - With Bottom Nav */}
+                <div className="md:hidden flex-1 h-full overflow-y-auto">
+                    <DashboardLayout activeTab={activeTab} setActiveTab={setActiveTab} navItems={navItems}>
+                        {children ? children : renderContent()}
+                    </DashboardLayout>
+                </div>
             </div>
-            {/* OTP is now shown inside booking cards only, per request */}
-            <BottomNav activeTab={activeTab} setActiveTab={setActiveTab} navItems={farmerNavItems} />
         </div>
     );
 };

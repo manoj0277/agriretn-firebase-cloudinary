@@ -34,7 +34,7 @@ const BookingHistoryScreen: React.FC<BookingHistoryScreenProps> = ({ navigate, g
   };
 
   return (
-    <div className="dark:text-neutral-200">
+    <div className="dark:text-neutral-200 bg-green-50 dark:bg-neutral-900 min-h-screen">
       <Header title={t('bookingHistory')} onBack={goBack} />
       <div className="p-4 space-y-4">
         {history.length === 0 ? (
@@ -44,7 +44,7 @@ const BookingHistoryScreen: React.FC<BookingHistoryScreenProps> = ({ navigate, g
             const item = items.find(i => i.id === b.itemId);
             const duration = getDuration(b);
             return (
-              <div key={b.id} className="bg-white dark:bg-neutral-700 p-4 rounded-lg border border-neutral-200 dark:border-neutral-600">
+              <div key={b.id} className="bg-white dark:bg-neutral-700 p-4 rounded-lg border border-neutral-200 dark:border-neutral-600 shadow-sm">
                 <div className="flex justify-between">
                   <div>
                     <h3 className="font-bold text-neutral-800 dark:text-neutral-100">{item?.name || b.itemCategory}</h3>
@@ -79,7 +79,7 @@ const BookingHistoryScreen: React.FC<BookingHistoryScreenProps> = ({ navigate, g
                 {
                   (b.status === 'Confirmed' || b.status === 'Arrived') && (
                     <div className="mt-3 border-t border-neutral-100 dark:border-neutral-600 pt-2 flex justify-between items-center">
-                      {b.lateStart ? <p className="text-xs text-red-600 font-semibold">Supplier is late (&gt;30m).</p> : <span></span>}
+                      {(b as any).lateStart ? <p className="text-xs text-red-600 font-semibold">Supplier is late (&gt;30m).</p> : <span></span>}
                       <button
                         onClick={() => {
                           if (window.confirm('Do you want to cancel this booking?')) {

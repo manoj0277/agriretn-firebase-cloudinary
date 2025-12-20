@@ -68,7 +68,7 @@ export const AiAssistantProvider: React.FC<{ children: ReactNode }> = ({ childre
         {
             id: Date.now(),
             role: 'ai',
-            text: `Hello ${user?.name}! I'm your AI Farming Assistant. You can ask me anything about agriculture, from crop diseases to market trends. If you need equipment like a tractor or workers, just ask! You can type or use the microphone to talk to me.`,
+            text: `Hello ${user?.name || 'Farmer'}! I'm your AI Farming Assistant. You can ask me anything about agriculture, from crop diseases to market trends. If you need equipment like a tractor or workers, just ask! You can type or use the microphone to talk to me.`,
             timestamp: new Date().toISOString()
         }
     ]);
@@ -177,7 +177,8 @@ export const AiAssistantProvider: React.FC<{ children: ReactNode }> = ({ childre
             let responseText = '';
             try {
                 // Handle response.text whether it's a property (string) or a function
-                responseText = typeof response.text === 'function' ? response.text() : response.text;
+                const responseAny = response as any;
+                responseText = typeof responseAny.text === 'function' ? responseAny.text() : responseAny.text;
                 // If response.text is undefined/null, default to empty string
                 if (!responseText) responseText = '';
             } catch (e) {

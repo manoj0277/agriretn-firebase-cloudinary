@@ -47,7 +47,7 @@ const PaymentScreen: React.FC<PaymentScreenProps> = ({ booking, goBack, navigate
     };
 
     return (
-        <div className="flex flex-col h-screen">
+        <div className="flex flex-col h-screen bg-green-50 dark:bg-neutral-900">
             <Header title={isFarmer ? 'Complete Payment' : 'Payment Details'} onBack={goBack} />
 
             <div className="flex-grow overflow-y-auto p-4 space-y-6">

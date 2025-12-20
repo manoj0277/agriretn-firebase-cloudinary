@@ -93,7 +93,7 @@ const ItemDetailScreen: React.FC<ItemDetailScreenProps> = ({ item, navigate, goB
     };
 
     return (
-        <div className="flex flex-col h-screen dark:text-neutral-200">
+        <div className="flex flex-col h-screen dark:text-neutral-200 bg-green-50 dark:bg-neutral-900">
             <Header title={item.name} onBack={goBack} />
             <div className="flex-grow overflow-y-auto pb-24 hide-scrollbar">
                 <div>
@@ -177,7 +177,7 @@ const ItemDetailScreen: React.FC<ItemDetailScreenProps> = ({ item, navigate, goB
 
                     <div className="mt-6">
                         <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-2">Services & Pricing</h3>
-                        <div className="space-y-2 bg-neutral-100 dark:bg-neutral-700 p-4 rounded-lg">
+                        <div className="space-y-2 bg-white dark:bg-neutral-700 p-4 rounded-lg border border-neutral-200 dark:border-neutral-600 shadow-sm">
                             {item.purposes.map(purpose => (
                                 <div key={purpose.name} className="flex justify-between text-sm">
                                     <span className="text-neutral-700 dark:text-neutral-300">{purpose.name}</span>
@@ -188,7 +188,7 @@ const ItemDetailScreen: React.FC<ItemDetailScreenProps> = ({ item, navigate, goB
                     </div>
 
 
-                    <div className="mt-6 bg-neutral-100 dark:bg-neutral-700 p-4 rounded-lg">
+                    <div className="mt-6 bg-white dark:bg-neutral-700 p-4 rounded-lg border border-neutral-200 dark:border-neutral-600 shadow-sm">
                         <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-2">Description</h3>
                         <p className="text-neutral-700 dark:text-neutral-300">{item.description}</p>
                     </div>
@@ -196,7 +196,7 @@ const ItemDetailScreen: React.FC<ItemDetailScreenProps> = ({ item, navigate, goB
                     {isMachineType && (
                         <div className="mt-6">
                             <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-2">Specifications</h3>
-                            <div className="grid grid-cols-2 gap-4 bg-neutral-100 dark:bg-neutral-700 p-4 rounded-lg text-sm">
+                            <div className="grid grid-cols-2 gap-4 bg-white dark:bg-neutral-700 p-4 rounded-lg text-sm border border-neutral-200 dark:border-neutral-600 shadow-sm">
                                 {item.model && <div><p className="text-neutral-500 dark:text-neutral-400">Model</p><p className="font-semibold text-neutral-900 dark:text-neutral-100">{item.model}</p></div>}
                                 {item.year && <div><p className="text-neutral-500 dark:text-neutral-400">Year</p><p className="font-semibold text-neutral-900 dark:text-neutral-100">{item.year}</p></div>}
                                 {item.horsepower && <div><p className="text-neutral-500 dark:text-neutral-400">Horsepower</p><p className="font-semibold text-neutral-900 dark:text-neutral-100">{item.horsepower} HP</p></div>}

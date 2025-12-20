@@ -1,6 +1,7 @@
 
 
 import React from 'react';
+import { MedalName } from './MedalName';
 import { Item, ItemCategory } from '../types';
 import StarRating from './StarRating';
 import { useSettings } from '../context/SettingsContext';

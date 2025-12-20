@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react'
- 
+
 
 export interface Column<T> {
   key: keyof T | string
@@ -73,7 +73,7 @@ const DataTable = <T extends Record<string, any>>({
     }
   }
 
-  
+
 
   return (
     <div className="p-4 space-y-4">

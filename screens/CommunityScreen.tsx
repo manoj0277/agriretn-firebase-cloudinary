@@ -1,37 +1,70 @@
-
-
 import React, { useState } from 'react';
-import { useCommunity } from '../context/CommunityContext';
 import { useAuth } from '../context/AuthContext';
-import Header from '../components/Header';
-import Button from '../components/Button';
-import Input from '../components/Input';
-import { ForumPost, CommunityReply } from '../types';
 import { useLanguage } from '../context/LanguageContext';
+import { useToast } from '../context/ToastContext';
+import { useCommunity } from '../context/CommunityContext';
+import Header from '../components/Header';
+import Input from '../components/Input';
+import Button from '../components/Button';
+import { ForumPost, CommunityReply, UserRole } from '../types';
+
+// Utility to format ISO timestamp to human readable format
+const formatDate = (isoString: string) => {
+    try {
+        const date = new Date(isoString);
+        return date.toLocaleString('en-IN', {
+            day: 'numeric',
+            month: 'short',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: true
+        });
+    } catch (e) {
+        return isoString;
+    }
+};
 
 const PostCard: React.FC<{ post: ForumPost, onClick: () => void }> = ({ post, onClick }) => {
     const { allUsers } = useAuth();
     const author = allUsers.find(u => u.id === post.authorId);
     const { t } = useLanguage();
     return (
-        <div className="bg-white dark:bg-neutral-700 p-4 rounded-lg border border-neutral-200 dark:border-neutral-600 hover:border-primary cursor-pointer transition-colors" onClick={onClick}>
+        <div className="bg-white dark:bg-neutral-800 p-4 rounded-lg border border-neutral-200 dark:border-neutral-700 hover:border-primary cursor-pointer transition-colors shadow-sm" onClick={onClick}>
             <h3 className="text-lg font-bold text-neutral-800 dark:text-neutral-100">{post.title}</h3>
             <div className="text-xs text-neutral-500 mt-1 flex justify-between">
-                <span className="dark:text-neutral-400">By {author?.name || 'Anonymous'} - {post.timestamp}</span>
+                <span className="dark:text-neutral-400">By {author?.name || 'Anonymous'} - {formatDate(post.timestamp)}</span>
                 <span className="dark:text-neutral-400">{post.replies.length} {t('replies')}</span>
             </div>
         </div>
     );
 }
 
-const ReplyCard: React.FC<{ reply: CommunityReply }> = ({ reply }) => {
-    const { allUsers } = useAuth();
+const ReplyCard: React.FC<{ reply: CommunityReply, postId: number }> = ({ reply, postId }) => {
+    const { allUsers, user } = useAuth();
+    const { deleteReply } = useCommunity();
     const author = allUsers.find(u => u.id === reply.authorId);
+    const canDelete = String(user?.id) === String(reply.authorId) || user?.role === UserRole.Admin;
+
+    const handleDelete = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (window.confirm('Are you sure you want to delete this reply?')) {
+            deleteReply(postId, reply.id);
+        }
+    };
+
     return (
-        <div className="bg-neutral-100 dark:bg-neutral-700 p-3 rounded-lg">
+        <div className="bg-white dark:bg-neutral-800 p-3 rounded-lg shadow-sm border border-neutral-100 dark:border-neutral-700">
             <div className="flex justify-between text-xs mb-1">
-                <span className="font-semibold text-neutral-800 dark:text-neutral-100">{author?.name || 'Anonymous'}</span>
-                <span className="text-neutral-500 dark:text-neutral-400">{reply.timestamp}</span>
+                <div className="flex items-center space-x-2">
+                    <span className="font-semibold text-neutral-800 dark:text-neutral-100">{author?.name || 'Anonymous'}</span>
+                    <span className="text-neutral-500 dark:text-neutral-400">{formatDate(reply.timestamp)}</span>
+                </div>
+                {canDelete && (
+                    <button onClick={handleDelete} className="text-red-500 hover:text-red-700 dark:text-red-400">
+                        Delete
+                    </button>
+                )}
             </div>
             <p className="text-neutral-700 dark:text-neutral-300 text-sm">{reply.content}</p>
         </div>
@@ -45,7 +78,7 @@ const PostDetailView: React.FC<{ post: ForumPost, onBack: () => void }> = ({ pos
     const [newReply, setNewReply] = useState('');
     const { allUsers } = useAuth();
     const author = allUsers.find(u => u.id === post.authorId);
-    const isAuthor = user?.id === post.authorId;
+    const isAuthorOrAdmin = String(user?.id) === String(post.authorId) || user?.role === UserRole.Admin;
 
     const handleReplySubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -66,9 +99,9 @@ const PostDetailView: React.FC<{ post: ForumPost, onBack: () => void }> = ({ pos
     };
 
     return (
-        <div className="flex flex-col h-full">
+        <div className="flex flex-col h-screen bg-green-50 dark:bg-neutral-900">
             <Header title={post.title} onBack={onBack}>
-                {isAuthor && (
+                {isAuthorOrAdmin && (
                     <button
                         onClick={handleDelete}
                         className="p-2 text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-full transition-colors"
@@ -81,9 +114,9 @@ const PostDetailView: React.FC<{ post: ForumPost, onBack: () => void }> = ({ pos
                 )}
             </Header>
             <div className="flex-grow overflow-y-auto p-4 space-y-4">
-                <div className="bg-white dark:bg-neutral-700 p-4 rounded-lg border border-neutral-200 dark:border-neutral-600">
+                <div className="bg-white dark:bg-neutral-800 p-4 rounded-lg border border-neutral-200 dark:border-neutral-700 shadow-sm">
                     <div className="text-xs text-neutral-500 dark:text-neutral-400 mb-2">
-                        Posted by {author?.name || 'Anonymous'} on {post.timestamp}
+                        Posted by {author?.name || 'Anonymous'} on {formatDate(post.timestamp)}
                     </div>
                     <p className="text-neutral-700 dark:text-neutral-300">{post.content}</p>
                 </div>
@@ -91,7 +124,7 @@ const PostDetailView: React.FC<{ post: ForumPost, onBack: () => void }> = ({ pos
                 <h3 className="font-bold text-neutral-800 dark:text-neutral-100 pt-4 border-t dark:border-neutral-700">{t('replies')} ({post.replies.length})</h3>
                 <div className="space-y-3">
                     {post.replies.map(reply => (
-                        <ReplyCard key={reply.id} reply={reply} />
+                        <ReplyCard key={reply.id} reply={reply} postId={post.id} />
                     ))}
                 </div>
             </div>
@@ -138,7 +171,7 @@ const CommunityScreen: React.FC<{ goBack?: () => void }> = ({ goBack }) => {
     }
 
     return (
-        <div className="dark:text-neutral-200">
+        <div className="min-h-screen bg-green-50 dark:bg-neutral-900 dark:text-neutral-200">
             <Header title={t('communityForum')} onBack={goBack} />
             <div className="p-4">
                 <div className="flex justify-between items-center mb-4">

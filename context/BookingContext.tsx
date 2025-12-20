@@ -4,6 +4,9 @@ import { useToast } from './ToastContext';
 import { useNotification } from './NotificationContext';
 import { useItem } from './ItemContext';
 import { useAdminAlert } from './AdminAlertContext';
+import { useAuth } from './AuthContext';
+import { auth, db } from '../src/lib/firebase';
+import { onSnapshot, collection, query, where } from 'firebase/firestore';
 
 const API_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3001/api';
 
@@ -83,6 +86,7 @@ export const BookingProvider: React.FC<{ children: ReactNode }> = ({ children })
     const { addNotification } = useNotification();
     const { addAlert } = useAdminAlert();
     const { items, updateItem } = useItem();
+    const { allUsers } = useAuth();
 
     const supplierRejectCounts: Record<string, { count: number; firstTs: number }> = {};
 
@@ -101,56 +105,85 @@ export const BookingProvider: React.FC<{ children: ReactNode }> = ({ children })
         loadBookings();
     }, []);
 
-    // Poll for booking updates every 60 seconds to avoid quota limits
+    // Real-time booking updates with onSnapshot (replaces polling)
     useEffect(() => {
-        const interval = setInterval(async () => {
+        let unsubscribe: () => void;
+
+        const setupBookingListener = async () => {
+            // For Admin: Listen to all bookings
+            // For Users: Ideally listen to bookings where user is Farmer OR Supplier.
+            // Due to Firestore strict security rules, sometimes two listeners are needed (OR queries are limited).
+            // However, for this MVP optimization, we will listen to the 'bookings' collection and rely on 
+            // client-side or rule-based filtering if the collection size is manageable (< 5000 docs).
+            // Given the user wants "Real Data All Time", an open listener is the most robust approach for now.
+
             try {
-                // Check if document is visible to avoid polling in background tabs
-                if (document.visibilityState === 'hidden') return;
+                const q = collection(db, 'bookings');
+                unsubscribe = onSnapshot(q, (snapshot) => {
+                    const loadedBookings = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Booking));
 
-                const res = await fetch(`${API_URL}/bookings`);
-                if (res.ok) {
-                    const data = await res.json();
+                    // Perform auto-cancellation check on the FRESH data
+                    checkExpiredBookings(loadedBookings);
 
-                    // Auto-cancel expired bookings that haven't been accepted
-                    const now = new Date();
-                    const expiredBookings = data.filter((b: Booking) => {
-                        // Only auto-cancel if still searching or pending confirmation
-                        if (!['Searching', 'Pending Confirmation'].includes(b.status)) return false;
-
-                        const bookingDate = new Date(b.date);
-                        const [hours, minutes] = b.startTime.split(':').map(Number);
-                        const bookingDateTime = new Date(bookingDate);
-                        bookingDateTime.setHours(hours, minutes, 0, 0);
-
-                        // Check if booking time has passed
-                        return now > bookingDateTime;
-                    });
-
-                    // Cancel each expired booking
-                    for (const booking of expiredBookings) {
-                        await fetch(`${API_URL}/bookings/${booking.id}`, {
-                            method: 'PUT',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ status: 'Expired' })
-                        });
-
-                        // Notify farmer
-                        addNotification({
-                            userId: booking.farmerId,
-                            message: `Your booking for ${booking.itemCategory} on ${booking.date} at ${booking.startTime} has been automatically cancelled as no supplier accepted it in time.`,
-                            type: 'booking'
-                        });
-                    }
-
-                    setBookings(data);
-                }
-            } catch (err) {
-                console.error("Polling error:", err);
+                    setBookings(loadedBookings);
+                }, (error) => {
+                    console.error("Booking listener error:", error);
+                    // Fallback to poll if listener fails
+                    setupPolling();
+                });
+            } catch (e) {
+                console.error("Booking listener setup failed", e);
+                setupPolling();
             }
-        }, 60000); // Increased to 60s
-        return () => clearInterval(interval);
-    }, [addNotification]);
+        };
+
+        const checkExpiredBookings = async (data: Booking[]) => {
+            // Logic extracted from old poller
+            const now = new Date();
+            const expiredBookings = data.filter((b: Booking) => {
+                if (!['Searching', 'Pending Confirmation'].includes(b.status)) return false;
+                const bookingDate = new Date(b.date);
+                const [hours, minutes] = (b.startTime || '00:00').split(':').map(Number);
+                const bookingDateTime = new Date(bookingDate);
+                bookingDateTime.setHours(hours, minutes, 0, 0);
+                return now > bookingDateTime;
+            });
+
+            // Cancel logic - executed via API to ensure backend consistency/emails sent
+            for (const booking of expiredBookings) {
+                // Trigger backend cancellation if not already cancelled
+                // Note: This might race if multiple clients run it, but backend should handle idempotency.
+                // Ideally backend handles cron jobs. Frontend doing this is a fallback.
+                await fetch(`${API_URL}/bookings/${booking.id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ status: 'Expired' })
+                });
+            }
+        };
+
+        const setupPolling = () => {
+            // Fallback Polling (60s)
+            const interval = setInterval(async () => {
+                if (document.visibilityState === 'hidden') return;
+                try {
+                    const res = await fetch(`${API_URL}/bookings`);
+                    if (res.ok) {
+                        const data = await res.json();
+                        checkExpiredBookings(data);
+                        setBookings(data);
+                    }
+                } catch (e) { console.error("Poll failed", e); }
+            }, 60000);
+            return () => clearInterval(interval);
+        };
+
+        setupBookingListener();
+
+        return () => {
+            if (unsubscribe) unsubscribe();
+        };
+    }, []);
 
     useEffect(() => {
         const loadReports = async () => {

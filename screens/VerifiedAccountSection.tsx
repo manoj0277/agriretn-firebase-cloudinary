@@ -132,7 +132,7 @@ const VerifiedAccountSection: React.FC<VerifiedAccountSectionProps> = ({ onClose
 
             {/* Purchase Modal */}
             {showPurchaseModal && (
-                <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4" onClick={() => setShowPurchaseModal(false)}>
+                <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[10001] p-4" onClick={() => setShowPurchaseModal(false)}>
                     <div className="bg-white dark:bg-neutral-800 rounded-2xl w-full max-w-md p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
                         <div className="text-center mb-6">
                             <div className="w-16 h-16 bg-blue-100 dark:bg-blue-900/50 rounded-full flex items-center justify-center mx-auto mb-4">

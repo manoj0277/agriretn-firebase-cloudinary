@@ -1,5 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
+import { MedalName } from '../components/MedalName';
 import { useAuth } from '../context/AuthContext';
 import { useBooking } from '../context/BookingContext';
 import { useItem } from '../context/ItemContext';
@@ -57,12 +58,12 @@ const AcceptJobModal: React.FC<{
     }
 
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black bg-opacity-60 z-[10001] flex items-center justify-center p-4">
             <div className="bg-white dark:bg-neutral-800 rounded-lg shadow-xl w-full max-w-md p-6">
                 <h2 className="text-xl font-bold mb-2 text-neutral-800 dark:text-neutral-100">Accept Request</h2>
                 <p className="text-sm text-neutral-600 dark:text-neutral-300 mb-4">Select an item to fulfill this booking request.</p>
 
-                <div className="bg-neutral-50 dark:bg-neutral-700 p-3 rounded-lg mb-4 text-sm">
+                <div className="bg-white dark:bg-neutral-700 p-3 rounded-lg mb-4 text-sm">
                     <div className="space-y-1 text-neutral-700 dark:text-neutral-300">
                         <p><strong className="font-semibold text-neutral-800 dark:text-neutral-100">Category:</strong> {booking.itemCategory}</p>
                         {booking.quantity && <p><strong className="font-semibold text-neutral-800 dark:text-neutral-100">Quantity Needed:</strong> {booking.quantity}</p>}
@@ -295,7 +296,7 @@ export const SupplierRequestsScreen: React.FC = () => {
     const categories = ['All', ...Object.values(ItemCategory)];
 
     return (
-        <div className="bg-gray-50 dark:bg-neutral-900 min-h-screen pb-20">
+        <div className="bg-green-50 dark:bg-neutral-900 min-h-screen pb-20">
             {/* Header removed as it's provided by SupplierView */}
 
             {/* Category Filters - Styled as sub-header */}
@@ -315,7 +316,7 @@ export const SupplierRequestsScreen: React.FC = () => {
                             onClick={() => setSelectedCategory(cat)}
                             className={`px-4 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${selectedCategory === cat
                                 ? 'bg-primary text-white'
-                                : 'bg-neutral-100 dark:bg-neutral-700 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-600'
+                                : 'bg-white border border-neutral-200 dark:bg-neutral-700 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-600'
                                 }`}
                         >
                             {cat}
@@ -326,142 +327,235 @@ export const SupplierRequestsScreen: React.FC = () => {
 
             <div className="p-4 space-y-4">
                 {filteredRequests.length > 0 ? (
-                    [...filteredRequests].reverse().map(booking => {
-                        const isOperatorRequest = booking.status === 'Awaiting Operator';
-                        const isPendingConfirmation = booking.status === 'Pending Confirmation';
+                    <>
+                        {/* Mobile View - Cards */}
+                        <div className="md:hidden space-y-4">
+                            {[...filteredRequests].reverse().map(booking => {
+                                const isOperatorRequest = booking.status === 'Awaiting Operator';
+                                const isPendingConfirmation = booking.status === 'Pending Confirmation';
 
-                        const itemForBooking = items.find(i => i.id === booking.itemId);
+                                const itemForBooking = items.find(i => i.id === booking.itemId);
 
-                        const title = isPendingConfirmation
-                            ? `Request for ${itemForBooking?.name || 'Unknown Item'}`
-                            : isOperatorRequest
-                                ? `Driver for ${getMachineNameForOpRequest(booking.itemId)}`
-                                : `Request for ${booking.itemCategory}`;
+                                const title = isPendingConfirmation
+                                    ? `Request for ${itemForBooking?.name || 'Unknown Item'}`
+                                    : isOperatorRequest
+                                        ? `Driver for ${getMachineNameForOpRequest(booking.itemId)}`
+                                        : `Request for ${booking.itemCategory}`;
 
-                        const tagText = isPendingConfirmation ? 'Direct Request' : isOperatorRequest ? 'Operator Request' : 'Broadcast';
-                        const tagColor = isPendingConfirmation ? 'bg-green-100 text-green-800' : isOperatorRequest ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800';
+                                const tagText = isPendingConfirmation ? 'Direct Request' : isOperatorRequest ? 'Operator Request' : 'Broadcast';
+                                const tagColor = isPendingConfirmation ? 'bg-green-100 text-green-800' : isOperatorRequest ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800';
 
-                        const farmer = allUsers.find(u => u.id === booking.farmerId);
-                        const distance = userLocation && booking.locationCoords
-                            ? calculateDistance(userLocation.lat, userLocation.lng, booking.locationCoords.lat, booking.locationCoords.lng)
-                            : null;
+                                const farmer = allUsers.find(u => u.id === booking.farmerId);
+                                const distance = userLocation && booking.locationCoords
+                                    ? calculateDistance(userLocation.lat, userLocation.lng, booking.locationCoords.lat, booking.locationCoords.lng)
+                                    : null;
 
-                        // Dynamic Icon Logic
-                        const getIcon = () => {
-                            if (booking.itemCategory === ItemCategory.Workers || booking.workPurpose?.toLowerCase().includes('labour')) {
+                                // Dynamic Icon Logic
+                                const getIcon = () => {
+                                    if (booking.itemCategory === ItemCategory.Workers || booking.workPurpose?.toLowerCase().includes('labour')) {
+                                        return (
+                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-neutral-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                                            </svg>
+                                        );
+                                    }
+                                    if (booking.itemCategory === ItemCategory.Harvesters) {
+                                        return (
+                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-neutral-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                                            </svg>
+                                        ); // Placeholder to ensure I view first for Harvester, using Lightning for power/machine
+                                    }
+                                    // Default Tractor/Machine
+                                    return (
+                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-neutral-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path d="M9 17a2 2 0 11-4 0 2 2 0 014 0zM19 17a2 2 0 11-4 0 2 2 0 014 0z" />
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V8a1 1 0 011-1h2.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V16a1 1 0 01-1 1h-1m-6-1a1 1 0 001 1h1M5 17a2 2 0 104 0m-4 0a2 2 0 114 0m6 0a2 2 0 104 0m-4 0a2 2 0 114 0" />
+                                        </svg>
+                                    );
+                                };
+
                                 return (
-                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-neutral-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                                    </svg>
-                                );
-                            }
-                            if (booking.itemCategory === ItemCategory.Harvesters) {
-                                return (
-                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-neutral-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                                    </svg>
-                                ); // Placeholder for Harvester, using Lightning for power/machine
-                            }
-                            // Default Tractor/Machine
-                            return (
-                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-neutral-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path d="M9 17a2 2 0 11-4 0 2 2 0 014 0zM19 17a2 2 0 11-4 0 2 2 0 014 0z" />
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V8a1 1 0 011-1h2.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V16a1 1 0 01-1 1h-1m-6-1a1 1 0 001 1h1M5 17a2 2 0 104 0m-4 0a2 2 0 114 0m6 0a2 2 0 104 0m-4 0a2 2 0 114 0" />
-                                </svg>
-                            );
-                        };
-
-                        return (
-                            <div key={booking.id} className="bg-white dark:bg-neutral-800 rounded-xl shadow-sm border border-neutral-100 dark:border-neutral-700 overflow-hidden">
-                                <div className="p-4">
-                                    <div className="flex justify-between items-start mb-3">
-                                        <div>
-                                            <h3 className="font-bold text-lg text-neutral-800 dark:text-neutral-100 leading-tight">{title}</h3>
-                                            <div className="flex items-center mt-1 text-neutral-500 dark:text-neutral-400 text-sm">
-                                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" viewBox="0 0 20 20" fill="currentColor">
-                                                    <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" />
-                                                </svg>
-                                                <span>From: {getFarmerRole(booking.farmerId)}</span>
-                                            </div>
-                                        </div>
-                                        <span className={`text-xs font-semibold px-2 py-1 rounded ${tagColor}`}>
-                                            {tagText}
-                                        </span>
-                                    </div>
-
-                                    <div className="space-y-3 mt-4">
-                                        <div className="flex items-start">
-                                            <div className="w-6 flex-shrink-0 flex justify-center mt-0.5">
-                                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-neutral-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                                                </svg>
-                                            </div>
-                                            <div className="ml-2">
-                                                <p className="text-sm font-semibold text-neutral-800 dark:text-neutral-200">Date: {booking.date} from {booking.startTime}</p>
-                                            </div>
-                                        </div>
-
-                                        <div className="flex items-start justify-between">
-                                            <div className="flex items-start flex-grow">
-                                                <div className="w-6 flex-shrink-0 flex justify-center mt-0.5">
-                                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-neutral-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                                                    </svg>
+                                    <div key={booking.id} className="bg-white dark:bg-neutral-800 rounded-xl shadow-sm border border-neutral-100 dark:border-neutral-700 overflow-hidden">
+                                        <div className="p-4">
+                                            <div className="flex justify-between items-start mb-3">
+                                                <div>
+                                                    <h3 className="font-bold text-lg text-neutral-800 dark:text-neutral-100 leading-tight">{title}</h3>
+                                                    <div className="flex items-center mt-1 text-neutral-500 dark:text-neutral-400 text-sm">
+                                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" viewBox="0 0 20 20" fill="currentColor">
+                                                            <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" />
+                                                        </svg>
+                                                        <span className="flex items-center gap-1">
+                                                            From: <MedalName userId={booking.farmerId} displayName={getFarmerName(booking.farmerId)} className="font-semibold" />
+                                                            <span className="text-xs">({getFarmerRole(booking.farmerId)})</span>
+                                                        </span>
+                                                    </div>
                                                 </div>
-                                                <div className="ml-2">
+                                                <span className={`text-xs font-semibold px-2 py-1 rounded ${tagColor}`}>
+                                                    {tagText}
+                                                </span>
+                                            </div>
+
+                                            <div className="space-y-3 mt-4">
+                                                <div className="flex items-start">
+                                                    <div className="w-6 flex-shrink-0 flex justify-center mt-0.5">
+                                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-neutral-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                                        </svg>
+                                                    </div>
+                                                    <div className="ml-2">
+                                                        <p className="text-sm font-semibold text-neutral-800 dark:text-neutral-200">Date: {booking.date} from {booking.startTime}</p>
+                                                    </div>
+                                                </div>
+
+                                                <div className="flex items-start justify-between">
+                                                    <div className="flex items-start flex-grow">
+                                                        <div className="w-6 flex-shrink-0 flex justify-center mt-0.5">
+                                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-neutral-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                                                            </svg>
+                                                        </div>
+                                                        <div className="ml-2">
+                                                            <button
+                                                                onClick={() => openMap(booking.location)}
+                                                                className="text-sm font-semibold text-neutral-800 dark:text-neutral-200 hover:text-blue-600 hover:underline text-left"
+                                                            >
+                                                                Location: {booking.location}
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                    {distance && (
+                                                        <span className="text-xs text-neutral-500 whitespace-nowrap ml-2">{distance} km away</span>
+                                                    )}
+                                                </div>
+
+                                                <div className="flex items-start">
+                                                    <div className="w-6 flex-shrink-0 flex justify-center mt-0.5">
+                                                        {getIcon()}
+                                                    </div>
+                                                    <div className="ml-2">
+                                                        <p className="text-sm font-semibold text-neutral-800 dark:text-neutral-200">Work Purpose: {booking.workPurpose}</p>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div className="mt-5">
+                                                {isPendingConfirmation ? (
+                                                    <div className="flex space-x-3">
+                                                        <button
+                                                            onClick={() => rejectBooking(booking.id)}
+                                                            className="flex-1 bg-red-50 text-red-700 font-bold py-3 px-4 rounded-lg hover:bg-red-100 transition-colors"
+                                                        >
+                                                            Reject
+                                                        </button>
+                                                        <button
+                                                            onClick={() => handleAcceptClick(booking)}
+                                                            className="flex-1 bg-primary text-white font-bold py-3 px-4 rounded-lg hover:bg-primary-dark transition-colors shadow-md"
+                                                        >
+                                                            Accept
+                                                        </button>
+                                                    </div>
+                                                ) : (
                                                     <button
-                                                        onClick={() => openMap(booking.location)}
-                                                        className="text-sm font-semibold text-neutral-800 dark:text-neutral-200 hover:text-blue-600 hover:underline text-left"
+                                                        onClick={() => handleAcceptClick(booking)}
+                                                        className="w-full bg-primary text-white font-bold py-3 px-4 rounded-lg hover:bg-primary-dark transition-colors shadow-md"
                                                     >
-                                                        Location: {booking.location}
+                                                        View & Accept
                                                     </button>
-                                                </div>
-                                            </div>
-                                            {distance && (
-                                                <span className="text-xs text-neutral-500 whitespace-nowrap ml-2">{distance} km away</span>
-                                            )}
-                                        </div>
-
-                                        <div className="flex items-start">
-                                            <div className="w-6 flex-shrink-0 flex justify-center mt-0.5">
-                                                {getIcon()}
-                                            </div>
-                                            <div className="ml-2">
-                                                <p className="text-sm font-semibold text-neutral-800 dark:text-neutral-200">Work Purpose: {booking.workPurpose}</p>
+                                                )}
                                             </div>
                                         </div>
                                     </div>
+                                );
+                            })}
+                        </div>
 
-                                    <div className="mt-5">
-                                        {isPendingConfirmation ? (
-                                            <div className="flex space-x-3">
-                                                <button
-                                                    onClick={() => rejectBooking(booking.id)}
-                                                    className="flex-1 bg-red-50 text-red-700 font-bold py-3 px-4 rounded-lg hover:bg-red-100 transition-colors"
-                                                >
-                                                    Reject
-                                                </button>
-                                                <button
-                                                    onClick={() => handleAcceptClick(booking)}
-                                                    className="flex-1 bg-primary text-white font-bold py-3 px-4 rounded-lg hover:bg-primary-dark transition-colors shadow-md"
-                                                >
-                                                    Accept
-                                                </button>
-                                            </div>
-                                        ) : (
-                                            <button
-                                                onClick={() => handleAcceptClick(booking)}
-                                                className="w-full bg-primary text-white font-bold py-3 px-4 rounded-lg hover:bg-primary-dark transition-colors shadow-md"
-                                            >
-                                                View & Accept
-                                            </button>
-                                        )}
-                                    </div>
-                                </div>
-                            </div>
-                        );
-                    })
+                        {/* Desktop View - Table */}
+                        <div className="hidden md:block overflow-x-auto bg-white dark:bg-neutral-800 rounded-xl shadow-sm border border-neutral-200 dark:border-neutral-700">
+                            <table className="w-full text-left text-sm text-neutral-600 dark:text-neutral-300">
+                                <thead className="bg-neutral-50 dark:bg-neutral-700 text-neutral-900 dark:text-neutral-100 font-semibold uppercase tracking-wider text-xs border-b border-neutral-200 dark:border-neutral-600">
+                                    <tr>
+                                        <th className="px-6 py-4">Request Type</th>
+                                        <th className="px-6 py-4">Details</th>
+                                        <th className="px-6 py-4">Date & Time</th>
+                                        <th className="px-6 py-4">Location</th>
+                                        <th className="px-6 py-4">Purpose</th>
+                                        <th className="px-6 py-4 text-right">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-neutral-200 dark:divide-neutral-700">
+                                    {[...filteredRequests].reverse().map(booking => {
+                                        const isOperatorRequest = booking.status === 'Awaiting Operator';
+                                        const isPendingConfirmation = booking.status === 'Pending Confirmation';
+                                        const itemForBooking = items.find(i => i.id === booking.itemId);
+                                        const title = isPendingConfirmation
+                                            ? `Request for ${itemForBooking?.name || 'Unknown Item'}`
+                                            : isOperatorRequest
+                                                ? `Driver for ${getMachineNameForOpRequest(booking.itemId)}`
+                                                : `Request for ${booking.itemCategory}`;
+                                        const tagText = isPendingConfirmation ? 'Direct Request' : isOperatorRequest ? 'Operator Request' : 'Broadcast';
+                                        const tagColor = isPendingConfirmation ? 'bg-green-100 text-green-800' : isOperatorRequest ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800';
+
+                                        const distance = userLocation && booking.locationCoords
+                                            ? calculateDistance(userLocation.lat, userLocation.lng, booking.locationCoords.lat, booking.locationCoords.lng)
+                                            : null;
+
+                                        return (
+                                            <tr key={booking.id} className="hover:bg-neutral-50 dark:hover:bg-neutral-700/50 transition-colors">
+                                                <td className="px-6 py-4">
+                                                    <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold ${tagColor}`}>
+                                                        {tagText}
+                                                    </span>
+                                                </td>
+                                                <td className="px-6 py-4 font-medium text-neutral-900 dark:text-white">
+                                                    <div>{title}</div>
+                                                    <div className="mt-1 text-xs text-neutral-500">
+                                                        From: <MedalName userId={booking.farmerId} displayName={getFarmerName(booking.farmerId)} />
+                                                    </div>
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <div className="flex flex-col">
+                                                        <span>{booking.date}</span>
+                                                        <span className="text-xs text-neutral-500">{booking.startTime}</span>
+                                                    </div>
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <div className="flex flex-col">
+                                                        <button onClick={() => openMap(booking.location)} className="text-left font-medium hover:text-blue-600 hover:underline truncate max-w-[150px]" title={booking.location}>
+                                                            {booking.location}
+                                                        </button>
+                                                        {distance && <span className="text-xs text-neutral-500">{distance} km away</span>}
+                                                    </div>
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    {booking.workPurpose}
+                                                </td>
+                                                <td className="px-6 py-4 text-right">
+                                                    <div className="flex justify-end gap-2">
+                                                        {isPendingConfirmation && (
+                                                            <button
+                                                                onClick={() => rejectBooking(booking.id)}
+                                                                className="px-3 py-1.5 text-xs font-medium text-red-600 border border-red-200 rounded-lg hover:bg-red-50"
+                                                            >
+                                                                Reject
+                                                            </button>
+                                                        )}
+                                                        <button
+                                                            onClick={() => handleAcceptClick(booking)}
+                                                            className="px-4 py-1.5 text-xs font-bold text-white bg-primary rounded-lg hover:bg-primary-dark shadow-sm"
+                                                        >
+                                                            {isPendingConfirmation ? 'Accept' : 'View & Accept'}
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+                    </>
                 ) : (
                     <div className="text-center py-16">
                         <div className="bg-neutral-100 dark:bg-neutral-800 rounded-full w-20 h-20 flex items-center justify-center mx-auto mb-4">
@@ -504,7 +598,7 @@ export const SupplierRequestsScreen: React.FC = () => {
             )}
 
             {conflictWarning && conflictWarning.show && (
-                <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-4">
+                <div className="fixed inset-0 bg-black bg-opacity-60 z-[10001] flex items-center justify-center p-4">
                     <div className="bg-white dark:bg-neutral-800 rounded-lg shadow-xl w-full max-w-md p-6">
                         <h2 className="text-xl font-bold mb-4 text-red-600 dark:text-red-400">⚠️ Booking Conflict Warning</h2>
                         <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700 rounded-lg p-4 mb-4">

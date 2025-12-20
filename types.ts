@@ -7,6 +7,7 @@ export enum UserRole {
     Admin = 'Admin',
     AgentPro = 'AgentPro',
     Agent = 'Agent',
+    Founder = 'Founder',
 }
 
 export interface User {
@@ -55,6 +56,16 @@ export interface User {
     warCancellationCount6M?: number; // Supplier-initiated cancellations in last 6 months
     warLastCalculated?: string; // When the WAR was last recalculated
     warFinalRating?: number; // Final calculated WAR rating (displayed as avgRating)
+    // Gamification & Streak System
+    streak?: {
+        currentCount: number;
+        lastLoginDate: string; // YYYY-MM-DD
+        guards: number;
+        maxGuards: number; // Max 5 usually
+        points?: number; // Accumulated points (0-99)
+        lastWorkDate?: string; // YYYY-MM-DD
+    };
+    gamificationScore?: number;
 }
 
 export enum ItemCategory {
@@ -78,18 +89,64 @@ export const WORK_PURPOSES = [
     'Land Levelling',
     'Digging / Earth Moving',
     'Transportation',
-    'Monitoring'
+    'Monitoring',
+    // New Tractor Implements
+    'Rotavator',
+    'MB Plough',
+    'Disc Harrow',
+    'Cultivator',
+    'Seed Drill',
+    'Paddy Transplanter',
+    'Boom Sprayer',
+    'Leveller',
+    // New Harvester Types
+    'Paddy Harvestor',
+    'Paddy Chain Harvestor',
+    'Maize Harvestor',
+    // New Worker Types
+    'Sowing',
+    'Planting',
+    'Spraying',
+    'Others'
 ] as const;
 
 export const CATEGORY_WORK_PURPOSES: Record<ItemCategory, WorkPurpose[]> = {
-    [ItemCategory.Tractors]: ['Ploughing', 'Sowing / Planting', 'Weeding', 'Land Levelling', 'Transportation'],
-    [ItemCategory.Harvesters]: ['Harvesting'],
+    [ItemCategory.Tractors]: ['Rotavator', 'MB Plough', 'Disc Harrow', 'Cultivator', 'Seed Drill', 'Paddy Transplanter', 'Boom Sprayer', 'Leveller', 'Transportation'],
+    [ItemCategory.Harvesters]: ['Paddy Harvestor', 'Paddy Chain Harvestor', 'Maize Harvestor'],
     [ItemCategory.JCB]: ['Digging / Earth Moving', 'Land Levelling'],
-    [ItemCategory.Workers]: ['Sowing / Planting', 'Harvesting', 'Weeding', 'Spraying Pesticides/Fertilizers', 'Irrigation'],
+    [ItemCategory.Workers]: ['Sowing', 'Planting', 'Weeding', 'Spraying', 'Others'],
     [ItemCategory.Drones]: ['Spraying Pesticides/Fertilizers', 'Monitoring'],
     [ItemCategory.Sprayers]: ['Spraying Pesticides/Fertilizers'],
     [ItemCategory.Drivers]: ['Transportation'],
     [ItemCategory.Borewell]: ['Irrigation']
+};
+
+// Image mapping for Worker purposes
+export const WORKER_PURPOSE_IMAGES: Record<string, string> = {
+    'Sowing': '/assets/worker-purposes/sowing.jpg',
+    'Planting': '/assets/worker-purposes/planting.jpg',
+    'Weeding': '/assets/worker-purposes/weeding.jpg',
+    'Spraying': '/assets/worker-purposes/spraying.jpg',
+};
+
+// Image mapping for Harvester purposes
+export const HARVESTER_PURPOSE_IMAGES: Record<string, string> = {
+    'Maize Harvestor': '/assets/harvester-purposes/maize.jpg',
+    'Paddy Harvestor': '/assets/harvester-purposes/paddy.jpg',
+    'Paddy Chain Harvestor': '/assets/harvester-purposes/paddy-chain.jpg',
+};
+
+// Image mapping for Tractor purposes  
+export const TRACTOR_PURPOSE_IMAGES: Record<string, string> = {
+    'Seed Drill': '/assets/tractor-purposes/seed-drill.jpg',
+    'Cultivator': '/assets/tractor-purposes/cultivator.jpg',
+    'Disc Harrow': '/assets/tractor-purposes/disc-harrow.jpg',
+    'Rotavator': '/assets/tractor-purposes/rotavator.jpg',
+    'Boom Sprayer': '/assets/tractor-purposes/boom-sprayer.jpg',
+    'Paddy Transplanter': '/assets/tractor-purposes/transplanter.jpg',
+    'MB Plough': '/assets/tractor-purposes/plough.jpg',
+    'Leveller': '/assets/tractor-purposes/leveller.jpg',
+    'Transportation': '/assets/tractor-purposes/transportation.jpg',
 };
 
 export type WorkPurpose = typeof WORK_PURPOSES[number];
@@ -143,6 +200,8 @@ export interface Booking {
     status: 'Searching' | 'Awaiting Operator' | 'Confirmed' | 'Arrived' | 'In Process' | 'Pending Payment' | 'Completed' | 'Cancelled' | 'Expired' | 'Pending Confirmation';
     additionalInstructions?: string;
     workPurpose?: WorkPurpose;
+    workPurposeDetails?: string; // For 'Others'
+    crop?: string; // Crop name for workers
     preferredModel?: string;
     operatorRequired?: boolean;
     recurrenceId?: string;
@@ -158,6 +217,7 @@ export interface Booking {
     finalPaymentId?: string;
     discountAmount?: number;
     quantity?: number;
+    acres?: number; // Number of acres for the job
     allowMultipleSuppliers?: boolean;
     operatorId?: string; // Changed to string for firebaseUid
     isRebroadcast?: boolean;
@@ -229,6 +289,9 @@ export interface ForumPost {
     content: string;
     timestamp: string;
     replies: CommunityReply[];
+    status?: 'open' | 'closed';
+    closedAt?: string;
+    closedBy?: string;
 }
 
 export interface DamageReport {
@@ -299,6 +362,7 @@ export interface AiChatMessage {
 
 export type AppView =
     | { view: 'HOME' }
+    | { view: 'EARNINGS_DETAILS' }
     | { view: 'ITEM_DETAIL'; item: Item }
     | { view: 'BOOKING_FORM', category?: ItemCategory, quantity?: number, item?: Item, workPurpose?: WorkPurpose }
     | { view: 'BOOKING_SUCCESS', isDirectRequest?: boolean, paymentType?: 'now' | 'later' }
@@ -331,6 +395,7 @@ export type AppView =
     | { view: 'BULK_BOOKING' }
     | { view: 'VERIFIED_ACCOUNT_MANAGER' }
     | { view: 'ADMIN_VERIFICATION_MANAGER' }
+    | { view: 'ADMIN_DEMAND' }
     | { view: 'PROFILE' };
 
 export type RiskLevel = 'LOW' | 'MEDIUM' | 'HIGH';

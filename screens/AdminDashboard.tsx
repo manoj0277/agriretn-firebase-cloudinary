@@ -65,7 +65,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ setActiveTab }) => {
         const pendingDisputes = bookings.filter(b => b.disputeRaised && !b.disputeResolved).length;
         const pendingDamage = damageReports.filter(dr => dr.status === 'pending').length;
         return {
-            suppliers: allUsers.filter(u => u.role === UserRole.Supplier && u.status === 'pending').length,
+            suppliers: allUsers.filter(u => u.role === UserRole.Supplier && u.userStatus === 'pending').length,
             items: items.filter(i => i.status === 'pending').length,
             tickets: tickets.filter(t => t.status === 'open').length,
             disputes: pendingDisputes + pendingDamage,
@@ -73,7 +73,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ setActiveTab }) => {
     }, [allUsers, items, tickets, bookings, damageReports]);
 
     return (
-        <div className="dark:text-neutral-200 bg-neutral-50 dark:bg-neutral-900">
+        <div className="dark:text-neutral-200 bg-green-50 dark:bg-neutral-900">
             <Header title="Admin Dashboard" navigate={(view) => setActiveTab(view.view === 'ADMIN_ALERTS' ? 'Alerts' : 'Dashboard')} />
             <div className="p-4 space-y-6">
                 <div className="bg-white dark:bg-neutral-800 p-6 rounded-lg border border-neutral-200 dark:border-neutral-700">

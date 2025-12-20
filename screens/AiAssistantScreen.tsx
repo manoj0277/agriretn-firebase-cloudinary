@@ -15,8 +15,8 @@ interface AiAssistantScreenProps {
 }
 
 const apiKey = typeof process !== 'undefined' && process.env && process.env.API_KEY
-  ? process.env.API_KEY
-  : undefined;
+    ? process.env.API_KEY
+    : undefined;
 
 const ai = apiKey ? new GoogleGenAI({ apiKey }) : null;
 
@@ -26,7 +26,7 @@ const AiAssistantScreen: React.FC<AiAssistantScreenProps> = ({ navigate, goBack 
     const { t } = useLanguage();
     const [input, setInput] = useState('');
     const [isListening, setIsListening] = useState(false);
-    
+
     const recognitionRef = useRef<any>(null); // Using 'any' for SpeechRecognition for cross-browser compatibility
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -87,22 +87,22 @@ const AiAssistantScreen: React.FC<AiAssistantScreenProps> = ({ navigate, goBack 
     };
 
     return (
-        <div className="flex flex-col h-screen">
+        <div className="flex flex-col h-screen bg-green-50 dark:bg-neutral-900">
             <Header title={t('aiChatAssistant')} onBack={goBack} />
             <div className="flex-grow overflow-y-auto p-4 space-y-4 hide-scrollbar">
                 {chatHistory.map((msg) => (
                     <div key={msg.id} className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
-                        <div className={`max-w-xs lg:max-w-md px-4 py-2 rounded-2xl flex items-center space-x-2 ${msg.role === 'user' ? 'bg-primary text-white' : 'bg-neutral-200 dark:bg-neutral-700 text-neutral-800 dark:text-neutral-200'}`}>
-                            <p>{msg.text}</p>
+                        <div className={`max-w-[85%] lg:max-w-[75%] px-4 py-3 rounded-2xl flex items-center space-x-2 ${msg.role === 'user' ? 'bg-primary text-white' : 'bg-white dark:bg-neutral-700 text-neutral-800 dark:text-neutral-200 shadow-sm'}`}>
+                            <p className="whitespace-pre-wrap">{msg.text}</p>
                         </div>
                     </div>
                 ))}
                 {isLoading && (
-                     <div className="flex justify-start">
-                        <div className="max-w-xs lg:max-w-md px-4 py-3 rounded-2xl bg-neutral-200 dark:bg-neutral-700 flex items-center space-x-2">
-                             <div className="w-2 h-2 bg-primary rounded-full animate-pulse"></div>
-                             <div className="w-2 h-2 bg-primary rounded-full animate-pulse" style={{ animationDelay: '0.2s' }}></div>
-                             <div className="w-2 h-2 bg-primary rounded-full animate-pulse" style={{ animationDelay: '0.4s' }}></div>
+                    <div className="flex justify-start">
+                        <div className="max-w-[85%] lg:max-w-[75%] px-4 py-3 rounded-2xl bg-neutral-200 dark:bg-neutral-700 flex items-center space-x-2">
+                            <div className="w-2 h-2 bg-primary rounded-full animate-pulse"></div>
+                            <div className="w-2 h-2 bg-primary rounded-full animate-pulse" style={{ animationDelay: '0.2s' }}></div>
+                            <div className="w-2 h-2 bg-primary rounded-full animate-pulse" style={{ animationDelay: '0.4s' }}></div>
                         </div>
                     </div>
                 )}

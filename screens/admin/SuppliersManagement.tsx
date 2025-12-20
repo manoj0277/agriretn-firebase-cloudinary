@@ -8,6 +8,7 @@ import { exportToExcel, exportToPdf } from '../../lib/export'
 import Button from '../../components/Button'
 import { User } from '../../types'
 import { useToast } from '../../context/ToastContext'
+import { MedalName } from '../../components/MedalName';
 
 const API_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3001/api';
 
@@ -23,7 +24,8 @@ const SuppliersManagement: React.FC = () => {
   const [kycMap, setKycMap] = useState<Record<string, string>>({})
   const [statusPopupUser, setStatusPopupUser] = useState<User | null>(null)
 
-  const suppliers = useMemo(() => allUsers.filter(u => u.role === 'Supplier'), [allUsers])
+  // Show both Suppliers and Farmers in the Suppliers list
+  const suppliers = useMemo(() => allUsers.filter(u => u.role === 'Supplier' || u.role === 'Farmer'), [allUsers])
 
   useEffect(() => {
     const build = async () => {
@@ -133,18 +135,13 @@ const SuppliersManagement: React.FC = () => {
     }
   }
 
-
-
+  // ... inside component ...
   const columns: Column<any>[] = [
     {
       key: 'name',
       header: 'Supplier Name',
       sort: (a, b) => String(a.name).localeCompare(String(b.name)),
-      render: r => (
-        <div className="flex items-center gap-1">
-          <span>{r.name}</span>
-        </div>
-      )
+      render: r => <MedalName userId={r._user.id} displayName={r.name} />
     },
     { key: 'phone', header: 'Phone' },
     { key: 'location', header: 'Location', sort: (a, b) => String(a.location).localeCompare(String(b.location)) },
@@ -263,7 +260,7 @@ const SuppliersManagement: React.FC = () => {
 
       {/* Status Change Popup */}
       {statusPopupUser && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999]" onClick={() => setStatusPopupUser(null)}>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[10001]" onClick={() => setStatusPopupUser(null)}>
           <div className="bg-white dark:bg-neutral-800 rounded-lg border border-neutral-200 dark:border-neutral-700 w-full max-w-sm p-4 shadow-xl" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <h4 className="font-bold text-lg">Change Status</h4>

@@ -6,7 +6,7 @@ import { UserRole, ItemCategory } from '../../types'
 import { LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, BarChart, Bar, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts'
 
 const Stat: React.FC<{ label: string; value: number | string }> = ({ label, value }) => (
-  <div className="bg-white dark:bg-neutral-800 p-4 rounded-lg border border-neutral-200 dark:border-neutral-700" style={{ overflow: 'hidden' }}>
+  <div className="bg-gray-200 dark:bg-neutral-800 p-4 rounded-lg border border-neutral-200 dark:border-neutral-700" style={{ overflow: 'hidden' }}>
     <p className="text-xs text-neutral-500 dark:text-neutral-400" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</p>
     <p className="text-2xl font-bold text-neutral-900 dark:text-neutral-100" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{value}</p>
   </div>
@@ -95,8 +95,8 @@ const AdminOverviewDashboard: React.FC = () => {
         <Stat label="Cancelled Bookings" value={totals.cancelled} />
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="bg-white dark:bg-neutral-800 p-4 rounded-lg border border-neutral-200 dark:border-neutral-700">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-2 gap-6">
+        <div className="bg-gray-200 dark:bg-neutral-800 p-4 rounded-lg border border-neutral-200 dark:border-neutral-700">
           <h4 className="font-semibold mb-2">Daily bookings trend</h4>
           <div style={{ width: '100%', height: 240 }}>
             <ResponsiveContainer width="100%" height="100%">
