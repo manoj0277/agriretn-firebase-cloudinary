@@ -493,56 +493,65 @@ const BookingFormScreen: React.FC<BookingFormScreenProps> = ({ navigate, goBack,
     const formatRange = (min: number, max: number) => min === max ? `₹${min.toLocaleString()}` : `₹${min.toLocaleString()} - ₹${max.toLocaleString()}`;
 
     return (
-        <div className="dark:text-neutral-200 bg-green-50 dark:bg-neutral-900 min-h-screen">
+        <div className="dark:text-neutral-200 bg-green-50 dark:bg-neutral-900 min-h-screen pb-32 relative z-0">
             <Header title={isDirectRequest ? t('confirmYourBooking') : t('createBookingRequest')} onBack={goBack} />
             <div className="p-6">
                 <form className="space-y-4" onSubmit={handleSubmit}>
-                    <div>
-                        <label className="block text-gray-700 dark:text-neutral-300 text-sm font-bold mb-2">{t('serviceCategory')}</label>
-                        <select
-                            value={itemCategory}
-                            onChange={e => setItemCategory(e.target.value as ItemCategory)}
-                            required
-                            disabled={isDirectRequest}
-                            className="shadow appearance-none border border-neutral-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg w-full py-3 px-4 text-neutral-800 dark:text-white leading-tight focus:outline-none focus:ring-2 focus:ring-primary/50 disabled:bg-neutral-100 dark:disabled:bg-gray-800 disabled:text-gray-400"
-                        >
-                            {Object.values(ItemCategory).map(cat => <option key={cat} value={cat}>{cat}</option>)}
-                        </select>
-                        {isDirectRequest && item && <p className="text-xs text-neutral-500 mt-1">Requesting: <strong>{item.name}</strong> from <strong>{allUsers.find(u => u.id === item.ownerId)?.name}</strong></p>}
-                    </div>
+                    {/* ... form content ... */}
+                    {/* (This replacement targets the container padding and the map wrapper below) */}
 
+                    {/* ... (skipping lines to map wrapper) ... */}
+
+                    {/* Service Category Section - Fixed Wrapper */}
                     <div>
-                        <label className="block text-gray-700 dark:text-neutral-300 text-sm font-bold mb-2">{t('workPurpose')}</label>
-                        {(itemCategory === ItemCategory.Workers || itemCategory === ItemCategory.Harvesters || itemCategory === ItemCategory.Tractors) && !isDirectRequest ? (
-                            // Click-to-open modal for Workers, Harvesters, and Tractors
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    if (itemCategory === ItemCategory.Workers) setShowWorkerPurposeModal(true);
-                                    else if (itemCategory === ItemCategory.Harvesters) setShowHarvesterPurposeModal(true);
-                                    else if (itemCategory === ItemCategory.Tractors) setShowTractorPurposeModal(true);
-                                }}
-                                className="w-full text-left shadow appearance-none border border-neutral-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg py-3 px-4 text-neutral-800 dark:text-white leading-tight focus:outline-none focus:ring-2 focus:ring-primary/50 hover:border-primary transition-colors flex items-center justify-between"
+                        <div>
+                            <label className="block text-gray-700 dark:text-neutral-300 text-sm font-bold mb-2">{t('serviceCategory')}</label>
+                            <select
+                                value={itemCategory}
+                                onChange={e => setItemCategory(e.target.value as ItemCategory)}
+                                required
+                                disabled={isDirectRequest}
+                                className="shadow appearance-none border border-neutral-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg w-full py-3 px-4 text-neutral-800 dark:text-white leading-tight focus:outline-none focus:ring-2 focus:ring-primary/50 disabled:bg-neutral-100 dark:disabled:bg-gray-800 disabled:text-gray-400"
                             >
-                                <span>{workPurpose || 'Select ' + (itemCategory === ItemCategory.Workers ? 'Work Type' : itemCategory === ItemCategory.Harvesters ? 'Harvester Type' : 'Work Purpose')}</span>
-                                <svg className="w-5 h-5 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                                </svg>
-                            </button>
-                        ) : (
-                            // Standard dropdown for other categories
-                            <select id="work-purpose" value={workPurpose} onChange={e => handleWorkPurposeChange(e.target.value as WorkPurpose)} required className="shadow appearance-none border border-neutral-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg w-full py-3 px-4 text-neutral-800 dark:text-white leading-tight focus:outline-none focus:ring-2 focus:ring-primary/50">
-                                {(isDirectRequest && item ? item.purposes.map(p => p.name) : CATEGORY_WORK_PURPOSES[itemCategory] || WORK_PURPOSES).map(purpose => {
-                                    const isOffered = isDirectRequest && item ? item.purposes.some(p => p.name === purpose) : true;
-                                    return <option key={purpose} value={purpose} className={isOffered ? 'font-bold dark:text-green-300' : ''}>{purpose}{isOffered && isDirectRequest ? ' ✓' : ''}</option>
-                                })}
+                                {Object.values(ItemCategory).map(cat => <option key={cat} value={cat}>{cat}</option>)}
                             </select>
-                        )}
-                        {isBroadcastOverride && (
-                            <div className="mt-2 p-2 bg-yellow-100 text-yellow-800 text-xs rounded-md">
-                                Note: This specific supplier does not offer '{workPurpose}'. Your request will be broadcast to all available suppliers.
-                            </div>
-                        )}
+                            {isDirectRequest && item && <p className="text-xs text-neutral-500 mt-1">Requesting: <strong>{item.name}</strong> from <strong>{allUsers.find(u => u.id === item.ownerId)?.name}</strong></p>}
+                        </div>
+
+                        {/* Work Purpose Section */}
+                        <div className="mt-4">
+                            <label className="block text-gray-700 dark:text-neutral-300 text-sm font-bold mb-2">{t('workPurpose')}</label>
+                            {(itemCategory === ItemCategory.Workers || itemCategory === ItemCategory.Harvesters || itemCategory === ItemCategory.Tractors) && !isDirectRequest ? (
+                                // Click-to-open modal for Workers, Harvesters, and Tractors
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        if (itemCategory === ItemCategory.Workers) setShowWorkerPurposeModal(true);
+                                        else if (itemCategory === ItemCategory.Harvesters) setShowHarvesterPurposeModal(true);
+                                        else if (itemCategory === ItemCategory.Tractors) setShowTractorPurposeModal(true);
+                                    }}
+                                    className="w-full text-left shadow appearance-none border border-neutral-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg py-3 px-4 text-neutral-800 dark:text-white leading-tight focus:outline-none focus:ring-2 focus:ring-primary/50 hover:border-primary transition-colors flex items-center justify-between"
+                                >
+                                    <span>{workPurpose || 'Select ' + (itemCategory === ItemCategory.Workers ? 'Work Type' : itemCategory === ItemCategory.Harvesters ? 'Harvester Type' : 'Work Purpose')}</span>
+                                    <svg className="w-5 h-5 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                    </svg>
+                                </button>
+                            ) : (
+                                // Standard dropdown for other categories
+                                <select id="work-purpose" value={workPurpose} onChange={e => handleWorkPurposeChange(e.target.value as WorkPurpose)} required className="shadow appearance-none border border-neutral-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg w-full py-3 px-4 text-neutral-800 dark:text-white leading-tight focus:outline-none focus:ring-2 focus:ring-primary/50">
+                                    {(isDirectRequest && item ? item.purposes.map(p => p.name) : CATEGORY_WORK_PURPOSES[itemCategory] || WORK_PURPOSES).map(purpose => {
+                                        const isOffered = isDirectRequest && item ? item.purposes.some(p => p.name === purpose) : true;
+                                        return <option key={purpose} value={purpose} className={isOffered ? 'font-bold dark:text-green-300' : ''}>{purpose}{isOffered && isDirectRequest ? ' ✓' : ''}</option>
+                                    })}
+                                </select>
+                            )}
+                            {isBroadcastOverride && (
+                                <div className="mt-2 p-2 bg-yellow-100 text-yellow-800 text-xs rounded-md">
+                                    Note: This specific supplier does not offer '{workPurpose}'. Your request will be broadcast to all available suppliers.
+                                </div>
+                            )}
+                        </div>
                     </div>
 
                     {/* New Fields for Workers */}
@@ -681,7 +690,7 @@ const BookingFormScreen: React.FC<BookingFormScreenProps> = ({ navigate, goBack,
                             )}
                         </div>
 
-                        <div className="h-64 w-full rounded-lg overflow-hidden border border-neutral-300 dark:border-gray-600 z-0">
+                        <div className="h-64 w-full rounded-lg overflow-hidden border border-neutral-300 dark:border-gray-600 relative z-0">
                             <MapContainer
                                 center={locationCoords || { lat: 17.3850, lng: 78.4867 }}
                                 zoom={13}

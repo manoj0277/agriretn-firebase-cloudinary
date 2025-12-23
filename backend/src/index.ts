@@ -21,7 +21,7 @@ function getCategorySubject(category?: string): string {
 import path from 'path';
 import {
     UserService, ItemService, BookingService, PostService, KYCService, NotificationService, ChatService, ReviewService, SupportService, DamageReportService,
-    UserNotificationService, BroadcastService,
+    UserNotificationService, BroadcastService, SearchService,
     db
 } from './services/firestore';
 import agentRoutes from './routes/agent';
@@ -483,6 +483,7 @@ app.post('/api/admin/bookings/:bookingId/allot/:supplierId', async (req: Request
 });
 
 // Expand search radius for a booking
+// Expand search radius for a booking
 app.post('/api/bookings/:id/expand-radius', async (req: Request, res: Response) => {
     try {
         const bookingId = req.params.id;
@@ -505,6 +506,62 @@ app.post('/api/bookings/:id/expand-radius', async (req: Request, res: Response) 
         res.json(updated);
     } catch (e) {
         console.error('Error expanding search radius:', e);
+        res.status(500).json({ error: (e as Error).message });
+    }
+});
+
+// --- FAILED SEARCHES LOGGING ---
+
+app.post('/api/failed-searches', async (req: Request, res: Response) => {
+    try {
+        const { userId, location, selectedCategory, userLocation, searchRadius } = req.body;
+
+        const failedSearch = {
+            id: Date.now(),
+            userId,
+            location: location || 'Unknown',
+            userLocation: userLocation || null,
+            selectedCategory: selectedCategory || 'All',
+            searchRadius: searchRadius || 20,
+            timestamp: new Date().toISOString()
+        };
+
+        const created = await SearchService.create(failedSearch);
+        console.log(`[Search] Logged failed search for user ${userId} in category ${selectedCategory}`);
+
+        // Notify Admins/Founders
+        const allUsers = await UserService.getAll();
+        const admins = allUsers.filter(u => u.role === UserRole.Admin || u.role === UserRole.Founder);
+
+        const notificationPromises = admins.map(admin =>
+            NotificationService.create({
+                id: Date.now() + Math.floor(Math.random() * 1000),
+                userId: admin.id,
+                message: `Demand Alert: A farmer in ${location || 'their area'} searched for ${selectedCategory === 'All' ? 'any equipment' : selectedCategory} but found nothing within the extended radius.`,
+                type: 'system',
+                category: 'system',
+                priority: 'medium',
+                read: false,
+                timestamp: new Date().toISOString()
+            })
+        );
+
+        await Promise.all(notificationPromises);
+
+        res.status(201).json(created);
+    } catch (e) {
+        console.error('Error logging failed search:', e);
+        res.status(500).json({ error: (e as Error).message });
+    }
+});
+
+// Get all failed searches (Admin/Founder only)
+app.get('/api/admin/failed-searches', verifyToken, requireRole(UserRole.Admin, UserRole.Founder), async (req: Request, res: Response) => {
+    try {
+        const failedSearches = await SearchService.getAll();
+        res.json(failedSearches);
+    } catch (e) {
+        console.error('Error fetching failed searches:', e);
         res.status(500).json({ error: (e as Error).message });
     }
 });

@@ -20,7 +20,7 @@ interface BottomNavProps {
 const BottomNav: React.FC<BottomNavProps> = ({ activeTab, setActiveTab, navItems }) => {
     const { t } = useLanguage();
     return (
-        <div className="fixed bottom-0 left-0 right-0 max-w-lg mx-auto bg-green-700 border-t border-green-800 z-50 md:hidden">
+        <div className="fixed bottom-0 left-0 right-0 max-w-lg mx-auto bg-green-700 border-t border-green-800 z-[50000] md:hidden">
             <div className="flex justify-around items-center h-16">
                 {navItems.map((item) => {
                     if (item.isCenter) {

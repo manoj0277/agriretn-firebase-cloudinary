@@ -39,6 +39,7 @@ export const translations = {
   farmers: { en: 'Farmers', hi: 'किसान', te: 'రైతులు' },
   suppliers: { en: 'Suppliers', hi: 'आपूर्तिकर्ता', te: 'సరఫరాదారులు' },
   processing: { en: 'Processing...', hi: 'प्रोसेस हो रहा है...', te: 'ప్రాసెస్ అవుతోంది...' },
+  newRequest: { en: 'New Request', hi: 'नया अनुरोध', te: 'కొత్త అభ్యర్థన' },
 
   // AuthScreen
   login: { en: 'Login', hi: 'लॉग इन करें', te: 'లాగిన్' },

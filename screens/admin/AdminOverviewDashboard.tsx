@@ -3,6 +3,7 @@ import { useAuth } from '../../context/AuthContext'
 import { useItem } from '../../context/ItemContext'
 import { useBooking } from '../../context/BookingContext'
 import { UserRole, ItemCategory } from '../../types'
+import { auth as firebaseAuth } from '../../src/lib/firebase'
 import { LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, BarChart, Bar, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts'
 
 const Stat: React.FC<{ label: string; value: number | string }> = ({ label, value }) => (
@@ -20,12 +21,31 @@ const AdminOverviewDashboard: React.FC = () => {
   const { bookings } = useBooking()
   const [payments, setPayments] = useState<any[]>([])
   const [activity, setActivity] = useState<{ type: string; text: string; ts: string }[]>([])
+  const [failedSearches, setFailedSearches] = useState<any[]>([])
 
   useEffect(() => {
     // TODO: Replace with actual payment API when ready
     setPayments([])
     // Real-time updates will be added later
+    fetchFailedSearches()
   }, [])
+
+  const fetchFailedSearches = async () => {
+    try {
+      const token = await firebaseAuth.currentUser?.getIdToken();
+      const response = await fetch('/api/admin/failed-searches', {
+        headers: {
+          'Authorization': token ? `Bearer ${token}` : ''
+        }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setFailedSearches(data);
+      }
+    } catch (error) {
+      console.error('Error fetching failed searches:', error);
+    }
+  }
 
   const totals = useMemo(() => {
     const farmers = allUsers.filter(u => u.role === UserRole.Farmer).length

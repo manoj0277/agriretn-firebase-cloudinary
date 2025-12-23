@@ -40,12 +40,27 @@ interface SupplierViewProps {
     navigate: (view: AppView) => void;
     onSwitchMode?: () => void;
     roleBadge?: string;
+    currentView?: string; // Add currentView
+    children?: React.ReactNode;
 }
 
 import { StreakLeaderboardModal } from '../components/StreakLeaderboardModal';
 
 const HEAVY_MACHINERY_CATEGORIES = [ItemCategory.Tractors, ItemCategory.Harvesters, ItemCategory.JCB, ItemCategory.Borewell];
 const EQUIPMENT_CATEGORIES = [ItemCategory.Drones, ItemCategory.Sprayers];
+
+// Price ranges per hour (₹) based on Telangana/Karimnagar market rates (2024)
+// These are standard ranges that all suppliers must follow
+const PRICE_RANGES: Record<ItemCategory, { min: number; max: number; label: string }> = {
+    [ItemCategory.Workers]: { min: 50, max: 150, label: 'Farm Workers' },
+    [ItemCategory.Tractors]: { min: 300, max: 600, label: 'Tractors' },
+    [ItemCategory.Harvesters]: { min: 500, max: 1000, label: 'Harvesters' },
+    [ItemCategory.Drones]: { min: 1500, max: 4000, label: 'Agricultural Drones' },
+    [ItemCategory.Sprayers]: { min: 200, max: 500, label: 'Sprayers' },
+    [ItemCategory.JCB]: { min: 800, max: 1500, label: 'JCB/Excavators' },
+    [ItemCategory.Borewell]: { min: 400, max: 800, label: 'Borewell Services' },
+    [ItemCategory.Drivers]: { min: 100, max: 300, label: 'Drivers' },
+};
 
 // Helper component to handle map click events
 const MapClickHandler: React.FC<{ onMapClick: (lat: number, lng: number) => void }> = ({ onMapClick }) => {
@@ -818,14 +833,21 @@ const AddItemScreen: React.FC<{ itemToEdit: Item | null, onBack: () => void }> =
                                 </div>
 
                                 <div className="flex-grow space-y-3">
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                    {/* Price Range Hint - shown above the row */}
+                                    <div className="px-2 py-1.5 bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800 rounded-md">
+                                        <p className="text-xs text-green-700 dark:text-green-300 font-medium flex items-center gap-1">
+                                            <svg className="w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                            <span>Standard Price Range: <strong>₹{PRICE_RANGES[category]?.min || 100} - ₹{PRICE_RANGES[category]?.max || 1000}/hr</strong></span>
+                                        </p>
+                                    </div>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
                                         <div>
-                                            <label className="text-xs font-semibold text-gray-500 mb-1 block">Work Purpose</label>
+                                            <label className="text-xs font-semibold text-gray-500 mb-1.5 block">Work Purpose</label>
                                             <div className="relative">
                                                 <select
                                                     value={p.name}
                                                     onChange={(e) => handlePurposeChange(index, 'name', e.target.value)}
-                                                    className="w-full appearance-none shadow-sm border border-neutral-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg py-2 pl-3 pr-8 text-neutral-800 dark:text-white text-sm focus:outline-none focus:ring-1 focus:ring-green-500"
+                                                    className="w-full appearance-none shadow-sm border border-neutral-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg py-2.5 pl-3 pr-8 text-neutral-800 dark:text-white text-sm focus:outline-none focus:ring-1 focus:ring-green-500"
                                                 >
                                                     {(CATEGORY_WORK_PURPOSES[category] || WORK_PURPOSES).map(wp => (
                                                         <option key={wp} value={wp} disabled={purposes.some((purpose, i) => i !== index && purpose.name === wp)}>
@@ -836,18 +858,26 @@ const AddItemScreen: React.FC<{ itemToEdit: Item | null, onBack: () => void }> =
                                             </div>
                                         </div>
                                         <div>
-                                            <label className="text-xs font-semibold text-gray-500 mb-1 block">Price per Hour (₹)</label>
+                                            <label className="text-xs font-semibold text-gray-500 mb-1.5 block">Price per Hour (₹)</label>
                                             <div className="relative">
                                                 <input
                                                     type="number"
-                                                    placeholder="0.00"
+                                                    placeholder={`${PRICE_RANGES[category]?.min || 100} - ${PRICE_RANGES[category]?.max || 1000}`}
                                                     value={p.price}
                                                     onChange={(e) => handlePurposeChange(index, 'price', e.target.value)}
-                                                    className="w-full shadow-sm appearance-none border border-neutral-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg py-2 px-3 text-neutral-800 dark:text-white text-sm focus:outline-none focus:ring-1 focus:ring-green-500 font-semibold"
+                                                    min={PRICE_RANGES[category]?.min || 100}
+                                                    max={PRICE_RANGES[category]?.max || 1000}
+                                                    className="w-full shadow-sm appearance-none border border-neutral-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg py-2.5 px-3 text-neutral-800 dark:text-white text-sm focus:outline-none focus:ring-1 focus:ring-green-500 font-semibold"
                                                     required
                                                 />
-                                                <span className="absolute right-3 top-2 text-gray-400 text-sm">₹/hr</span>
+                                                <span className="absolute right-3 top-2.5 text-gray-400 text-sm">₹/hr</span>
                                             </div>
+                                            {p.price && (Number(p.price) < (PRICE_RANGES[category]?.min || 0) || Number(p.price) > (PRICE_RANGES[category]?.max || Infinity)) && (
+                                                <p className="text-xs text-red-500 mt-1 flex items-center gap-1">
+                                                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                                                    Price must be between ₹{PRICE_RANGES[category]?.min} - ₹{PRICE_RANGES[category]?.max}/hr
+                                                </p>
+                                            )}
                                         </div>
                                     </div>
                                     <div className="flex justify-between items-center pt-1">
@@ -1569,16 +1599,19 @@ export const SupplierKycInlineForm: React.FC<{ onSubmitted: () => void }> = ({ o
 };
 // Minimal Professional StatCard
 const StatCard: React.FC<{ title: string; value: string | number; icon: React.ReactElement }> = ({ title, value, icon }) => (
-    <div className="bg-white dark:bg-neutral-800 p-6 rounded-xl border border-neutral-200 dark:border-neutral-700 hover:shadow-md transition-shadow">
-        <div className="flex flex-col space-y-3">
-            <div className="flex items-center justify-between">
-                <div className="p-2 bg-green-50 dark:bg-green-900/20 rounded-lg">
-                    {icon}
+    <div className="bg-white dark:bg-neutral-800 p-3 md:p-6 rounded-xl border border-neutral-200 dark:border-neutral-700 hover:shadow-md transition-shadow h-full flex flex-col justify-center">
+        <div className="flex flex-col space-y-1 md:space-y-3">
+            <div className="flex items-center justify-between mb-1 md:mb-0">
+                <div className="p-1.5 md:p-2 bg-green-50 dark:bg-green-900/20 rounded-lg">
+                    {/* Scale icon down on mobile */}
+                    <div className="transform scale-75 md:scale-100 origin-top-left">
+                        {icon}
+                    </div>
                 </div>
             </div>
             <div>
-                <p className="text-3xl font-bold text-gray-900 dark:text-white">{value}</p>
-                <p className="text-sm font-medium text-gray-500 dark:text-gray-400 mt-1">{title}</p>
+                <p className="text-lg md:text-3xl font-bold text-gray-900 dark:text-white leading-tight truncate">{value}</p>
+                <p className="text-[10px] md:text-sm font-medium text-gray-500 dark:text-gray-400 mt-0.5 md:mt-1 truncate max-w-full" title={title}>{title}</p>
             </div>
         </div>
     </div>
@@ -1757,7 +1790,7 @@ const SupplierDashboardScreen: React.FC<SupplierViewProps & { goToTab?: (name: s
             <StreakLeaderboardModal isOpen={showLeaderboard} onClose={() => setShowLeaderboard(false)} />
 
             {/* Key Stats Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-3 gap-2 md:gap-4">
                 <div onClick={() => navigate({ view: 'EARNINGS_DETAILS' })} className="cursor-pointer">
                     <StatCard
                         title={t('totalEarnings')}
@@ -1911,14 +1944,9 @@ const supplierNavItems: NavItemConfig[] = [
     { name: 'dashboard', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg> },
 ];
 
-interface SupplierViewProps {
-    navigate: (view: AppView) => void;
-    onSwitchMode?: () => void;
-    roleBadge?: string;
-    children?: React.ReactNode;
-}
 
-const SupplierView: React.FC<SupplierViewProps> = ({ navigate, onSwitchMode, roleBadge, children }) => {
+
+const SupplierView: React.FC<SupplierViewProps> = ({ navigate, onSwitchMode, roleBadge, children, currentView }) => {
     const [view, setView] = useState<'TABS' | 'ADD_ITEM'>('TABS');
     const [activeTab, setActiveTab] = useState('dashboard');
     const [isRightSidebarOpen, setIsRightSidebarOpen] = useState(true);
@@ -1931,6 +1959,25 @@ const SupplierView: React.FC<SupplierViewProps> = ({ navigate, onSwitchMode, rol
     const hasKycLocal = Boolean(user && user.role === 'Supplier' && (user as any).aadharImageUrl && (user as any).personalPhotoUrl && user.phone);
     const [kycStatus, setKycStatus] = useState<string | null>(null);
     const [showKycForm, setShowKycForm] = useState(false);
+
+    // Sync activeTab with currentView
+    useEffect(() => {
+        if (currentView === 'HOME' && !['dashboard', 'listings', 'bookings', 'requests', 'schedule', 'earnings'].includes(activeTab)) {
+            setActiveTab('dashboard');
+        } else {
+            switch (currentView) {
+                case 'EARNINGS_DETAILS':
+                    setActiveTab('earnings');
+                    break;
+                case 'SETTINGS':
+                    setActiveTab('settings');
+                    break;
+                case 'SUPPORT':
+                    setActiveTab('support');
+                    break;
+            }
+        }
+    }, [currentView]);
 
     useEffect(() => {
         const loadKyc = async () => {
@@ -2048,9 +2095,11 @@ const SupplierView: React.FC<SupplierViewProps> = ({ navigate, onSwitchMode, rol
             </div>
 
             {/* Mobile Bottom Navigation */}
-            <div className="md:hidden fixed bottom-0 left-0 right-0 z-50">
-                <BottomNav activeTab={activeTab} setActiveTab={setActiveTab} navItems={supplierNavItems} />
-            </div>
+            {(currentView !== 'AI_ASSISTANT' && currentView !== 'VOICE_ASSISTANT') && (
+                <div className="md:hidden fixed bottom-0 left-0 right-0 z-50">
+                    <BottomNav activeTab={activeTab} setActiveTab={setActiveTab} navItems={supplierNavItems} />
+                </div>
+            )}
         </div>
     );
 };

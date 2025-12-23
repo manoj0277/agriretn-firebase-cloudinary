@@ -61,6 +61,7 @@ import PaymentScreen from './screens/PaymentScreen';
 import CropCalendarScreen from './screens/CropCalendarScreen';
 import AdminAlertsScreen from './screens/AdminAlertsScreen';
 import EarningsDetailsScreen from './screens/EarningsDetailsScreen';
+import PWAInstallPrompt from './components/PWAInstallPrompt';
 
 
 
@@ -181,7 +182,7 @@ const AppContent: React.FC = () => {
         if (role === UserRole.Farmer.toLowerCase()) {
             return (
                 <React.Suspense fallback={<AppSkeleton />}>
-                    <FarmerView navigate={navigate}>
+                    <FarmerView navigate={navigate} currentView={currentView.view}>
                         {children}
                     </FarmerView>
                 </React.Suspense>
@@ -189,7 +190,7 @@ const AppContent: React.FC = () => {
         }
         if (role === UserRole.Supplier.toLowerCase()) {
             return (
-                <SupplierView navigate={navigate}>
+                <SupplierView navigate={navigate} currentView={currentView.view}>
                     {children}
                 </SupplierView>
             );
@@ -197,7 +198,7 @@ const AppContent: React.FC = () => {
         if (role === UserRole.Admin.toLowerCase()) {
             return (
                 <React.Suspense fallback={<AppSkeleton />}>
-                    <AdminView navigate={navigate}>
+                    <AdminView navigate={navigate} currentView={currentView.view}>
                         {children}
                     </AdminView>
                 </React.Suspense>
@@ -206,7 +207,7 @@ const AppContent: React.FC = () => {
         if (role === UserRole.Founder.toLowerCase()) {
             return (
                 <React.Suspense fallback={<AppSkeleton />}>
-                    <FounderView navigate={navigate}>
+                    <FounderView navigate={navigate} currentView={currentView.view}>
                         {children}
                     </FounderView>
                 </React.Suspense>
@@ -215,14 +216,14 @@ const AppContent: React.FC = () => {
         if (role === UserRole.AgentPro.toLowerCase()) {
             return (
                 <React.Suspense fallback={<AppSkeleton />}>
-                    <AgentView navigate={navigate} />
+                    <AgentView navigate={navigate} currentView={currentView.view} />
                 </React.Suspense>
             );
         }
         if (role === UserRole.Agent.toLowerCase()) {
             return (
                 <React.Suspense fallback={<AppSkeleton />}>
-                    <NewAgentView navigate={navigate}>
+                    <NewAgentView navigate={navigate} currentView={currentView.view}>
                         {children}
                     </NewAgentView>
                 </React.Suspense>
@@ -231,78 +232,86 @@ const AppContent: React.FC = () => {
         return <>{children}</>;
     };
 
-    switch (currentView.view) {
-        // Screens that should show within the main layout
-        case 'ITEM_DETAIL':
-            return <RoleLayout><ItemDetailScreen item={currentView.item as Item} navigate={navigate} goBack={goBack} /></RoleLayout>;
-        case 'BOOKING_FORM':
-            return <RoleLayout><BookingFormScreen navigate={navigate} goBack={goBack} item={currentView.item as Item | undefined} category={currentView.category as ItemCategory | undefined} quantity={currentView.quantity as number | undefined} workPurpose={currentView.workPurpose} /></RoleLayout>;
-        case 'BOOKING_SUCCESS':
-            return <BookingSuccessScreen navigate={navigate} isDirectRequest={currentView.isDirectRequest} paymentType={currentView.paymentType} />; // Success screen might want to be standalone or full screen? User asked for ALL pages. Let's wrap it too to be safe, or keep full screen if it's a modal substitute. Success usually is full screen. Let's leave it full screen for "Celebration" effect unless requested otherwise.
-        case 'RATE_ITEM':
-            return <RoleLayout><RateItemScreen booking={currentView.booking as Booking} navigate={navigate} goBack={goBack} /></RoleLayout>;
-        case 'RATE_USER':
-            return <RoleLayout><RateUserScreen booking={currentView.booking as Booking} navigate={navigate} goBack={goBack} /></RoleLayout>;
-        case 'CHAT':
-            return <RoleLayout><ChatScreen chatPartner={currentView.chatPartner as User} item={currentView.item as Item | undefined} navigate={navigate} goBack={goBack} /></RoleLayout>;
-        case 'CONVERSATIONS':
-            return <RoleLayout><ConversationsScreen navigate={navigate} goBack={goBack} /></RoleLayout>;
-        case 'SUPPORT':
-            return <RoleLayout><SupportScreen navigate={navigate} goBack={goBack} /></RoleLayout>;
-        case 'TRACKING':
-            return <RoleLayout><TrackingScreen item={currentView.item as Item} navigate={navigate} goBack={goBack} /></RoleLayout>;
-        case 'REPORT_DAMAGE':
-            return <RoleLayout><ReportDamageScreen booking={currentView.booking as Booking} navigate={navigate} goBack={goBack} /></RoleLayout>;
-        case 'AI_ASSISTANT':
-            return <RoleLayout><AiAssistantScreen navigate={navigate} goBack={goBack} /></RoleLayout>;
-        case 'VOICE_ASSISTANT':
-            return <RoleLayout><VoiceAssistantScreen navigate={navigate} goBack={goBack} /></RoleLayout>;
-        case 'AI_SCAN':
-            return <RoleLayout><AiScanScreen navigate={navigate} goBack={goBack} /></RoleLayout>;
-        case 'CROP_CALENDAR':
-            return <RoleLayout><CropCalendarScreen navigate={navigate} goBack={goBack} /></RoleLayout>;
-        case 'SETTINGS':
-            return <RoleLayout><SettingsScreen navigate={navigate} goBack={goBack} /></RoleLayout>;
-        case 'POLICY':
-            return <RoleLayout><PolicyScreen navigate={navigate} goBack={goBack} /></RoleLayout>;
-        case 'PAYMENT_HISTORY':
-            return <RoleLayout><PaymentHistoryScreen navigate={navigate} goBack={goBack} /></RoleLayout>;
-        case 'BOOKING_HISTORY':
-            return <RoleLayout><BookingHistoryScreen navigate={navigate} goBack={goBack} /></RoleLayout>;
-        case 'MY_ACCOUNT':
-            return <RoleLayout><MyAccountScreen goBack={goBack} navigate={navigate} /></RoleLayout>;
-        case 'SUPPLIER_KYC':
-            return (
-                <RoleLayout>
-                    <div className="dark:text-neutral-200">
-                        <Header title={t('myAccount')} onBack={goBack} />
-                        <div className="p-4">
-                            <SupplierKycInlineForm onSubmitted={() => navigate({ view: 'HOME' })} />
+    const renderMainContent = () => {
+        switch (currentView.view) {
+            // Screens that should show within the main layout
+            case 'ITEM_DETAIL':
+                return <RoleLayout><ItemDetailScreen item={currentView.item as Item} navigate={navigate} goBack={goBack} /></RoleLayout>;
+            case 'BOOKING_FORM':
+                return <RoleLayout><BookingFormScreen navigate={navigate} goBack={goBack} item={currentView.item as Item | undefined} category={currentView.category as ItemCategory | undefined} quantity={currentView.quantity as number | undefined} workPurpose={currentView.workPurpose} /></RoleLayout>;
+            case 'BOOKING_SUCCESS':
+                return <BookingSuccessScreen navigate={navigate} isDirectRequest={currentView.isDirectRequest} paymentType={currentView.paymentType} />;
+            case 'RATE_ITEM':
+                return <RoleLayout><RateItemScreen booking={currentView.booking as Booking} navigate={navigate} goBack={goBack} /></RoleLayout>;
+            case 'RATE_USER':
+                return <RoleLayout><RateUserScreen booking={currentView.booking as Booking} navigate={navigate} goBack={goBack} /></RoleLayout>;
+            case 'CHAT':
+                return <RoleLayout><ChatScreen chatPartner={currentView.chatPartner as User} item={currentView.item as Item | undefined} navigate={navigate} goBack={goBack} /></RoleLayout>;
+            case 'CONVERSATIONS':
+                return <RoleLayout><ConversationsScreen navigate={navigate} goBack={goBack} /></RoleLayout>;
+            case 'SUPPORT':
+                return <RoleLayout><SupportScreen navigate={navigate} goBack={goBack} /></RoleLayout>;
+            case 'TRACKING':
+                return <RoleLayout><TrackingScreen item={currentView.item as Item} navigate={navigate} goBack={goBack} /></RoleLayout>;
+            case 'REPORT_DAMAGE':
+                return <RoleLayout><ReportDamageScreen booking={currentView.booking as Booking} navigate={navigate} goBack={goBack} /></RoleLayout>;
+            case 'AI_ASSISTANT':
+                return <RoleLayout><AiAssistantScreen navigate={navigate} goBack={goBack} /></RoleLayout>;
+            case 'VOICE_ASSISTANT':
+                return <RoleLayout><VoiceAssistantScreen navigate={navigate} goBack={goBack} /></RoleLayout>;
+            case 'AI_SCAN':
+                return <RoleLayout><AiScanScreen navigate={navigate} goBack={goBack} /></RoleLayout>;
+            case 'CROP_CALENDAR':
+                return <RoleLayout><CropCalendarScreen navigate={navigate} goBack={goBack} /></RoleLayout>;
+            case 'SETTINGS':
+                return <RoleLayout><SettingsScreen navigate={navigate} goBack={goBack} /></RoleLayout>;
+            case 'POLICY':
+                return <RoleLayout><PolicyScreen navigate={navigate} goBack={goBack} /></RoleLayout>;
+            case 'PAYMENT_HISTORY':
+                return <RoleLayout><PaymentHistoryScreen navigate={navigate} goBack={goBack} /></RoleLayout>;
+            case 'BOOKING_HISTORY':
+                return <RoleLayout><BookingHistoryScreen navigate={navigate} goBack={goBack} /></RoleLayout>;
+            case 'MY_ACCOUNT':
+                return <RoleLayout><MyAccountScreen goBack={goBack} navigate={navigate} /></RoleLayout>;
+            case 'SUPPLIER_KYC':
+                return (
+                    <RoleLayout>
+                        <div className="dark:text-neutral-200">
+                            <Header title={t('myAccount')} onBack={goBack} />
+                            <div className="p-4">
+                                <SupplierKycInlineForm onSubmitted={() => navigate({ view: 'HOME' })} />
+                            </div>
                         </div>
-                    </div>
-                </RoleLayout>
-            );
-        case 'PERSONAL_DETAILS':
-            return <RoleLayout><PersonalDetailsScreen goBack={goBack} navigate={navigate} /></RoleLayout>;
-        case 'CHANGE_PASSWORD':
-            return <RoleLayout><ChangePasswordScreen goBack={goBack} /></RoleLayout>;
-        case 'EDIT_DETAILS':
-            return <RoleLayout><EditDetailsScreen goBack={goBack} /></RoleLayout>;
-        case 'COMMUNITY':
-            return <RoleLayout><CommunityScreen goBack={goBack} /></RoleLayout>;
-        case 'PAYMENT':
-            return <BookingSuccessScreen navigate={navigate} isDirectRequest={false} />; // Temporary fix if PaymentScreen is issue, otherwise <RoleLayout><PaymentScreen ... /></RoleLayout>
-        case 'ADMIN_ALERTS':
-            return <RoleLayout><AdminAlertsScreen navigate={navigate} goBack={goBack} /></RoleLayout>;
+                    </RoleLayout>
+                );
+            case 'PERSONAL_DETAILS':
+                return <RoleLayout><PersonalDetailsScreen goBack={goBack} navigate={navigate} /></RoleLayout>;
+            case 'CHANGE_PASSWORD':
+                return <RoleLayout><ChangePasswordScreen goBack={goBack} /></RoleLayout>;
+            case 'EDIT_DETAILS':
+                return <RoleLayout><EditDetailsScreen goBack={goBack} /></RoleLayout>;
+            case 'COMMUNITY':
+                return <RoleLayout><CommunityScreen goBack={goBack} /></RoleLayout>;
+            case 'PAYMENT':
+                return <BookingSuccessScreen navigate={navigate} isDirectRequest={false} />;
+            case 'ADMIN_ALERTS':
+                return <RoleLayout><AdminAlertsScreen navigate={navigate} goBack={goBack} /></RoleLayout>;
+            case 'ADMIN_DASHBOARD':
+                return <RoleLayout />;
+            case 'EARNINGS_DETAILS':
+                return <RoleLayout><EarningsDetailsScreen navigate={navigate} goBack={goBack} /></RoleLayout>;
+            case 'HOME':
+            default:
+                return <RoleLayout />;
+        }
+    };
 
-        case 'ADMIN_DASHBOARD':
-            return <RoleLayout />; // Handled by AdminView default
-        case 'EARNINGS_DETAILS':
-            return <RoleLayout><EarningsDetailsScreen navigate={navigate} goBack={goBack} /></RoleLayout>;
-        case 'HOME':
-        default:
-            return <RoleLayout />;
-    }
+    return (
+        <>
+            {renderMainContent()}
+            <PWAInstallPrompt />
+        </>
+    );
 };
 
 const App: React.FC = () => {

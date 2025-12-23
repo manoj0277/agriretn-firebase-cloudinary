@@ -6,13 +6,16 @@ import { useItem } from './ItemContext';
 import { useAdminAlert } from './AdminAlertContext';
 import { useAuth } from './AuthContext';
 import { auth, db } from '../src/lib/firebase';
-import { onSnapshot, collection, query, where } from 'firebase/firestore';
+import { onSnapshot, collection, query, where, orderBy, limit, startAfter, getDocs, QueryDocumentSnapshot } from 'firebase/firestore';
 
 const API_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3001/api';
 
 interface BookingContextType {
     bookings: Booking[];
     damageReports: DamageReport[];
+    loadMoreBookings: () => Promise<void>;
+    hasMoreBookings: boolean;
+    isLoadingBookings: boolean;
     addBooking: (bookingData: Omit<Booking, 'id'> | Omit<Booking, 'id'>[]) => void;
     cancelBooking: (bookingId: string) => void;
     rejectBooking: (bookingId: string) => void;
@@ -88,22 +91,57 @@ export const BookingProvider: React.FC<{ children: ReactNode }> = ({ children })
     const { items, updateItem } = useItem();
     const { allUsers } = useAuth();
 
+    const [lastVisible, setLastVisible] = useState<QueryDocumentSnapshot | null>(null);
+    const [hasMoreBookings, setHasMoreBookings] = useState(true);
+    const [isLoadingBookings, setIsLoadingBookings] = useState(false);
+    const BOOKINGS_PER_PAGE = 15;
+
     const supplierRejectCounts: Record<string, { count: number; firstTs: number }> = {};
 
-    useEffect(() => {
-        const loadBookings = async () => {
-            try {
-                const res = await fetch(`${API_URL}/bookings`);
-                if (res.ok) {
-                    const data = await res.json();
-                    setBookings(data);
+    const loadMoreBookings = async () => {
+        if (!lastVisible || !hasMoreBookings || isLoadingBookings) return;
+
+        setIsLoadingBookings(true);
+        try {
+            const q = query(
+                collection(db, 'bookings'),
+                orderBy('date', 'desc'),
+                startAfter(lastVisible),
+                limit(BOOKINGS_PER_PAGE)
+            );
+
+            const snapshot = await getDocs(q);
+
+            if (snapshot.empty) {
+                setHasMoreBookings(false);
+            } else {
+                const newBookings = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Booking));
+                setBookings(prev => {
+                    // Avoid duplicates
+                    const existingIds = new Set(prev.map(b => b.id));
+                    const uniqueNew = newBookings.filter(b => !existingIds.has(b.id));
+                    return [...prev, ...uniqueNew];
+                });
+                setLastVisible(snapshot.docs[snapshot.docs.length - 1]);
+                if (snapshot.docs.length < BOOKINGS_PER_PAGE) {
+                    setHasMoreBookings(false);
                 }
-            } catch {
-                showToast('Could not load bookings.', 'error');
             }
-        };
+        } catch (error) {
+            console.error("Error loading more bookings:", error);
+            showToast('Failed to load more bookings.', 'error');
+        } finally {
+            setIsLoadingBookings(false);
+        }
+    };
+
+    // Initial load via API (backup) - Removed to rely on Realtime Listener for initial batch
+    /*
+    useEffect(() => {
+        const loadBookings = async () => { ... }
         loadBookings();
     }, []);
+    */
 
     // Real-time booking updates with onSnapshot (replaces polling)
     useEffect(() => {
@@ -118,14 +156,48 @@ export const BookingProvider: React.FC<{ children: ReactNode }> = ({ children })
             // Given the user wants "Real Data All Time", an open listener is the most robust approach for now.
 
             try {
-                const q = collection(db, 'bookings');
+                // Initial Listener: Listen to latest 15 bookings for realtime updates
+                const q = query(collection(db, 'bookings'), orderBy('date', 'desc'), limit(BOOKINGS_PER_PAGE));
                 unsubscribe = onSnapshot(q, (snapshot) => {
                     const loadedBookings = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Booking));
 
                     // Perform auto-cancellation check on the FRESH data
                     checkExpiredBookings(loadedBookings);
 
-                    setBookings(loadedBookings);
+                    // For initial load, we want to replace. 
+                    // But if we have scrolled (has more data), we need to be careful not to wipe out old data.
+                    // Ideally, realtime listener should only update the HEAD of the list.
+                    // Simplification: We update the `bookings` state, but we need to merge with existing "older" bookings if any.
+                    // However, `onSnapshot` fires with the query results (latest 15).
+
+                    setBookings(prev => {
+                        // If we have previous data (more than 15), we want to keep the tail (older data)
+                        // and update the head (newer data). 
+                        // But `loadedBookings` ARE the head.
+
+                        // If it's the very first load or only head exists
+                        if (prev.length <= BOOKINGS_PER_PAGE) {
+                            if (snapshot.docs.length > 0) {
+                                setLastVisible(snapshot.docs[snapshot.docs.length - 1]);
+                            }
+                            return loadedBookings;
+                        }
+
+                        // If we have scrolled, we need to merge.
+                        // loadedBookings contains the latest 15. 
+                        // We replace the matching IDs in prev, and prepend any new ones.
+                        // Actually, simpler to just replace the first N items? No, order might change.
+
+                        // Robust merge:
+                        const newIds = new Set(loadedBookings.map(b => b.id));
+                        const oldBookingsKept = prev.filter(b => !newIds.has(b.id));
+
+                        // Re-sort everything?
+                        const merged = [...loadedBookings, ...oldBookingsKept].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+                        return merged;
+                    });
+
                 }, (error) => {
                     console.error("Booking listener error:", error);
                     // Fallback to poll if listener fails
@@ -739,7 +811,7 @@ export const BookingProvider: React.FC<{ children: ReactNode }> = ({ children })
         }
     };
 
-    const value = useMemo(() => ({ bookings, damageReports, addBooking, cancelBooking, rejectBooking, raiseDispute, resolveDispute, reportDamage, resolveDamageClaim, acceptBookingRequest, markAsArrived, verifyOtpAndStartWork, completeBooking, makeFinalPayment }), [bookings, damageReports, items, updateItem, showToast, addNotification]);
+    const value = useMemo(() => ({ bookings, damageReports, loadMoreBookings, hasMoreBookings, isLoadingBookings, addBooking, cancelBooking, rejectBooking, raiseDispute, resolveDispute, reportDamage, resolveDamageClaim, acceptBookingRequest, markAsArrived, verifyOtpAndStartWork, completeBooking, makeFinalPayment }), [bookings, damageReports, hasMoreBookings, isLoadingBookings, items, updateItem, showToast, addNotification]);
 
     return (
         <BookingContext.Provider value={value}>

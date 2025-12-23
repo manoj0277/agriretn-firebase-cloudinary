@@ -44,6 +44,7 @@ interface AgentViewProps {
     navigate: (view: AppView) => void;
     onSwitchMode?: () => void;
     roleBadge?: string;
+    currentView?: string;
 }
 
 const RepeatIcon: React.FC<{ className?: string }> = ({ className }) => (
@@ -1076,8 +1077,31 @@ const AgentBulkBookingScreen: React.FC<AgentViewProps> = ({ navigate }) => {
     );
 };
 
-const AgentProStandardView: React.FC<AgentViewProps> = ({ navigate: parentNavigate, onSwitchMode, roleBadge }) => {
+const AgentProStandardView: React.FC<AgentViewProps> = ({ navigate: parentNavigate, onSwitchMode, roleBadge, currentView }) => {
     const [activeTab, setActiveTab] = useState('home');
+
+    // Sync activeTab with currentView
+    useEffect(() => {
+        if (currentView === 'HOME' && !['bookings', 'map', 'profile', 'book'].includes(activeTab)) {
+            setActiveTab('home');
+        } else {
+            switch (currentView) {
+                case 'PROFILE':
+                case 'SETTINGS':
+                case 'SUPPORT':
+                case 'PAYMENT_HISTORY':
+                case 'BOOKING_HISTORY':
+                    setActiveTab('profile');
+                    break;
+                case 'BOOKING_FORM':
+                    setActiveTab('book');
+                    break;
+                case 'BULK_BOOKING':
+                    setActiveTab('bulk_booking');
+                    break;
+            }
+        }
+    }, [currentView]);
 
     const handleNavigate = (viewObj: AppView) => {
         if (viewObj.view === 'BULK_BOOKING') {
@@ -1168,7 +1192,7 @@ const AgentProStandardView: React.FC<AgentViewProps> = ({ navigate: parentNaviga
 
 import SupplierView from './SupplierView';
 
-const AgentView: React.FC<AgentViewProps> = ({ navigate }) => {
+const AgentView: React.FC<AgentViewProps> = ({ navigate, currentView }) => {
     // Mode state to switch between Standard Agent View and Supplier View
     const [mode, setMode] = useState<'standard' | 'supplier'>('standard');
 
@@ -1180,9 +1204,9 @@ const AgentView: React.FC<AgentViewProps> = ({ navigate }) => {
         <div className="relative min-h-screen flex flex-col">
             <div className="flex-grow relative">
                 {mode === 'standard' ? (
-                    <AgentProStandardView navigate={navigate} onSwitchMode={toggleMode} roleBadge="AgentPro Farmer" />
+                    <AgentProStandardView navigate={navigate} onSwitchMode={toggleMode} roleBadge="AgentPro Farmer" currentView={currentView} />
                 ) : (
-                    <SupplierView navigate={navigate} onSwitchMode={toggleMode} roleBadge="Agent Pro Supplier" />
+                    <SupplierView navigate={navigate} onSwitchMode={toggleMode} roleBadge="Agent Pro Supplier" currentView={currentView} />
                 )}
             </div>
         </div>

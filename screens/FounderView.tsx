@@ -15,6 +15,7 @@ import NotificationManagerScreen from './NotificationManagerScreen';
 import DemandControlScreen from './admin/DemandControlScreen';
 import CommunityManagementScreen from './admin/CommunityManagementScreen';
 import AgentManagementScreen from './admin/AgentManagementScreen';
+import DemandGapsScreen from './admin/DemandGapsScreen';
 import SettingsScreen from './SettingsScreen';
 import MyAccountScreen from './MyAccountScreen';
 import ChatMonitoringScreen from './founder/ChatMonitoringScreen';
@@ -28,9 +29,10 @@ import AdminSidebar from '../components/AdminSidebar';
 interface FounderViewProps {
     navigate: (view: AppView) => void;
     children?: React.ReactNode;
+    currentView?: string;
 }
 
-const FounderView: React.FC<FounderViewProps> = ({ navigate, children }) => {
+const FounderView: React.FC<FounderViewProps> = ({ navigate, children, currentView }) => {
     const [activeTab, setActiveTabState] = useState('dashboard');
     const [history, setHistory] = useState<string[]>(['dashboard']);
     const { user, logout } = useAuth();
@@ -43,6 +45,23 @@ const FounderView: React.FC<FounderViewProps> = ({ navigate, children }) => {
             setActiveTabState(tab);
         }
     };
+
+    // Sync activeTab with currentView
+    useEffect(() => {
+        if (typeof currentView === 'string') {
+            switch (currentView) {
+                case 'PROFILE':
+                    setActiveTab('profile');
+                    break;
+                case 'SETTINGS':
+                    setActiveTab('settings');
+                    break;
+                case 'SUPPORT':
+                    setActiveTab('support');
+                    break;
+            }
+        }
+    }, [currentView]);
 
     // Handle Back Navigation (History Pop)
     const handleBack = () => {
@@ -140,6 +159,10 @@ const FounderView: React.FC<FounderViewProps> = ({ navigate, children }) => {
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
                 <span className="text-sm font-semibold text-neutral-700 dark:text-neutral-300 text-center">My Account</span>
             </button>
+            <button onClick={() => setActiveTab('demand-gaps')} className="p-4 bg-white dark:bg-neutral-800 rounded-xl shadow-sm border border-neutral-200 dark:border-neutral-700 flex flex-col items-center justify-center gap-2 hover:bg-neutral-50 dark:hover:bg-neutral-700 transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-orange-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                <span className="text-sm font-semibold text-neutral-700 dark:text-neutral-300 text-center">Demand Gaps</span>
+            </button>
         </div>
     );
 
@@ -179,6 +202,8 @@ const FounderView: React.FC<FounderViewProps> = ({ navigate, children }) => {
                 return <MyAccountScreen goBack={handleBack} navigate={navigate} />;
             case 'chat-monitor':
                 return <ChatMonitoringScreen />;
+            case 'demand-gaps':
+                return <DemandGapsScreen />;
         }
     };
 

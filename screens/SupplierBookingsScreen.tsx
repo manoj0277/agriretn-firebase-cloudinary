@@ -20,7 +20,7 @@ interface SupplierViewProps {
 
 const SupplierBookingsScreen: React.FC<SupplierViewProps> = ({ navigate }) => {
     const { user, allUsers } = useAuth();
-    const { bookings, markAsArrived, verifyOtpAndStartWork, cancelBooking } = useBooking();
+    const { bookings, markAsArrived, verifyOtpAndStartWork, cancelBooking, loadMoreBookings, hasMoreBookings, isLoadingBookings } = useBooking();
     const { items } = useItem();
     const { reviews } = useReview();
     const { t } = useLanguage();
@@ -189,6 +189,19 @@ const SupplierBookingsScreen: React.FC<SupplierViewProps> = ({ navigate }) => {
             <div className="p-4 space-y-4">
                 {renderBookingList(activeBookings, "Upcoming & Active Bookings")}
                 {renderBookingList(pastBookings, "Completed & Past Bookings")}
+
+                {hasMoreBookings && (
+                    <div className="flex justify-center py-6">
+                        <Button
+                            variant="secondary"
+                            onClick={() => loadMoreBookings && loadMoreBookings()}
+                            disabled={isLoadingBookings}
+                            className="!w-auto px-6"
+                        >
+                            {isLoadingBookings ? 'Loading...' : 'Load Older Bookings'}
+                        </Button>
+                    </div>
+                )}
             </div>
         </div>
     );

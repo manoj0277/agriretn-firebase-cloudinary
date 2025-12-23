@@ -7,9 +7,10 @@ import { useLanguage } from '../context/LanguageContext';
 interface NewAgentViewProps {
     navigate: (view: AppView) => void;
     children?: React.ReactNode;
+    currentView?: string;
 }
 
-const NewAgentView: React.FC<NewAgentViewProps> = ({ navigate, children }) => {
+const NewAgentView: React.FC<NewAgentViewProps> = ({ navigate, children, currentView }) => {
     const { t } = useLanguage();
     // Default to 'farmer' mode as requested ("login as agent farmer")
     const [mode, setMode] = useState<'farmer' | 'supplier'>('farmer');
@@ -24,11 +25,11 @@ const NewAgentView: React.FC<NewAgentViewProps> = ({ navigate, children }) => {
             {/* Content Area */}
             <div className="relative">
                 {mode === 'farmer' ? (
-                    <FarmerView navigate={navigate} onSwitchMode={toggleMode} roleBadge="Agent Farmer">
+                    <FarmerView navigate={navigate} onSwitchMode={toggleMode} roleBadge="Agent Farmer" currentView={currentView}>
                         {children}
                     </FarmerView>
                 ) : (
-                    <SupplierView navigate={navigate} onSwitchMode={toggleMode} roleBadge="Agent Supplier">
+                    <SupplierView navigate={navigate} onSwitchMode={toggleMode} roleBadge="Agent Supplier" currentView={currentView}>
                         {children}
                     </SupplierView>
                 )}

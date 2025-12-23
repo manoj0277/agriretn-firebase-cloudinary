@@ -17,7 +17,8 @@ const COLLECTIONS = {
     NOTIFICATIONS_BOOKING: 'notifications_booking',
     NOTIFICATIONS_SYSTEM: 'notifications_system',
     NOTIFICATIONS_PROMOTIONAL: 'notifications_promotional',
-    DAMAGE_REPORTS: 'damage_reports'
+    DAMAGE_REPORTS: 'damage_reports',
+    FAILED_SEARCHES: 'failed_searches'
 };
 
 // Generic Helpers
@@ -317,4 +318,9 @@ export const DamageReportService = {
     getById: (id: number) => getById<DamageReport>(COLLECTIONS.DAMAGE_REPORTS, id),
     create: (report: DamageReport) => create<DamageReport>(COLLECTIONS.DAMAGE_REPORTS, report),
     update: (id: number, data: Partial<DamageReport>) => update<DamageReport>(COLLECTIONS.DAMAGE_REPORTS, id, data),
+};
+
+export const SearchService = {
+    getAll: () => getAll<any>(COLLECTIONS.FAILED_SEARCHES),
+    create: (data: any) => create<any>(COLLECTIONS.FAILED_SEARCHES, data),
 };

@@ -3,11 +3,21 @@
 
 <head>
   <meta charset="UTF-8" />
-  <link rel="icon" href="/favicon.ico" />
+  <link rel="icon" href="/favicon.png" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="theme-color" content="#000000" />
-  <meta name="description" content="AgriRent - Rent Agricultural Machinery" />
-  <title>AgriRent</title>
+  <meta name="theme-color" content="#2E7D32" />
+  <meta name="description"
+    content="BhoomiHire - Uber for Agriculture. Rent agricultural machinery and equipment easily." />
+  <title>BhoomiHire</title>
+
+  <!-- PWA Manifest -->
+  <link rel="manifest" href="/manifest.json" />
+
+  <!-- Apple Touch Icons for iOS -->
+  <link rel="apple-touch-icon" href="/icons/icon-192x192.png" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="BhoomiHire" />
 
   <link rel="stylesheet" href="https://unpkg.com/tailwindcss@2.2.19/dist/tailwind.min.css" crossorigin="anonymous" />
   <style>
@@ -88,12 +98,49 @@
     }
   </style>
 
+  <script>
+    // Capture PWA install prompt globally to avoid missing the event
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      window.deferredPWAPrompt = e;
+      console.log('[PWA] Global capture: beforeinstallprompt');
+    });
+  </script>
+
 </head>
 
 <body>
   <noscript>You need to enable JavaScript to run this app.</noscript>
   <div id="root"></div>
   <script type="module" src="/index.tsx"></script>
+
+  <!-- Service Worker Registration -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js')
+          .then((registration) => {
+            console.log('[App] Service Worker registered with scope:', registration.scope);
+
+            // Check for updates
+            registration.addEventListener('updatefound', () => {
+              const newWorker = registration.installing;
+              console.log('[App] Service Worker update found');
+
+              newWorker.addEventListener('statechange', () => {
+                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                  // New content is available, prompt user to refresh
+                  console.log('[App] New content available, please refresh');
+                }
+              });
+            });
+          })
+          .catch((error) => {
+            console.error('[App] Service Worker registration failed:', error);
+          });
+      });
+    }
+  </script>
 </body>
 
 </html>

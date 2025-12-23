@@ -44,6 +44,7 @@ interface FarmerViewProps {
     onSwitchMode?: () => void;
     roleBadge?: string;
     children?: React.ReactNode;
+    currentView?: string;
 }
 
 const RepeatIcon: React.FC<{ className?: string }> = ({ className }) => (
@@ -63,8 +64,17 @@ const ChatIcon: React.FC<{ onClick: () => void; unreadCount: number; }> = ({ onC
     </button>
 );
 
+const RADIUS_LIMITS: Record<string, number> = {
+    'Workers': 10,
+    'Tractors': 20,
+    'Drones': 50,
+    'Borewell': 50,
+    'Harvesters': 30,
+    'default': 20
+};
+
 export const FarmerHomeScreen: React.FC<FarmerViewProps> = ({ navigate, roleBadge }) => {
-    const { items } = useItem();
+    const { items, loadMoreItems, hasMoreItems, isLoadingItems } = useItem();
     const { bookings } = useBooking();
     const { user, allUsers } = useAuth();
     const { getUnreadMessageCount } = useChat();
@@ -94,6 +104,8 @@ export const FarmerHomeScreen: React.FC<FarmerViewProps> = ({ navigate, roleBadg
     const [tempMinRating, setTempMinRating] = useState(minRating);
     const [tempShowAvailableOnly, setTempShowAvailableOnly] = useState(showAvailableOnly);
     const [tempFilterDate, setTempFilterDate] = useState(filterDate);
+    const [isExtendedRadius, setIsExtendedRadius] = useState(false);
+    const [hasLoggedFailure, setHasLoggedFailure] = useState(false);
 
 
     const itemCategories: ('All' | ItemCategory)[] = ['All', ...Object.values(ItemCategory)];
@@ -139,30 +151,20 @@ export const FarmerHomeScreen: React.FC<FarmerViewProps> = ({ navigate, roleBadg
     const [userLocation, setUserLocation] = useState<{ lat: number; lng: number; } | undefined>();
     const [locationError, setLocationError] = useState<string | null>(null);
 
-    useEffect(() => {
-        if (navigator.geolocation) {
-            navigator.geolocation.getCurrentPosition(
-                (position) => {
-                    setUserLocation({ lat: position.coords.latitude, lng: position.coords.longitude });
-                },
-                (error) => {
-                    console.error("Error getting location:", error);
-                }
-            );
-        }
-    }, []);
+    if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+            (position) => {
+                setUserLocation({ lat: position.coords.latitude, lng: position.coords.longitude });
+            },
+            (error) => {
+                // Fail silently or log a simple warning instead of the full object
+                console.warn("Location access denied or timed out. Using default.");
+            },
+            { timeout: 10000 }
+        );
+    }
 
     const popularItems = useMemo(() => {
-        // Radius Logic (Duplicated from processedItems to ensure consistency)
-        const RADIUS_LIMITS: Record<string, number> = {
-            'Workers': 10,
-            'Tractors': 20,
-            'Drones': 50,
-            'Borewell': 50,
-            'Harvesters': 30,
-            'default': 20
-        };
-
         const filterByRadius = (item: Item) => {
             if (!userLocation || !item.locationCoords) return true; // Show all if location unknown (or strictly hide? Defaulting to show to match previous behavior for fallback)
 
@@ -176,7 +178,7 @@ export const FarmerHomeScreen: React.FC<FarmerViewProps> = ({ navigate, roleBadg
             const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
             const distance = R * c;
 
-            const maxRadius = RADIUS_LIMITS[item.category] || RADIUS_LIMITS['default'];
+            const maxRadius = (RADIUS_LIMITS[item.category] || RADIUS_LIMITS['default']) + (isExtendedRadius ? 20 : 0);
             return distance <= maxRadius;
         };
 
@@ -207,7 +209,7 @@ export const FarmerHomeScreen: React.FC<FarmerViewProps> = ({ navigate, roleBadg
         const combinedList = [...bookedItems, ...fillerItems];
         return combinedList.slice(0, desiredCount);
 
-    }, [bookings, approvedItems, userLocation]);
+    }, [bookings, approvedItems, userLocation, isExtendedRadius]);
 
     // Auto-scroll Popular Near You carousel every 3.5 seconds
     const popularRef = useRef<HTMLDivElement | null>(null);
@@ -229,15 +231,6 @@ export const FarmerHomeScreen: React.FC<FarmerViewProps> = ({ navigate, roleBadg
 
 
     const processedItems = useMemo(() => {
-        const RADIUS_LIMITS: Record<string, number> = {
-            'Workers': 10,
-            'Tractors': 20,
-            'Drones': 50,
-            'Borewell': 50,
-            'Harvesters': 30,
-            'default': 20
-        };
-
         let filtered = approvedItems.filter(item => {
             const matchesSearch = item.name.toLowerCase().includes(searchQuery.toLowerCase()) || item.location.toLowerCase().includes(searchQuery.toLowerCase());
             const matchesCategory = selectedCategory === 'All' || item.category === selectedCategory;
@@ -284,7 +277,7 @@ export const FarmerHomeScreen: React.FC<FarmerViewProps> = ({ navigate, roleBadg
                 const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
                 const distance = R * c; // Distance in km
 
-                const maxRadius = RADIUS_LIMITS[item.category] || RADIUS_LIMITS['default'];
+                const maxRadius = (RADIUS_LIMITS[item.category] || RADIUS_LIMITS['default']) + (isExtendedRadius ? 20 : 0);
                 matchesRadius = distance <= maxRadius;
             } else if (!userLocation) {
                 // If user location is not available, we might want to show everything or nothing.
@@ -390,10 +383,46 @@ export const FarmerHomeScreen: React.FC<FarmerViewProps> = ({ navigate, roleBadg
         });
 
         return filtered;
-    }, [searchQuery, selectedCategory, approvedItems, sortBy, bookings, priceRange, minRating, showAvailableOnly, filterDate, allUsers, userLocation]);
+    }, [searchQuery, selectedCategory, approvedItems, sortBy, bookings, priceRange, minRating, showAvailableOnly, filterDate, allUsers, userLocation, isExtendedRadius]);
+
+    // Logging logic for out-of-radius failures
+    useEffect(() => {
+        if (isExtendedRadius && processedItems.length === 0 && !hasLoggedFailure && userLocation) {
+            const logFailure = async () => {
+                try {
+                    setHasLoggedFailure(true);
+                    await fetch('/api/failed-searches', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            userId: user?.id,
+                            location: user?.location || 'Unknown',
+                            userLocation,
+                            selectedCategory,
+                            searchRadius: RADIUS_LIMITS[selectedCategory] ? RADIUS_LIMITS[selectedCategory] + 20 : 40
+                        })
+                    });
+                    console.log('[Search] Failed search logged to backend');
+                } catch (error) {
+                    console.error('Failed to log search failure:', error);
+                }
+            };
+            logFailure();
+        }
+    }, [isExtendedRadius, processedItems.length, userLocation, selectedCategory, user?.id, user?.location]);
+
+    const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+        const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
+        if (scrollHeight - scrollTop <= clientHeight + 100 && hasMoreItems && !isLoadingItems) {
+            loadMoreItems();
+        }
+    };
 
     return (
-        <div className="h-full overflow-y-auto bg-green-50 dark:bg-neutral-900 dark:text-neutral-200">
+        <div
+            className="h-full overflow-y-auto bg-green-50 dark:bg-neutral-900 dark:text-neutral-200"
+            onScroll={handleScroll}
+        >
             {/* Header with centered title */}
             <div className="sticky top-0 z-10 bg-green-700 border-b border-green-800 px-4 py-3">
                 <div className="flex items-center justify-between mb-3">
@@ -535,48 +564,100 @@ export const FarmerHomeScreen: React.FC<FarmerViewProps> = ({ navigate, roleBadg
 
                 {/* All Services - Vertical list with horizontal cards */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 pb-20">
-                    {processedItems.map(item => (
-                        <div
-                            key={item.id}
-                            onClick={() => navigate({ view: 'ITEM_DETAIL', item })}
-                            className="bg-white dark:bg-neutral-800 rounded-2xl p-4 shadow-sm border border-neutral-100 dark:border-neutral-700 cursor-pointer hover:shadow-md transition-all duration-200 flex flex-col h-full"
-                        >
-                            <div className="relative w-full h-48 md:h-40 flex-shrink-0 bg-neutral-100 dark:bg-neutral-700 rounded-xl overflow-hidden mb-4">
-                                <img
-                                    src={item.images?.[0] || 'https://via.placeholder.com/140'}
-                                    alt={item.name}
-                                    className="w-full h-full object-cover"
-                                />
-                            </div>
-                            <div className="flex-1 flex flex-col">
-                                <div className="mb-2">
-                                    <span className={`inline-block px-3 py-1 rounded-full text-xs font-bold tracking-wide ${item.category === 'Tractors' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
-                                        item.category === 'JCB' ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' :
-                                            item.category === 'Harvesters' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' :
-                                                'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
-                                        }`}>
-                                        {item.category}
-                                    </span>
+                    {processedItems.length > 0 ? (
+                        processedItems.map(item => (
+                            <div
+                                key={item.id}
+                                onClick={() => navigate({ view: 'ITEM_DETAIL', item })}
+                                className="bg-white dark:bg-neutral-800 rounded-2xl p-4 shadow-sm border border-neutral-100 dark:border-neutral-700 cursor-pointer hover:shadow-md transition-all duration-200 flex flex-col h-full"
+                            >
+                                <div className="relative w-full h-48 md:h-40 flex-shrink-0 bg-neutral-100 dark:bg-neutral-700 rounded-xl overflow-hidden mb-4">
+                                    <img
+                                        src={item.images?.[0] || 'https://via.placeholder.com/140'}
+                                        alt={item.name}
+                                        className="w-full h-full object-cover"
+                                    />
                                 </div>
-                                <h3 className="font-bold text-lg text-neutral-900 dark:text-white mb-1.5 leading-tight truncate" title={item.name}>{item.name}</h3>
-                                <p className="text-lg font-bold text-primary mb-2">₹{Math.min(...item.purposes.map(p => p.price))}/hr</p>
-                                <div className="mt-auto flex items-center text-sm text-neutral-500 dark:text-neutral-400">
-                                    {item.avgRating ? (
-                                        <>
-                                            <svg className="w-4 h-4 text-yellow-400 mr-1" fill="currentColor" viewBox="0 0 20 20">
-                                                <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                                            </svg>
-                                            <span className="font-medium text-neutral-700 dark:text-neutral-300">{item.avgRating.toFixed(1)}</span>
-                                            <span className="mx-1.5 text-neutral-300 dark:text-neutral-600">•</span>
-                                            <span>{item.reviews?.length || 0} reviews</span>
-                                        </>
-                                    ) : (
-                                        <span>No reviews yet</span>
-                                    )}
+                                <div className="flex-1 flex flex-col">
+                                    <div className="mb-2">
+                                        <span className={`inline-block px-3 py-1 rounded-full text-xs font-bold tracking-wide ${item.category === 'Tractors' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
+                                            item.category === 'JCB' ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' :
+                                                item.category === 'Harvesters' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' :
+                                                    'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                                            }`}>
+                                            {item.category}
+                                        </span>
+                                    </div>
+                                    <h3 className="font-bold text-lg text-neutral-900 dark:text-white mb-1.5 leading-tight truncate" title={item.name}>{item.name}</h3>
+                                    <p className="text-lg font-bold text-primary mb-2">₹{Math.min(...item.purposes.map(p => p.price))}/hr</p>
+                                    <div className="mt-auto flex items-center text-sm text-neutral-500 dark:text-neutral-400">
+                                        {item.avgRating ? (
+                                            <>
+                                                <svg className="w-4 h-4 text-yellow-400 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                                                    <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                                                </svg>
+                                                <span className="font-medium text-neutral-700 dark:text-neutral-300">{item.avgRating.toFixed(1)}</span>
+                                                <span className="mx-1.5 text-neutral-300 dark:text-neutral-600">•</span>
+                                                <span>{item.reviews?.length || 0} reviews</span>
+                                            </>
+                                        ) : (
+                                            <span>No reviews yet</span>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
+                        ))
+                    ) : (
+                        <div className="col-span-full py-12 px-4 text-center bg-white dark:bg-neutral-800 rounded-2xl border border-dashed border-neutral-300 dark:border-neutral-600">
+                            <div className="mb-4 flex justify-center">
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-16 w-16 text-neutral-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                                </svg>
+                            </div>
+                            <h3 className="text-xl font-bold text-neutral-800 dark:text-neutral-100 mb-2">
+                                NO {selectedCategory !== 'All' ? selectedCategory.toLowerCase() : 'service'} available nearby
+                            </h3>
+                            <p className="text-neutral-500 dark:text-neutral-400 mb-6 max-w-md mx-auto">
+                                We couldn't find any listings matching your criteria in the standard search radius.
+                            </p>
+                            {!isExtendedRadius ? (
+                                <Button onClick={() => setIsExtendedRadius(true)}>
+                                    See out of radius (+20km)
+                                </Button>
+                            ) : (
+                                <div className="p-4 bg-orange-50 dark:bg-orange-900/20 rounded-xl border border-orange-200 dark:border-orange-800/30">
+                                    <p className="text-orange-700 dark:text-orange-300 font-medium">
+                                        No services found even in extended radius. We have notified the Admin and Founder about the high demand in your area!
+                                    </p>
+                                </div>
+                            )}
                         </div>
-                    ))}
+                    )}
+
+                    {/* Loading Indicator / Load More */}
+                    <div className="col-span-full py-6 text-center">
+                        {isLoadingItems && (
+                            <div className="flex justify-center items-center space-x-2 text-primary animate-pulse">
+                                <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                                <span className="text-sm font-medium">Loading items...</span>
+                            </div>
+                        )}
+                        {!isLoadingItems && hasMoreItems && (
+                            <button
+                                onClick={() => loadMoreItems()}
+                                className="text-sm text-primary font-medium hover:bg-green-50 dark:hover:bg-neutral-700 px-4 py-2 rounded-lg transition-colors"
+                            >
+                                Load more results
+                            </button>
+                        )}
+                        {!isLoadingItems && !hasMoreItems && processedItems.length > 0 && (
+                            <p className="text-xs text-neutral-400">All items loaded</p>
+                        )}
+                    </div>
                 </div>
 
             </div>
@@ -886,7 +967,7 @@ const FarmerMapView: React.FC<FarmerViewProps> = ({ navigate }) => {
 
 const FarmerBookingsScreen: React.FC<FarmerViewProps> = ({ navigate }) => {
     const { user, allUsers } = useAuth();
-    const { bookings, cancelBooking, raiseDispute, completeBooking, makeFinalPayment } = useBooking();
+    const { bookings, cancelBooking, raiseDispute, completeBooking, makeFinalPayment, loadMoreBookings, hasMoreBookings, isLoadingBookings } = useBooking();
     const { items } = useItem();
     const { reviews } = useReview();
     const { getUnreadMessageCount } = useChat();
@@ -1135,6 +1216,19 @@ const FarmerBookingsScreen: React.FC<FarmerViewProps> = ({ navigate }) => {
                 }
             </div>
 
+            {hasMoreBookings && (
+                <div className="flex justify-center pb-24 top-[-20px] relative">
+                    <Button
+                        variant="secondary"
+                        onClick={() => loadMoreBookings && loadMoreBookings()}
+                        disabled={isLoadingBookings}
+                        className="!w-auto px-6 shadow-sm border border-neutral-200 dark:border-neutral-600"
+                    >
+                        {isLoadingBookings ? 'Loading...' : 'Load More History'}
+                    </Button>
+                </div>
+            )}
+
             {
                 bookingToCancel && (
                     <ConfirmationDialog
@@ -1292,14 +1386,52 @@ const ProfileScreen: React.FC<FarmerViewProps> = ({ navigate, onSwitchMode, role
     );
 };
 
-const FarmerView: React.FC<FarmerViewProps> = ({ navigate, onSwitchMode, roleBadge, children }) => {
+const FarmerView: React.FC<FarmerViewProps> = ({ navigate, onSwitchMode, roleBadge, children, currentView }) => {
     const [activeTab, setActiveTab] = useState<string>('home');
     const { bookings } = useBooking();
+
+    // Sync activeTab with currentView or children status
+    useEffect(() => {
+        // Map currentView to sidebar activeTab keys
+        switch (currentView) {
+            case 'HOME':
+                // Only reset to 'home' if the current activeTab is NOT a valid dashboard tab
+                // This prevents overriding the user's tab selection (e.g. 'profile', 'map') when they are on the Dashboard
+                if (!['home', 'map', 'bookings', 'profile', 'newRequest'].includes(activeTab)) {
+                    setActiveTab('home');
+                }
+                break;
+            case 'BOOKING_FORM':
+                setActiveTab('newRequest'); // Assuming 'newRequest' is the key in Sidebar
+                break;
+            case 'COMMUNITY':
+                setActiveTab('community');
+                break;
+            case 'PAYMENT_HISTORY':
+                setActiveTab('paymentHistory');
+                break;
+            case 'SETTINGS':
+                setActiveTab('settings');
+                break;
+            case 'SUPPORT':
+                setActiveTab('support');
+                break;
+            case 'BOOKING_HISTORY':
+                setActiveTab('bookings');
+                break;
+            case 'MY_ACCOUNT':
+            case 'PERSONAL_DETAILS':
+            case 'CHANGE_PASSWORD':
+            case 'EDIT_DETAILS':
+                setActiveTab('profile');
+                break;
+            // Add other cases as needed
+        }
+    }, [currentView]);
 
     const latestArrivedWithOtp = useMemo(() => {
         const arrived = bookings.filter(b => b.status === 'Arrived' && b.otpCode);
         if (arrived.length === 0) return undefined;
-        // Prefer the most recent by date or start time if available
         return arrived.sort((a, b) => {
             const aTime = new Date(a.workStartTime || a.date).getTime();
             const bTime = new Date(b.workStartTime || b.date).getTime();
@@ -1307,25 +1439,40 @@ const FarmerView: React.FC<FarmerViewProps> = ({ navigate, onSwitchMode, roleBad
         })[0];
     }, [bookings]);
 
+    // Wrapper to handle tab switching behavior
+    const handleTabChange = (tab: string) => {
+        setActiveTab(tab);
+        // If we are currently in a child view (e.g. BookingForm) or any view other than HOME
+        // and we click a tab that belongs to the Dashboard (Home, Map, Bookings, Profile),
+        // we must navigate back to HOME to clear the 'children' prop and show the Dashboard content.
+        if (currentView !== 'HOME') {
+            navigate({ view: 'HOME' });
+        }
+    };
+
     const navItems: NavItemConfig[] = [
         { name: 'home', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg> },
         { name: 'map', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0121 18.382V7.618a1 1 0 01-.553-.894L15 4m0 13V4m0 0L9 7" /></svg> },
-        { name: 'book', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>, isCenter: true, onClick: () => navigate({ view: 'BOOKING_FORM' }) },
+        { name: 'newRequest', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>, isCenter: true, onClick: () => navigate({ view: 'BOOKING_FORM' }) },
         { name: 'bookings', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg> },
         { name: 'profile', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg> },
     ];
 
     const renderContent = () => {
+        // If children are present (e.g. we navigated to a specific route that is rendered inside FarmerView),
+        // show that INSTEAD of the dashboard tabs.
+        if (children) return children;
+
         switch (activeTab) {
-            case 'home': return <FarmerHomeScreen navigate={navigate} activeTab="home" setActiveTab={setActiveTab} onSwitchMode={onSwitchMode} roleBadge={roleBadge} latestArrivedWithOtp={latestArrivedWithOtp} />;
+            case 'home': return <FarmerHomeScreen navigate={navigate} activeTab="home" setActiveTab={handleTabChange} onSwitchMode={onSwitchMode} roleBadge={roleBadge} latestArrivedWithOtp={latestArrivedWithOtp} />;
             case 'map': return <FarmerMapView navigate={navigate} onSwitchMode={onSwitchMode} roleBadge={roleBadge} />;
             case 'bookings': return <FarmerBookingsScreen navigate={navigate} onSwitchMode={onSwitchMode} roleBadge={roleBadge} />;
             case 'profile': return <ProfileScreen navigate={navigate} onSwitchMode={onSwitchMode} roleBadge={roleBadge} />;
-            default: return <FarmerHomeScreen navigate={navigate} activeTab="home" setActiveTab={setActiveTab} onSwitchMode={onSwitchMode} roleBadge={roleBadge} latestArrivedWithOtp={latestArrivedWithOtp} />;
+            default: return <FarmerHomeScreen navigate={navigate} activeTab="home" setActiveTab={handleTabChange} onSwitchMode={onSwitchMode} roleBadge={roleBadge} latestArrivedWithOtp={latestArrivedWithOtp} />;
         }
     };
 
-    const { logout } = useAuth(); // Import logout
+    const { logout } = useAuth();
 
     return (
         <div className="flex h-screen overflow-hidden bg-green-50 dark:bg-neutral-900">
@@ -1333,7 +1480,7 @@ const FarmerView: React.FC<FarmerViewProps> = ({ navigate, onSwitchMode, roleBad
             <AppSidebar
                 role="Farmer"
                 activeTab={activeTab}
-                setActiveTab={setActiveTab}
+                setActiveTab={handleTabChange}
                 navigate={navigate}
                 onLogout={logout}
                 roleBadge={roleBadge && (
@@ -1350,10 +1497,16 @@ const FarmerView: React.FC<FarmerViewProps> = ({ navigate, onSwitchMode, roleBad
                     {children ? children : renderContent()}
                 </div>
 
-                {/* Mobile Content - With Bottom Nav */}
+                {/* Mobile Content - With Bottom Nav (Hidden when AI/Voice Assistant is active) */}
                 <div className="md:hidden flex-1 h-full overflow-y-auto">
-                    <DashboardLayout activeTab={activeTab} setActiveTab={setActiveTab} navItems={navItems}>
-                        {children ? children : renderContent()}
+                    <DashboardLayout
+                        activeTab={activeTab}
+                        setActiveTab={handleTabChange}
+                        navItems={navItems}
+                        showBottomNav={currentView !== 'AI_ASSISTANT' && currentView !== 'VOICE_ASSISTANT'}
+                    >
+                        {/* We use renderContent() here which internally handles 'children' precedence */}
+                        {renderContent()}
                     </DashboardLayout>
                 </div>
             </div>
